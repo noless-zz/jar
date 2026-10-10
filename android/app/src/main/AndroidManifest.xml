@@ -41,6 +41,12 @@
             </intent-filter>
         </activity>
 
+        <!-- My memos: see and correct what Jar heard -->
+        <activity
+            android:name=".MemosActivity"
+            android:exported="false"
+            android:parentActivityName=".TasksActivity" />
+
         <!-- Recording, upload queue, pairing and server settings -->
         <activity
             android:name=".MainActivity"

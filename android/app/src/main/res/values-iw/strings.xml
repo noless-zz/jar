@@ -171,4 +171,25 @@
     <string name="update_dev_build">זו גרסת פיתוח (%1$s): מעדכנים אותה מ-Android Studio.</string>
     <string name="update_notif_title">גרסה %1$s של Jar מוכנה</string>
     <string name="update_notif_text">פתחו את Jar והקישו עדכון.</string>
+
+    <!-- Editing -->
+    <string name="action_edit">עריכה…</string>
+    <string name="edit_title">עריכת משימה</string>
+    <string name="edit_failed">אין חיבור למחשב, לא שונה כלום (%1$s)</string>
+    <string name="menu_memos">ההקלטות שלי</string>
+    <string name="memos_title">ההקלטות שלי</string>
+    <string name="memos_empty">עוד אין הקלטות.</string>
+    <string name="memos_failed">אין חיבור למחשב (%1$s)</string>
+    <string name="memo_edit_title">תיקון ההקלטה</string>
+    <string name="memo_edit_message">תקנו מה שלא נשמע נכון ושלחו שוב. המשימות שנוצרו ממנה בפעם הקודמת יוחלפו.</string>
+    <string name="memo_edit_hint">מה שאמרתם</string>
+    <string name="memo_save_refile">שמירה ושליחה מחדש</string>
+    <string name="memo_refile_as_is">שליחה מחדש כמו שהיא</string>
+    <string name="memo_refiled">נשלח למחשב: המשימות המתוקנות יופיעו בעוד דקה.</string>
+    <string name="memo_in_progress">בטיפול…</string>
+    <string name="memo_edited">תוקן</string>
+    <string name="memo_no_text">(לא נשמע דיבור)</string>
+    <string name="share_app">שיתוף האפליקציה</string>
+    <string name="share_app_text">אפליקציית Jar למשימות של המשפחה: %1$s (פתחו בטלפון והתקינו את קובץ ה-apk שתחת Assets)</string>
+    <string name="update_open_page">דף ההורדה</string>
 </resources>

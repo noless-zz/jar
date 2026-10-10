@@ -165,4 +165,25 @@
     <string name="update_dev_build">This is the dev build (%1$s): update it from Android Studio.</string>
     <string name="update_notif_title">Jar %1$s is ready</string>
     <string name="update_notif_text">Open Jar and tap Update.</string>
+
+    <!-- Editing -->
+    <string name="action_edit">Edit…</string>
+    <string name="edit_title">Edit task</string>
+    <string name="edit_failed">Couldn\'t reach the PC, nothing was changed (%1$s)</string>
+    <string name="menu_memos">My memos</string>
+    <string name="memos_title">My memos</string>
+    <string name="memos_empty">No memos yet.</string>
+    <string name="memos_failed">Couldn\'t reach the PC (%1$s)</string>
+    <string name="memo_edit_title">Fix this memo</string>
+    <string name="memo_edit_message">Correct what was misheard, then file it again. The tasks it made last time are replaced.</string>
+    <string name="memo_edit_hint">What you said</string>
+    <string name="memo_save_refile">Save &amp; file again</string>
+    <string name="memo_refile_as_is">File again as is</string>
+    <string name="memo_refiled">Sent to the PC: the corrected tasks appear in a minute.</string>
+    <string name="memo_in_progress">being filed…</string>
+    <string name="memo_edited">corrected</string>
+    <string name="memo_no_text">(no speech)</string>
+    <string name="share_app">Share the app</string>
+    <string name="share_app_text">Jar app for our family tasks: %1$s (open it on the phone and install the .apk under Assets)</string>
+    <string name="update_open_page">Download page</string>
 </resources>

@@ -61,6 +61,34 @@ public final class TaskApi {
         return call(prefs, "POST", "/v1/tasks", body);
     }
 
+    /** Change title / person / time (due null = no time). */
+    public static JSONObject edit(Prefs prefs, String taskId, String title, String assignee, String due)
+            throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("title", title).put("assignee", assignee).put("due", due == null ? JSONObject.NULL : due);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/tasks/" + taskId + "/edit", body);
+    }
+
+    /** My recent memos: transcript and what Jar did with each. */
+    public static JSONObject memos(Prefs prefs) throws IOException {
+        return call(prefs, "GET", "/v1/memos?limit=40", null);
+    }
+
+    /** File a memo again; with transcript != null, that corrected text is filed. */
+    public static JSONObject refile(Prefs prefs, String memoId, String transcript) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            if (transcript != null) body.put("transcript", transcript);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/memos/" + memoId + "/refile", body);
+    }
+
     public static JSONObject act(Prefs prefs, String taskId, String action, String until) throws IOException {
         JSONObject body = new JSONObject();
         try {

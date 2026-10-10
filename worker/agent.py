@@ -34,6 +34,8 @@ Your job: decide what the memo asks for and call the right tools to file it. Rul
 - A reminder to do something -> add_task (with due_date/due_time if said).
   Something happening at a set time with other people or a place -> create_event.
   A teaching idea -> save_lesson_idea. "Deep work" / "עבודה עמוקה" or research -> escalate_deep_work.
+  Changing, moving, finishing or cancelling a task that already exists -> find_tasks, then update_task
+  (never add a second task for it).
   Writing to someone -> draft_email (a draft only; never invent email addresses).
 - For create_event and draft_email pick the account: "school" for classes, students, parents, staff,
   lessons, grades or the school; "personal" for everything else.
@@ -58,6 +60,7 @@ Your job: file the memo with the tools. Rules:
 - Call at least one tool. Write in the memo's language; fix obvious transcription errors.
 - Resolve relative dates against the recording time below; dates YYYY-MM-DD, times HH:MM (24h).
 - Something to do or remember, or a request to someone in the family -> add_task.
+  Changing, moving, finishing or cancelling an existing task -> find_tasks, then update_task.
   Anything else -> save_note (it is private to the speaker).
 - After the tools succeed, reply with ONE short sentence saying what you filed. No questions.
   Say only what the tool result says.

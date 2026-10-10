@@ -133,6 +133,10 @@ public final class TasksActivity extends AppCompatActivity {
                 openDashboard();
             } else if (id == R.id.menu_update) {
                 checkForUpdate(true);
+            } else if (id == R.id.menu_memos) {
+                startActivity(new Intent(this, MemosActivity.class));
+            } else if (id == R.id.menu_share_app) {
+                shareAppLink();
             } else if (id == R.id.menu_settings) {
                 startActivity(new Intent(this, MainActivity.class));
             }
@@ -201,10 +205,32 @@ public final class TasksActivity extends AppCompatActivity {
             }
             String m = msg;
             main.post(() -> {
-                if (force && m != null) Toast.makeText(this, m, Toast.LENGTH_LONG).show();
                 refreshUpdate();
+                if (!force || m == null) return;
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle(R.string.menu_update)
+                        .setMessage(m)
+                        .setPositiveButton(R.string.update_open_page, (d, w) -> openDownloadPage())
+                        .setNeutralButton(R.string.share_app, (d, w) -> shareAppLink())
+                        .setNegativeButton(android.R.string.ok, null)
+                        .show();
             });
         });
+    }
+
+    static String downloadPage() {
+        return "https://github.com/" + BuildConfig.UPDATE_REPO + "/releases/latest";
+    }
+
+    private void openDownloadPage() {
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(downloadPage())));
+    }
+
+    /** WhatsApp & co.: "Get Jar: <link>" so the family can install it themselves. */
+    private void shareAppLink() {
+        Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, getString(R.string.share_app_text, downloadPage()));
+        startActivity(Intent.createChooser(send, getString(R.string.share_app)));
     }
 
     private void refreshUpdate() {
@@ -392,6 +418,10 @@ public final class TasksActivity extends AppCompatActivity {
             labels.add(getString(R.string.action_reopen));
             actions.add(() -> act(t, "reopen", null));
         }
+        if (!"declined".equals(t.status)) {
+            labels.add(getString(R.string.action_edit));
+            actions.add(() -> showAddDialog(t));
+        }
         if (me.equals(t.createdBy) || cache.iAmAdmin()) {
             labels.add(getString(R.string.action_delete));
             actions.add(() -> act(t, "delete", null));
@@ -430,6 +460,11 @@ public final class TasksActivity extends AppCompatActivity {
     // ---------------------------------------------------------------- new task
 
     private void showAddDialog() {
+        showAddDialog(null);
+    }
+
+    /** New task, or (existing != null) edit its title, person and time. */
+    private void showAddDialog(Task existing) {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_add_task, null, false);
         TextInputEditText title = v.findViewById(R.id.add_title);
         ChipGroup people = v.findViewById(R.id.add_people);
@@ -444,7 +479,7 @@ public final class TasksActivity extends AppCompatActivity {
             Chip c = chip(e.getKey().equals(me) ? getString(R.string.add_me) : e.getValue());
             c.setTag(e.getKey());
             people.addView(c);
-            if (e.getKey().equals(me)) people.check(c.getId());
+            if (e.getKey().equals(existing == null ? me : existing.assignee)) people.check(c.getId());
         }
         people.setOnCheckedStateChangeListener((g, ids) -> {
             View sel = ids.isEmpty() ? null : g.findViewById(ids.get(0));
@@ -459,6 +494,12 @@ public final class TasksActivity extends AppCompatActivity {
         none.setTag("");
         when.addView(none);
         when.check(none.getId());
+        if (existing != null && existing.due != null) {
+            Chip keep = chip(TaskFormat.when(this, existing.due));
+            keep.setTag(existing.due);
+            when.addView(keep);
+            when.check(keep.getId());
+        }
         String tonight = TaskLists.tonight(now, tz);
         if (tonight != null) {
             Chip c = chip(getString(R.string.when_tonight));
@@ -476,8 +517,12 @@ public final class TasksActivity extends AppCompatActivity {
             pick.setText(TaskFormat.when(this, w));
         }));
 
+        if (existing != null) {
+            title.setText(existing.title);
+            if (title.getText() != null) title.setSelection(title.getText().length());
+        }
         new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.add_title)
+                .setTitle(existing == null ? R.string.add_title : R.string.edit_title)
                 .setView(v)
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(R.string.add_save, (d, w) -> {
@@ -488,10 +533,26 @@ public final class TasksActivity extends AppCompatActivity {
                     View selWhen = when.findViewById(when.getCheckedChipId());
                     String tag = selWhen == null ? "" : (String) selWhen.getTag();
                     String due = "pick".equals(tag) ? picked[0] : (tag.isEmpty() ? null : tag);
-                    create(text, who, due);
+                    if (existing == null) create(text, who, due);
+                    else edit(existing, text, who, due);
                 })
                 .show();
         title.requestFocus();
+    }
+
+    private void edit(Task t, String title, String assignee, String due) {
+        syncStatus.setText(R.string.syncing);
+        io.execute(() -> {
+            try {
+                TaskApi.edit(prefs, t.id, title, assignee, due);
+                main.post(() -> TaskSync.now(this));
+            } catch (IOException e) {
+                main.post(() -> {
+                    Toast.makeText(this, getString(R.string.edit_failed, e.getMessage()), Toast.LENGTH_LONG).show();
+                    refresh();
+                });
+            }
+        });
     }
 
     private Chip chip(String text) {

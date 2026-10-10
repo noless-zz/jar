@@ -135,6 +135,11 @@ class Worker:
             from .tools import slug
             notes = Notes(self.cfg.notes_dir / "Family" / slug(speaker.name), self.tz, MemoContext(m.id, when),
                           store=self.tasks, family=self.family, speaker=speaker)
+        if m.meta.get("actions"):
+            # Filed before (Re-file / edited transcript): drop the open tasks that filing made.
+            n = self.tasks.forget_memo(speaker, m.id)
+            if n:
+                log.info("  re-filing: removed %d task(s) from the earlier filing", n)
         text = (m.meta.get("transcript") or "").strip()
         if not text:
             notes.log_memo(m.meta.get("duration_ms", 0), m.meta.get("device_id", "?"), "", m.meta.get("language", ""),

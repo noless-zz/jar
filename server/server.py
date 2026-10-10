@@ -225,7 +225,49 @@ def task_action(task_id: str, action: str, request: Request, body: dict | None =
 # ---------------------------------------------------------------- dashboard
 # http://localhost:8080 on the PC; from the admin's phone over Tailscale after a one-time login link
 # (the phone app's "Open dashboard"). At the end so REJECTED exists.
-from .dashboard import LoginLinks, make_router  # noqa: E402
+from .dashboard import LoginLinks, make_router, refile_memo  # noqa: E402
+
+
+# ---------------------------------------------------------------- my memos (phone app)
+
+def _mine(meta: dict, p: Person) -> bool:
+    owner = meta.get("person") or FAMILY.admin.id      # memos from before families belong to the admin
+    return owner == p.id
+
+
+@app.get("/v1/memos")
+def my_memos(request: Request, limit: int = 30, authorization: str | None = Header(None),
+             x_device_id: str = Header("")):
+    """This person's recent memos: what was said and what Jar did with it."""
+    p = check_auth(authorization, request, x_device_id)
+    out = []
+    for meta_path in DATA_DIR.glob("*/*.json"):
+        try:
+            m = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if _mine(m, p):
+            out.append({k: m.get(k) for k in ("id", "recorded_at", "duration_ms", "status", "transcript",
+                                               "summary", "edited", "error")}
+                       | {"actions": [a.get("summary", "") for a in (m.get("actions") or [])]})
+    out.sort(key=lambda x: x.get("recorded_at") or "", reverse=True)
+    return {"memos": out[:max(1, min(limit, 200))]}
+
+
+@app.post("/v1/memos/{memo_id}/refile")
+def refile_my_memo(memo_id: str, request: Request, body: dict | None = Body(None),
+                   authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """File a memo again, optionally with a corrected transcript ({"transcript": "..."})."""
+    p = check_auth(authorization, request, x_device_id)
+    if not ID_RE.match(memo_id):
+        raise HTTPException(400, "bad memo id")
+    for meta_path in DATA_DIR.glob(f"*/{memo_id}.json"):
+        m = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not _mine(m, p):
+            break
+        text = (body or {}).get("transcript")
+        return refile_memo(meta_path, m, None if text is None else str(text))
+    raise HTTPException(404, "no such memo")
 
 LOGINS = LoginLinks(TOKEN)
 

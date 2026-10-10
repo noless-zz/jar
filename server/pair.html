@@ -35,6 +35,8 @@
            border-radius: 8px; padding: 4px 10px; cursor: pointer; margin-top: 8px; }
   button:hover { border-color: var(--accent); color: var(--accent); }
   .warnbox { border-color: var(--warn); }
+  .appcard { display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: center; }
+  .qr.small { padding: 6px; }
   .people a { display: inline-block; padding: 3px 12px; margin: 0 6px 6px 0; border: 1px solid var(--line);
               border-radius: 999px; text-decoration: none; color: var(--ink); }
   .people a.on { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -66,6 +68,16 @@
           <li>Install <b>Jar</b> (<a href="https://github.com/noless-zz/jar/releases/latest" target="_blank">latest release</a> → the .apk), open it, tap <b>Pair with PC</b> and scan this code.</li>
           <li>The app tests every address and tells you which one works.</li>
         </ol>
+      </div>
+      <p></p>
+      <div class="card appcard">
+        <div class="qr small">{{APP_QR}}</div>
+        <div>
+          <h2>Get the app first</h2>
+          <div class="hint">Scan with the phone's camera, then tap the <b>.apk</b> under Assets to install.
+            Later versions arrive by themselves: the app shows <b>Update</b>.</div>
+          <div class="link"><a href="{{APP_URL}}" target="_blank">{{APP_URL}}</a></div>
+        </div>
       </div>
       <p></p>
       <div class="card {{WARN_CLASS}}">

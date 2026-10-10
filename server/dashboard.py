@@ -20,7 +20,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 LOCAL = {"127.0.0.1", "::1", "localhost", "testclient"}
@@ -46,6 +46,28 @@ def allowed(host: str | None, tailscale: bool) -> bool:
 
 
 COOKIE = "jar_admin"
+APP_URL = "https://github.com/noless-zz/jar/releases/latest"   # where family phones download the app
+
+
+def refile_memo(path: Path, meta: dict, transcript: str | None = None, from_audio: bool = False) -> dict:
+    """Back into the worker's queue. With a corrected transcript, that text is filed instead.
+    The worker first removes the still-open tasks the earlier filing made, so nothing doubles."""
+    if transcript is not None:
+        text = transcript.strip()
+        if not text:
+            raise HTTPException(400, "the transcript is empty")
+        if len(text) > 5000:
+            raise HTTPException(400, "the transcript is too long")
+        if text != (meta.get("transcript") or "").strip():
+            meta.setdefault("original_transcript", meta.get("transcript"))
+            meta["transcript"], meta["edited"] = text, True
+            path.with_suffix(".txt").write_text(text + "\n", encoding="utf-8")
+    keep_text = bool(meta.get("transcript")) and not from_audio
+    meta.update(status="transcribed" if keep_text else "received", attempts=0, error=None)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+    return {"id": meta.get("id"), "status": meta["status"], "transcript": meta.get("transcript")}
 
 
 class LoginLinks:
@@ -196,6 +218,8 @@ def make_router(data_dir: Path, ollama_url: str, rejected=(), token: str = "", p
                     .replace("{{LINK}}", h.escape(info["link"]))
                     .replace("{{ROWS}}", "".join(rows))
                     .replace("{{TS_HINT}}", hint)
+                    .replace("{{APP_QR}}", pairing.qr_svg(APP_URL))
+                    .replace("{{APP_URL}}", h.escape(APP_URL))
                     .replace("{{WHO}}", h.escape(who or "a"))
                     .replace("{{PEOPLE}}", people if len(family.people if family else []) > 1 else "")
                     .replace("{{WARN_CLASS}}", "" if ts.ip else "warnbox"))
@@ -239,16 +263,37 @@ def make_router(data_dir: Path, ollama_url: str, rejected=(), token: str = "", p
         return FileResponse(p.with_suffix(".wav"), media_type="audio/wav")
 
     @r.post("/api/memos/{memo_id}/reprocess")
-    def reprocess(memo_id: str, transcribe: bool = False):
-        """Back into the worker's queue: re-route the transcript, or (transcribe=true) start from the audio.
-        Note: re-routing files the memo again (a second task/note)."""
+    def reprocess(memo_id: str, transcribe: bool = False, body: dict | None = Body(None)):
+        """Re-file the memo: as is, with a corrected transcript ({"transcript": "..."}), or
+        (transcribe=true) from the audio. Open tasks from the earlier filing are replaced."""
         p, m = find(memo_id)
-        keep_text = bool(m.get("transcript")) and not transcribe
-        m.update(status="transcribed" if keep_text else "received", attempts=0, error=None)
-        tmp = p.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, p)
-        return {"id": memo_id, "status": m["status"]}
+        if private(m):
+            raise HTTPException(403, "another parent's memo")
+        text = (body or {}).get("transcript")
+        return refile_memo(p, m, None if text is None else str(text), from_audio=transcribe)
+
+    @r.post("/api/tasks/{task_id}/{action}")
+    def task_action(task_id: str, action: str, body: dict | None = Body(None)):
+        """The dashboard edits tasks as the admin (what the admin's app could do)."""
+        if tasks is None or family is None:
+            raise HTTPException(404, "no task list")
+        from worker.taskstore import TaskError
+        b = body or {}
+        try:
+            return tasks.act(family.admin, task_id, action, b.get("until"), b)
+        except TaskError as e:
+            raise HTTPException(e.status, str(e)) from None
+
+    @r.post("/api/tasks")
+    def task_new(body: dict = Body(...)):
+        if tasks is None or family is None:
+            raise HTTPException(404, "no task list")
+        from worker.taskstore import TaskError
+        who = family.get(body.get("assignee")) or family.admin
+        try:
+            return tasks.add(family.admin, str(body.get("title", "")), who, body.get("due") or None)
+        except TaskError as e:
+            raise HTTPException(e.status, str(e)) from None
 
     outer.include_router(r)
     return outer

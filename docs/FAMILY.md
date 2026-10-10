@@ -34,6 +34,23 @@ plus private notes in `notes/Family/<name>/`.
 
 The admin's phone keeps using `[server] token`, so it stays paired. Updating the app keeps the pairing.
 
+## Fixing things
+
+- **A task is wrong.** In the app, tap the task, then **Edit…** to change the text, the person or the time.
+  On the dashboard, click the task in the Family tasks panel. **+ task** adds a new one.
+- **Jar misheard a memo.** In the app, open **⋮ → My memos**, tap the memo, correct the words, then tap **Save & file again**.
+  On the dashboard, click **Edit** on the memo card. The tasks the first filing made are replaced, so nothing doubles.
+  Notes, calendar events and email drafts from the first filing stay, so delete those yourself if needed.
+- **By voice.** Record something like "move the dentist to Thursday at 10", "סיימתי לתלות כביסה" (I finished hanging the laundry)
+  or "cancel the milk reminder". Jar finds the existing task and changes it instead of adding a new one.
+
+## Sharing and updating the app
+
+- **⋮ → Share the app** sends the download link (WhatsApp, SMS…).
+- **⋮ → Check for updates** checks GitHub right away. When there's a newer version, a banner shows **Update**.
+  When you're up to date, the same screen offers **Download page** and **Share the app**.
+- The PC's Pair page also has a "Get the app" QR code for new phones.
+
 ## Changing the family
 
 Edit `[family]` in `config.toml`, then click ▶ Jar:

@@ -133,10 +133,45 @@ class WorkerTool(Base):
 
     def test_child_gets_only_tasks_and_notes(self):
         n = self.notes("maya")
-        self.assertEqual(set(registry(n)), {"save_note", "add_task"})
+        self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task"})
         self.assertIn("draft_email", registry(self.notes("avi")))
         out = n.add_task("לקנות מחברת", for_person="avi")
         self.assertIn("waits for a parent", out)
+
+
+class Corrections(Base):
+    def notes(self, speaker, memo="abcdef0123456789"):
+        return Notes(self.tmp / "notes", TZ, MemoContext(memo, datetime(2026, 10, 10, 19, 48, tzinfo=TZ)),
+                     store=self.store, family=self.fam, speaker=self.p[speaker])
+
+    def test_voice_correction_moves_and_finishes_a_task(self):
+        n = self.notes("avi")
+        n.add_task("תור לרופא שיניים", due_date="2026-10-14", due_time="09:00")
+        n.add_task("לקנות חלב")
+        found = n.find_tasks("רופא השיניים")                 # prefix "ה" still matches
+        self.assertIn("תור לרופא שיניים", found)
+        self.assertNotIn("חלב", found)
+        tid = self.store.find(self.p["avi"], "רופא")[0]["id"]
+        out = n.update_task(tid, due_date="2026-10-15", due_time="10:30")
+        self.assertIn("due 2026-10-15 10:30", out)
+        self.assertEqual(self.store.find(self.p["avi"], "רופא")[0]["due"], "2026-10-15T10:30")
+        n.update_task(tid, status="done")
+        self.assertEqual(self.store.find(self.p["avi"], "רופא"), [])
+        self.assertIn("no open task", n.find_tasks("רופא"))
+        from worker.tools import ToolError
+        with self.assertRaises(ToolError):
+            n.update_task("nope", status="done")
+
+    def test_reassign_by_child_needs_ok(self):
+        t = self.store.add(self.p["yoni"], "לסדר חדר")
+        r = self.store.act(self.p["yoni"], t["id"], "edit", fields={"assignee": "maya"})
+        self.assertEqual((r["assignee"], r["status"]), ("maya", "requested"))
+
+    def test_refile_replaces_earlier_tasks(self):
+        n = self.notes("avi", memo="feedfacefeedface")
+        n.add_task("old title")
+        self.assertEqual(self.store.forget_memo(self.p["avi"], "feedfacefeedface"), 1)
+        self.assertEqual(self.store.snapshot(self.p["avi"])["tasks"], [])
 
 
 class Api(Base):
@@ -175,6 +210,27 @@ class Api(Base):
         self.assertEqual(self.c.get("/v1/tasks", headers={"Authorization": "Bearer x"}).status_code, 401)
         self.assertEqual(self.c.post("/v1/tasks", headers=self.h("avi"),
                                      json={"title": "x", "assignee": "bob"}).status_code, 400)
+
+    def test_my_memos_and_refile(self):
+        import json as _j
+        day = self.server.DATA_DIR / "2026-10-10"
+        day.mkdir(parents=True, exist_ok=True)
+        for mid, who in (("1111111111111111", "yoni"), ("2222222222222222", "dana")):
+            (day / f"{mid}.json").write_text(_j.dumps({"id": mid, "person": who, "status": "done",
+                                                        "transcript": "תזכיר לי לקנות חלב", "actions": [],
+                                                        "recorded_at": "2026-10-10T10:00:00Z"}), encoding="utf-8")
+        r = self.c.get("/v1/memos", headers=self.h("yoni")).json()["memos"]
+        self.assertEqual([m["id"] for m in r if m["id"] in ("1111111111111111", "2222222222222222")],
+                         ["1111111111111111"])
+        r = self.c.post("/v1/memos/1111111111111111/refile", headers=self.h("yoni"),
+                        json={"transcript": "תזכיר לי לקנות לחם"})
+        self.assertEqual(r.json()["status"], "transcribed", r.text)
+        m = _j.loads((day / "1111111111111111.json").read_text(encoding="utf-8"))
+        self.assertEqual((m["transcript"], m["edited"], m["original_transcript"]),
+                         ("תזכיר לי לקנות לחם", True, "תזכיר לי לקנות חלב"))
+        self.assertEqual(self.c.post("/v1/memos/2222222222222222/refile", headers=self.h("yoni")).status_code, 404)
+        self.assertEqual(self.c.post("/v1/memos/1111111111111111/refile", headers=self.h("yoni"),
+                                     json={"transcript": "  "}).status_code, 400)
 
     def test_dashboard_login_only_for_admin(self):
         self.assertEqual(self.c.post("/v1/dashboard-login", headers=self.h("dana")).status_code, 403)

@@ -173,9 +173,48 @@ class TaskStore:
                     t["snoozed_until"] = None
                 if "notes" in f:
                     t["notes"] = str(f["notes"] or "").strip()[:2000]
+                if f.get("assignee") and f["assignee"] != t["assignee"]:
+                    who = self.family.get(f["assignee"])
+                    if who is None:
+                        raise TaskError(400, "no such family member")
+                    t["assignee"] = who.id
+                    if not actor.is_parent and who.id != actor.id:
+                        t["status"] = "requested"     # a child handing it to someone else: a parent OKs it
             t["updated_at"] = _now()
             self._write(data)
             return t
+
+    def find(self, actor: Person, query: str = "", person: Person | None = None, limit: int = 8) -> list[dict]:
+        """Open tasks the actor can see, best word match first: for "move the dentist to Thursday"."""
+        words = [w for w in re.split(r"\W+", (query or "").casefold()) if len(w) >= 2]
+        found = []
+        for t in self.snapshot(actor)["tasks"]:
+            if t.get("status") not in ("open", "requested"):
+                continue
+            if person is not None and t["assignee"] != person.id:
+                continue
+            text = (t["title"] + " " + (t.get("notes") or "")).casefold()
+            # Hebrew prefixes (ה, ל, ב, ש, ו…) glue onto words, so substring matches count too.
+            score = sum(1 for w in words if w in text or (len(w) > 3 and w[1:] in text))
+            if words and score == 0:
+                continue
+            found.append((score, t.get("updated_at", ""), t))
+        found.sort(key=lambda x: (x[0], x[1]), reverse=True)     # best match, then most recently touched
+        return [t for _, _, t in found[:limit]]
+
+    def forget_memo(self, actor: Person, memo_id: str) -> int:
+        """Re-filing a memo: delete the still-open tasks its earlier filing created, so nothing doubles."""
+        n = 0
+        with self._locked():
+            data = self._read()
+            for t in data["tasks"]:
+                if t.get("memo_id") == memo_id and t.get("status") in ("open", "requested") \
+                        and (t["created_by"] == actor.id or actor.admin):
+                    t["status"], t["updated_at"] = "deleted", _now()
+                    n += 1
+            if n:
+                self._write(data)
+        return n
 
     def import_markdown(self, owner: Person) -> int:
         """First run with the family list: bring over the open "- [ ]" lines of the old Tasks.md

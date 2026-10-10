@@ -194,6 +194,67 @@ class Notes:
         self.actions.append(a)
         return f"ok: {summary}"
 
+    def find_tasks(self, query: str = "", for_person: str = "") -> str:
+        """For corrections by voice: the open tasks that match, with ids for update_task."""
+        if self.store is None:
+            raise ToolError("there is no task list")
+        who = self.family.resolve(for_person) if for_person else None
+        found = self.store.find(self.speaker, query, who)
+        if not found:
+            return "no open task matches. (If the memo is a NEW task, use add_task.)"
+        name = lambda pid: self.family.get(pid).name if self.family.get(pid) else pid  # noqa: E731
+        lines = [f"- id={t['id']} | {t['title']} | for {name(t['assignee'])}"
+                 + (f" | due {t['due'].replace('T', ' ')}" if t.get("due") else "") for t in found]
+        return "matching open tasks:\n" + "\n".join(lines)
+
+    def update_task(self, task_id: str, title: str = "", due_date: str = "", due_time: str = "",
+                    for_person: str = "", status: str = "") -> str:
+        """Change, move, finish or cancel an existing task (id from find_tasks)."""
+        from .taskstore import TaskError
+        if self.store is None:
+            raise ToolError("there is no task list")
+        task_id = (task_id or "").strip().removeprefix("id=")
+        fields, did = {}, []
+        if title.strip():
+            fields["title"] = title.strip()
+            did.append(f"renamed to “{title.strip()}”")
+        d, tm = _date(due_date), _time(due_time)
+        if due_date and not d:
+            raise ToolError("due_date must be YYYY-MM-DD")
+        if tm and not d:
+            d = self.ctx.recorded_local.date()
+            if tm <= f"{self.ctx.recorded_local:%H:%M}":
+                d += timedelta(days=1)
+        if d:
+            fields["due"] = f"{d.isoformat()}T{tm}" if tm else d.isoformat()
+            did.append(f"due {fields['due'].replace('T', ' ')}")
+        if for_person.strip():
+            who = self.family.resolve(for_person)
+            if who is None:
+                raise ToolError(f"unknown person '{for_person}'")
+            fields["assignee"] = who.id
+            did.append(f"now for {who.name}")
+        status = (status or "").strip().lower()
+        try:
+            if fields:
+                t = self.store.act(self.speaker, task_id, "edit", fields=fields)
+            if status in ("done", "finished", "complete"):
+                t = self.store.act(self.speaker, task_id, "done")
+                did.append("marked done")
+            elif status in ("cancel", "cancelled", "delete", "deleted"):
+                t = self.store.act(self.speaker, task_id, "delete")
+                did.append("cancelled")
+            elif status in ("open", "reopen"):
+                t = self.store.act(self.speaker, task_id, "reopen")
+                did.append("reopened")
+        except TaskError as e:
+            raise ToolError(f"{e} (use an id from find_tasks)") from e
+        if not did:
+            raise ToolError("nothing to change: give title, due_date/due_time, for_person or status")
+        summary = f"task “{t['title']}”: " + ", ".join(did)
+        self.actions.append({"tool": "update_task", "summary": summary, "task_id": t["id"], "file": "Tasks.md"})
+        return f"ok: {summary}"
+
     def create_event(self, title: str, date: str, start_time: str = "", duration_min: int = 60,
                      location: str = "", notes: str = "", account: str = "personal") -> str:
         """In the account's real calendar when connected; otherwise an .ics file to double-click."""
@@ -313,7 +374,7 @@ class Notes:
 def registry(notes: Notes) -> dict[str, Tool]:
     tools = _all_tools(notes)
     if notes.restricted:
-        tools = {k: v for k, v in tools.items() if k in ("save_note", "add_task")}
+        tools = {k: v for k, v in tools.items() if k in ("save_note", "add_task", "find_tasks", "update_task")}
     return tools
 
 
@@ -345,6 +406,24 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   notes=string("extra details, optional")),
               "required": ["title"]},
              "internal", notes.add_task),
+        Tool("find_tasks", "Look up EXISTING open tasks by words in them. Use first when the memo changes, "
+             "moves, finishes or cancels something already on the list ('move the dentist to Thursday', "
+             "'סיימתי לתלות כביסה', 'בטל את התזכורת על החלב', 'Yoni already did the dishes').",
+             {**s(query=string("a few key words of the task, in the memo's language"),
+                  for_person=FOR),
+              "required": ["query"]},
+             "none", notes.find_tasks),
+        Tool("update_task", "Change an existing task found with find_tasks: new title, new day/time, another "
+             "person, or status done / cancel / reopen. Only the fields you give change.",
+             {**s(task_id=string("the id from find_tasks"),
+                  title=string("new title, or empty"),
+                  due_date=string("new date YYYY-MM-DD, or empty"),
+                  due_time=string("new time HH:MM, or empty"),
+                  for_person=FOR,
+                  status={"type": "string", "enum": ["", "done", "cancel", "reopen"],
+                          "description": "done = finished; cancel = no longer needed; empty = no change"}),
+              "required": ["task_id"]},
+             "internal", notes.update_task),
         Tool("create_event", "Create a calendar event: a meeting, appointment or anything at a set time.",
              {**s(title=string("event title"), date=string("YYYY-MM-DD"),
                   start_time=string("HH:MM 24h, empty for all-day"),

@@ -62,6 +62,16 @@
   .tcol li.done { color: var(--muted); text-decoration: line-through; }
   .tcol li .meta { color: var(--muted); font-size: 11.5px; display: block; }
   .tcol li.req .meta { color: var(--warn); }
+  .tcol li[data-task] { cursor: pointer; } .tcol li[data-task]:hover > bdi { color: var(--accent); }
+  .tcol .add { font-size: 12px; color: var(--accent); cursor: pointer; margin-top: 6px; display: inline-block; }
+  .editor { display: grid; gap: 6px; padding: 6px 0; }
+  .editor input, .editor select, .editor textarea { font: inherit; font-size: 13px; padding: 5px 7px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; }
+  .editor textarea { min-height: 70px; font-size: 15px; unicode-bidi: plaintext; }
+  .editor .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .editor .hint { color: var(--muted); font-size: 12px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger:hover { border-color: var(--bad); color: var(--bad); }
   .who { font-weight: 600; color: var(--ink); }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg);
            padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; }
@@ -86,7 +96,8 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let lastMemos = "", lastTasks = "", names = {};
+let lastMemos = "", lastTasks = "", names = {}, people = [], allTasks = [];
+let editing = false;   // an editor is open: don't let the 4-second refresh wipe it
 
 function pill(id, state, text) {
   $(id).innerHTML = `<span class="dot ${state}"></span>${esc(text)}`;
@@ -152,7 +163,7 @@ async function refreshMemos() {
   let memos;
   try { memos = await (await fetch("api/memos?limit=60")).json(); } catch { return; }
   const key = JSON.stringify(memos);
-  if (key === lastMemos) return;          // unchanged: don't re-render (keeps audio playing)
+  if (key === lastMemos || editing) return;   // unchanged / being edited: don't re-render
   lastMemos = key;
   if (!memos.length) {
     $("list").innerHTML = `<div class="empty-state">No memos yet. Record one on the phone or run “Jar: Send test memo”.</div>`;
@@ -175,9 +186,10 @@ async function refreshMemos() {
         <span class="spacer"></span>
         ${m.private ? "" : `<audio controls preload="none" src="api/memos/${esc(m.id)}/audio"></audio>
         <button data-id="${esc(m.id)}" data-t="1" title="Transcribe and file again from the audio">Redo all</button>
-        ${m.transcript ? `<button data-id="${esc(m.id)}" title="File the same transcript again">Re-file</button>` : ""}`}
+        ${m.transcript ? `<button data-id="${esc(m.id)}" title="File the same transcript again">Re-file</button>
+        <button data-edit="${esc(m.id)}" title="Correct the transcript and file it again">Edit</button>` : ""}`}
       </div>
-      ${m.transcript ? `<div class="text" dir="auto">${esc(m.transcript)}</div>`
+      ${m.transcript ? `<div class="text" dir="auto" data-text="${esc(m.id)}">${esc(m.transcript)}</div>`
                      : `<div class="text empty">${m.status === "done" ? "No speech found." : "Not transcribed yet."}</div>`}
       ${actions ? `<ul class="actions" dir="auto">${actions}</ul>` : ""}
       ${m.summary && actions ? `<div class="summary" dir="auto">${esc(m.summary)}</div>` : ""}
@@ -190,8 +202,9 @@ async function refreshTasks() {
   let f;
   try { f = await (await fetch("api/family")).json(); } catch { return; }
   names = Object.fromEntries((f.people || []).map((p) => [p.id, p.name]));
+  people = f.people || []; allTasks = f.tasks || [];
   const key = JSON.stringify(f);
-  if (key === lastTasks) return;
+  if (key === lastTasks || editing) return;
   lastTasks = key;
   const tasks = f.tasks || [];
   $("tasks").hidden = (f.people || []).length < 2 && !tasks.length;
@@ -205,16 +218,100 @@ async function refreshTasks() {
                     t.created_by !== p.id ? "from " + bdi(names[t.created_by] || t.created_by) : "",
                     t.snoozed_until && t.status === "open" ? "snoozed to " + esc(t.snoozed_until.replace("T", " ")) : "",
                     t.status === "requested" ? "waiting for a parent's OK" : ""].filter(Boolean).join(" · ");
-      return `<li class="${t.status === "done" ? "done" : t.status === "requested" ? "req" : ""}"><bdi dir="auto">${esc(t.title)}</bdi>`
+      return `<li data-task="${esc(t.id)}" title="Click to edit" class="${t.status === "done" ? "done" : t.status === "requested" ? "req" : ""}"><bdi dir="auto">${esc(t.title)}</bdi>`
         + (meta ? `<span class="meta" dir="ltr">${meta}</span>` : "") + `</li>`;
     }).join("");
-    return `<div class="tcol"><h3 dir="auto">${esc(p.name)}</h3>${items ? `<ul>${items}</ul>`
-      : `<div class="meta" style="color:var(--muted);font-size:12.5px">nothing open</div>`}</div>`;
+    return `<div class="tcol" data-col="${esc(p.id)}"><h3 dir="auto">${esc(p.name)}</h3>${items ? `<ul>${items}</ul>`
+      : `<div class="meta" style="color:var(--muted);font-size:12.5px">nothing open</div>`}
+      <span class="add" data-add="${esc(p.id)}">+ task</span></div>`;
   }).join("");
   $("tasks").innerHTML = `<h2>Family tasks</h2><div class="tcols">${cols}</div>`;
 }
 
+// ---- editing (inline: VS Code's browser blocks prompt()/confirm())
+
+function personOptions(selected) {
+  return people.map((p) => `<option value="${esc(p.id)}"${p.id === selected ? " selected" : ""}>${esc(p.name)}</option>`).join("");
+}
+
+function closeEditor() { editing = false; lastTasks = ""; lastMemos = ""; refreshTasks(); refreshMemos(); }
+
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"},
+                              body: body ? JSON.stringify(body) : undefined});
+  if (!r.ok) { let d = ""; try { d = (await r.json()).detail; } catch {} toast("Failed: " + (d || r.status)); }
+  return r.ok;
+}
+
+function taskEditor(host, t, assignee) {
+  editing = true;
+  const isNew = !t;
+  host.innerHTML = `<div class="editor">
+      <input class="e-title" dir="auto" placeholder="What needs doing?" value="${esc(t ? t.title : "")}">
+      <select class="e-who">${personOptions(t ? t.assignee : assignee)}</select>
+      <input class="e-due" type="datetime-local" value="${esc(t && t.due ? (t.due.length === 10 ? t.due + "T08:00" : t.due) : "")}">
+      <div class="hint">Leave the time empty for "no reminder".</div>
+      <div class="btns">
+        <button class="primary e-save">${isNew ? "Add" : "Save"}</button>
+        ${isNew ? "" : t.status === "done" ? `<button class="e-reopen">Not done</button>` : `<button class="e-done">Done ✓</button>`}
+        ${!isNew && t.status === "requested" ? `<button class="e-accept">OK, add it</button>` : ""}
+        ${isNew ? "" : `<button class="danger e-del">Delete</button>`}
+        <button class="e-cancel">Cancel</button>
+      </div></div>`;
+  const q = (c) => host.querySelector(c);
+  q(".e-title").focus();
+  q(".e-cancel").onclick = closeEditor;
+  q(".e-save").onclick = async () => {
+    const title = q(".e-title").value.trim(), due = q(".e-due").value || null, who = q(".e-who").value;
+    if (!title) { toast("Write what needs doing"); return; }
+    const ok = isNew ? await post("api/tasks", {title, assignee: who, due})
+                     : await post(`api/tasks/${t.id}/edit`, {title, due, assignee: who});
+    if (ok) { toast(isNew ? "Added" : "Saved"); closeEditor(); }
+  };
+  for (const [cls, action, msg] of [[".e-done", "done", "Done"], [".e-reopen", "reopen", "Reopened"],
+                                    [".e-accept", "accept", "Added"], [".e-del", "delete", "Deleted"]]) {
+    const b = q(cls);
+    if (!b) continue;
+    b.onclick = async () => {
+      if (action === "delete" && !b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Click again"; return; }
+      if (await post(`api/tasks/${t.id}/${action}`)) { toast(msg); closeEditor(); }
+    };
+  }
+}
+
+$("tasks").addEventListener("click", (e) => {
+  if (editing) return;
+  const li = e.target.closest("li[data-task]");
+  if (li) { taskEditor(li, allTasks.find((t) => t.id === li.dataset.task)); return; }
+  const add = e.target.closest("[data-add]");
+  if (add) { const box = document.createElement("div"); add.replaceWith(box); taskEditor(box, null, add.dataset.add); }
+});
+
+function memoEditor(id) {
+  const box = document.querySelector(`[data-text="${CSS.escape(id)}"]`);
+  if (editing) { toast("Save or cancel the open editor first"); return; }
+  if (!box) return;
+  editing = true;
+  const old = box.textContent;
+  box.outerHTML = `<div class="editor" data-editor="${esc(id)}">
+      <textarea dir="auto">${esc(old)}</textarea>
+      <div class="hint">Fix what was misheard or add details, then file again. Open tasks from the last filing are replaced;
+        notes, calendar events and email drafts it made stay, so remove those yourself if needed.</div>
+      <div class="btns"><button class="primary m-save">Save &amp; file again</button><button class="m-cancel">Cancel</button></div>
+    </div>`;
+  const ed = document.querySelector(`[data-editor="${CSS.escape(id)}"]`);
+  ed.querySelector("textarea").focus();
+  ed.querySelector(".m-cancel").onclick = closeEditor;
+  ed.querySelector(".m-save").onclick = async () => {
+    const text = ed.querySelector("textarea").value.trim();
+    if (!text) { toast("The transcript is empty"); return; }
+    if (await post(`api/memos/${id}/reprocess`, {transcript: text})) { toast("Sent back to the worker"); closeEditor(); }
+  };
+}
+
 $("list").addEventListener("click", async (e) => {
+  const ed = e.target.closest("button[data-edit]");
+  if (ed) { memoEditor(ed.dataset.edit); return; }
   const b = e.target.closest("button[data-id]");
   if (!b) return;
   const full = b.dataset.t === "1";
@@ -222,7 +319,7 @@ $("list").addEventListener("click", async (e) => {
   if (!b.dataset.armed) {
     b.dataset.armed = "1"; const label = b.textContent; b.textContent = "Click again";
     setTimeout(() => { delete b.dataset.armed; b.textContent = label; }, 3000);
-    toast("It will be filed again (may add a second task/note)");
+    toast("Files it again; open tasks from the last filing are replaced");
     return;
   }
   await fetch(`api/memos/${b.dataset.id}/reprocess${full ? "?transcribe=true" : ""}`, {method: "POST"});
