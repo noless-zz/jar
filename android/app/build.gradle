@@ -1,0 +1,83 @@
+plugins {
+    alias(libs.plugins.android.application)
+}
+
+// ---- Version: from the release tag (CI passes -PjarVersion=1.2.3), else the dev default below.
+// versionCode = major*10000 + minor*100 + patch, so 1.2.3 -> 10203. Must only ever go up.
+def jarVersion = (project.findProperty("jarVersion") ?: "0.3.0").toString().replaceFirst(/^v/, "")
+def parts = jarVersion.tokenize(".-")
+def jarVersionCode = (parts[0] as int) * 10000 + (parts.size() > 1 ? parts[1] as int : 0) * 100 +
+        (parts.size() > 2 && parts[2].isInteger() ? parts[2] as int : 0)
+
+// ---- Release signing: the keystore never goes to GitHub.
+// Locally: android/keystore.properties (storeFile, storePassword, keyAlias, keyPassword).
+// On GitHub Actions: the JAR_KEYSTORE_* secrets (see .github/workflows/android-release.yml).
+def ksProps = new Properties()
+def ksFile = rootProject.file("keystore.properties")
+if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }
+def signValue = { String envName, String propName ->
+    def v = providers.environmentVariable(envName).getOrNull()
+    return v ?: ksProps.getProperty(propName)
+}
+def releaseStore = signValue("JAR_KEYSTORE_FILE", "storeFile")
+
+android {
+    namespace 'com.noam.jar'
+    compileSdk {
+        version = release(36)
+    }
+
+    defaultConfig {
+        applicationId "com.noam.jar"
+        minSdk 29
+        targetSdk 36
+        versionCode jarVersionCode
+        versionName jarVersion
+        // Where the app looks for updates (GitHub Releases of this repo).
+        buildConfigField "String", "UPDATE_REPO", "\"noless-zz/jar\""
+    }
+
+    buildFeatures {
+        buildConfig true
+        resValues true
+    }
+
+    signingConfigs {
+        release {
+            if (releaseStore) {
+                storeFile rootProject.file(releaseStore)
+                storePassword signValue("JAR_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias signValue("JAR_KEY_ALIAS", "keyAlias")
+                keyPassword signValue("JAR_KEY_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Installs next to the family (release) app, so your test builds never replace it.
+            applicationIdSuffix ".dev"
+            versionNameSuffix "-dev"
+            resValue "string", "app_name", "Jar dev"
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (releaseStore) signingConfig signingConfigs.release
+            resValue "string", "app_name", "Jar"
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation libs.appcompat
+    implementation libs.material
+    implementation libs.activity
+    implementation libs.work.runtime
+    implementation libs.code.scanner     // QR scanning UI from Play services: no camera permission needed
+    testImplementation libs.junit
+}

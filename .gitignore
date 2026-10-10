@@ -1,0 +1,20 @@
+# Personal, never on GitHub
+config.toml
+data/
+notes/
+firmware/src/config.h
+*.jks
+*.keystore
+keystore.properties
+android-signing.properties
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Builds
+*.apk
+dist/
+firmware/.pio/
+.vscode/

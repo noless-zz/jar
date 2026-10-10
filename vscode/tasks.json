@@ -1,0 +1,407 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "presentation": {
+    "reveal": "always",
+    "panel": "shared",
+    "clear": true,
+    "showReuseMessage": false
+  },
+  "tasks": [
+    {
+      "label": "Jar: Start",
+      "detail": "Start (or restart) the server and the memo worker in the background",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\start-jar.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Stop",
+      "detail": "Stop the server and the worker",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\start-jar.ps1",
+        "-Stop"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Status",
+      "detail": "Running? Ollama? Memo counts and the last worker log lines",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\start-jar.ps1",
+        "-Status"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Worker (live)",
+      "detail": "Server in the background, worker in this terminal so you can watch it (trash-can icon to stop)",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\start-jar.ps1",
+        "-Foreground"
+      ],
+      "isBackground": true,
+      "presentation": {
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Tail worker log",
+      "detail": "Follow data\\logs\\worker.log live",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Get-Content -Path data\\logs\\worker.log -Tail 40 -Wait -Encoding UTF8"
+      ],
+      "isBackground": true,
+      "presentation": {
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Dashboard (browser)",
+      "detail": "Open http://localhost:8080 in your browser. In VS Code: Ctrl+Shift+P -> Simple Browser: Show",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Start-Process http://localhost:8080"
+      ],
+      "presentation": {
+        "reveal": "never"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Pair a phone (QR)",
+      "detail": "Open the pairing page: scan its QR code in Jar Companion to set token + home/Tailscale addresses",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Start-Process http://localhost:8080/pair"
+      ],
+      "presentation": {
+        "reveal": "never"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Send test memo (tone)",
+      "detail": "Upload a 2 s test tone as device fake-01 - the worker should log 'no speech'",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "server\\fake_device.py"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Send WAV file...",
+      "detail": "Upload any 16 kHz mono WAV as a memo",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "server\\fake_device.py",
+        "--wav",
+        "${input:wavPath}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Retry failed memos",
+      "detail": "Put memos with status 'failed' back in the worker's queue",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "worker",
+        "--retry-failed"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Check setup",
+      "detail": "Is Ollama up with the model? Which GPU/CPU will Whisper use?",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "worker",
+        "--check"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Run tests",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-t",
+        ".",
+        "-v"
+      ],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Connect Outlook (personal)",
+      "detail": "Sign in to your personal Outlook.com account once (opens the browser)",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "worker.connect",
+        "outlook"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Connect Google (school)",
+      "detail": "Sign in to the school Google account once (opens the browser)",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "worker.connect",
+        "google"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Accounts status",
+      "detail": "Which calendar/email accounts are connected",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "worker.connect",
+        "status"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Android: Publish release",
+      "detail": "Tag a new version; GitHub builds the signed APK and the family phones offer Update",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\publish-release.ps1",
+        "${input:releaseVersion}"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Set GitHub release secrets",
+      "detail": "Once: give GitHub Actions the Android signing key",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\set-github-secrets.ps1"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Link this folder to GitHub",
+      "detail": "Once: make this folder a clone of github.com/noless-zz/jar",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\link-to-github.ps1"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Open notes folder",
+      "type": "process",
+      "command": "explorer.exe",
+      "args": [
+        "${workspaceFolder}\\notes"
+      ],
+      "presentation": {
+        "reveal": "never"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Setup / update packages",
+      "detail": "Re-run setup.ps1 (safe to repeat)",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\setup.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Allow phone through firewall (admin)",
+      "detail": "Asks for admin once (UAC): allows TCP 8080 from the home network and from Tailscale",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\allow-firewall.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Autostart at login - on",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\install-autostart.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Autostart at login - off",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\install-autostart.ps1",
+        "-Remove"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Firmware: Build",
+      "type": "process",
+      "command": "${userHome}\\.platformio\\penv\\Scripts\\platformio.exe",
+      "args": [
+        "run",
+        "-d",
+        "firmware"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Firmware: Upload to pendant",
+      "detail": "XIAO on USB-C. Needs firmware\\src\\config.h (copy config.example.h)",
+      "type": "process",
+      "command": "${userHome}\\.platformio\\penv\\Scripts\\platformio.exe",
+      "args": [
+        "run",
+        "-d",
+        "firmware",
+        "-t",
+        "upload"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Firmware: Serial monitor",
+      "type": "process",
+      "command": "${userHome}\\.platformio\\penv\\Scripts\\platformio.exe",
+      "args": [
+        "device",
+        "monitor",
+        "-d",
+        "firmware"
+      ],
+      "isBackground": true,
+      "presentation": {
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {"id": "releaseVersion", "type": "promptString", "description": "Version to publish, e.g. 0.4.0"},
+    {
+      "id": "wavPath",
+      "type": "promptString",
+      "description": "Path to a 16 kHz mono WAV file"
+    }
+  ]
+}

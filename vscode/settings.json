@@ -1,0 +1,44 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "python.testing.unittestEnabled": true,
+  "python.testing.unittestArgs": ["-s", "tests", "-t", ".", "-p", "test_*.py"],
+  "files.exclude": { "**/__pycache__": true, ".venv": true, "firmware/.pio": true },
+  "files.associations": { "*.toml": "toml" },
+
+  // Status-bar buttons (extension: spencerwmiles.vscode-task-buttons)
+  "VsCodeTaskButtons.showCounter": false,
+  "VsCodeTaskButtons.tasks": [
+    { "label": "$(play) Jar", "task": "Jar: Start", "tooltip": "Start / restart the server and worker" },
+    { "label": "$(debug-stop)", "task": "Jar: Stop", "tooltip": "Stop Jar" },
+    { "label": "$(pulse) Status", "task": "Jar: Status", "tooltip": "Is everything running? Memo counts, last log lines" },
+    { "label": "$(globe) Dashboard", "task": "Jar: Dashboard (browser)", "tooltip": "Open the memo dashboard" },
+    { "label": "$(device-mobile) Pair", "task": "Jar: Pair a phone (QR)", "tooltip": "Show the QR code that sets up the phone app" },
+    {
+      "label": "$(list-unordered) More",
+      "tooltip": "All Jar actions",
+      "tasks": [
+        { "label": "$(eye) Worker (live)", "task": "Jar: Worker (live)", "description": "watch memos being processed" },
+        { "label": "$(output) Tail worker log", "task": "Jar: Tail worker log" },
+        { "label": "$(mic) Send test memo", "task": "Jar: Send test memo (tone)", "description": "2 s tone as fake-01" },
+        { "label": "$(file-media) Send WAV file...", "task": "Jar: Send WAV file..." },
+        { "label": "$(refresh) Retry failed memos", "task": "Jar: Retry failed memos" },
+        { "label": "$(checklist) Check setup", "task": "Jar: Check setup", "description": "Ollama + Whisper device" },
+        { "label": "$(beaker) Run tests", "task": "Jar: Run tests" },
+        { "label": "$(calendar) Connect Outlook (personal)", "task": "Jar: Connect Outlook (personal)", "description": "once, opens the browser" },
+        { "label": "$(mortar-board) Connect Google (school)", "task": "Jar: Connect Google (school)", "description": "once, opens the browser" },
+        { "label": "$(account) Accounts status", "task": "Jar: Accounts status" },
+        { "label": "$(folder-opened) Open notes folder", "task": "Jar: Open notes folder" },
+        { "label": "$(shield) Allow phone through firewall", "task": "Jar: Allow phone through firewall (admin)", "description": "once, asks for admin" },
+        { "label": "$(rocket) Autostart at login: on", "task": "Jar: Autostart at login - on" },
+        { "label": "$(circle-slash) Autostart at login: off", "task": "Jar: Autostart at login - off" },
+        { "label": "$(package) Setup / update packages", "task": "Jar: Setup / update packages" },
+        { "label": "$(rocket) Android: Publish release", "task": "Android: Publish release", "description": "new family version" },
+        { "label": "$(key) Set GitHub release secrets", "task": "Jar: Set GitHub release secrets", "description": "once" },
+        { "label": "$(github) Link this folder to GitHub", "task": "Jar: Link this folder to GitHub", "description": "once" },
+        { "label": "$(circuit-board) Firmware: build", "task": "Firmware: Build" },
+        { "label": "$(arrow-up) Firmware: upload", "task": "Firmware: Upload to pendant" },
+        { "label": "$(terminal) Firmware: serial monitor", "task": "Firmware: Serial monitor" }
+      ]
+    }
+  ]
+}

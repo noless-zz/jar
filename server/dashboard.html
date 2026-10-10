@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jar</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #1d2320; --muted: #66706b; --line: #e3e1da;
+    --accent: #2e6f57; --good: #2e7d4f; --warn: #b26a00; --bad: #b3261e; --chip: #eef1ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161a18; --card: #1e2321; --ink: #e8ece9; --muted: #98a39d; --line: #2c3330;
+            --accent: #6cc39c; --good: #6cc39c; --warn: #e3a64a; --bad: #f08a80; --chip: #26302c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line);
+           padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  h1 { font-size: 18px; margin: 0 8px 0 0; letter-spacing: .2px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+          background: var(--chip); font-size: 12.5px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.good { background: var(--good); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  .pair { font-size: 12.5px; color: var(--accent); text-decoration: none; border: 1px solid var(--line);
+          border-radius: 8px; padding: 4px 10px; }
+  .pair:hover { border-color: var(--accent); }
+  .counts { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px 20px 40px; }
+  .memo { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+          margin-bottom: 12px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--muted); font-size: 12.5px; }
+  .status { font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--chip); }
+  .status.done { color: var(--good); } .status.failed { color: var(--bad); }
+  .status.received, .status.transcribed { color: var(--warn); }
+  .text { margin: 10px 0 8px; font-size: 15px; white-space: pre-wrap; unicode-bidi: plaintext; }
+  .text.empty { color: var(--muted); font-style: italic; font-size: 13.5px; }
+  ul.actions { margin: 0; padding-inline-start: 18px; }
+  ul.actions li { margin: 2px 0; unicode-bidi: plaintext; }
+  .tool { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--accent); }
+  .err { color: var(--bad); font-size: 12.5px; margin-top: 6px; word-break: break-word; }
+  .summary { color: var(--muted); font-size: 12.5px; margin-top: 6px; font-style: italic; unicode-bidi: plaintext; }
+  .spacer { flex: 1; }
+  button { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: transparent; color: var(--ink);
+           border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  audio { height: 30px; max-width: 240px; }
+  .empty-state { text-align: center; color: var(--muted); padding: 60px 20px; }
+  .banner { max-width: 980px; margin: 14px auto 0; padding: 10px 14px; border-radius: 10px;
+            border: 1px solid var(--bad); color: var(--bad); background: var(--card); font-size: 13.5px; }
+  .banner b { font-weight: 600; }
+  .tasks { max-width: 980px; margin: 14px auto 0; padding: 0 20px; }
+  .tasks h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .4px; }
+  .tcols { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+  .tcol { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .tcol h3 { font-size: 13.5px; margin: 0 0 6px; }
+  .tcol ul { list-style: none; margin: 0; padding: 0; }
+  .tcol li { font-size: 13px; padding: 3px 0; border-top: 1px solid var(--line); }
+  .tcol li > bdi { display: block; text-align: start; unicode-bidi: plaintext; }
+  .tcol li:first-child { border-top: 0; }
+  .tcol li.done { color: var(--muted); text-decoration: line-through; }
+  .tcol li .meta { color: var(--muted); font-size: 11.5px; display: block; }
+  .tcol li.req .meta { color: var(--warn); }
+  .who { font-weight: 600; color: var(--ink); }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+           padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; }
+  .toast.show { opacity: .92; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Jar</h1>
+  <span class="pill" id="p-server"><span class="dot good"></span>server</span>
+  <span class="pill" id="p-worker"><span class="dot"></span>worker</span>
+  <span class="pill" id="p-ollama"><span class="dot"></span>ollama</span>
+  <span id="p-accounts"></span>
+  <span class="counts" id="counts"></span>
+  <a class="pair" href="pair">Pair a phone</a>
+</header>
+<div id="banner" class="banner" hidden></div>
+<section id="tasks" class="tasks" hidden></section>
+<main id="list"><div class="empty-state">Loading…</div></main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let lastMemos = "", lastTasks = "", names = {};
+
+function pill(id, state, text) {
+  $(id).innerHTML = `<span class="dot ${state}"></span>${esc(text)}`;
+}
+
+function when(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const today = new Date().toDateString() === d.toDateString();
+  return (today ? "" : d.toLocaleDateString(undefined, {day: "numeric", month: "short"}) + " ")
+       + d.toLocaleTimeString(undefined, {hour: "2-digit", minute: "2-digit"});
+}
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function showOllamaProblem(text) {
+  // Shown under any upload-refused banner: memos are waiting because the local model can't run.
+  let el = document.getElementById("ollama-banner");
+  if (!text) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement("div"); el.id = "ollama-banner"; el.className = "banner";
+    $("banner").after(el);
+  }
+  el.innerHTML = `<b>Memos are waiting for Ollama.</b> ${esc(text)}`;
+}
+
+async function refreshStatus() {
+  try {
+    const s = await (await fetch("api/status")).json();
+    pill("p-server", "good", "server");
+    const w = s.worker;
+    if (!w) pill("p-worker", "bad", "worker: never started");
+    else if (w.age_seconds > 60) pill("p-worker", "bad", `worker: silent ${Math.round(w.age_seconds / 60)} min`);
+    else if (w.ollama_waiting) pill("p-worker", "warn", "worker: waiting for Ollama");
+    else pill("p-worker", "good", `worker: ${w.doing} · ${w.whisper}`);
+    if (w && w.ollama_waiting && w.ollama_problem) $("p-worker").title = w.ollama_problem;
+    showOllamaProblem(w && w.ollama_waiting ? w.ollama_problem : "");
+    pill("p-ollama", s.ollama.up ? "good" : "bad",
+         s.ollama.up ? `ollama${s.ollama.loaded.length ? ": " + s.ollama.loaded.join(", ") + " loaded" : " (idle)"}` : "ollama: down");
+    const acc = (w && w.accounts) || {};
+    $("p-accounts").innerHTML = Object.entries(acc).map(([role, a]) =>
+      `<span class="pill" title="${esc(a.who ? "connected as " + a.who : "not connected: events and drafts are saved as files. Run Jar: Connect " + (a.provider || "") + " (More menu)")}">`
+      + `<span class="dot ${a.who ? "good" : "warn"}"></span>${esc(role)}: ${esc(a.provider || "off")}${a.who ? "" : " (files)"}</span>`).join(" ");
+    const rej = s.rejected || [];
+    const fresh = rej.filter((r) => Date.now() - new Date(r.at) < 30 * 60 * 1000);
+    $("banner").hidden = !fresh.length;
+    if (fresh.length) {
+      const r = fresh[0];
+      $("banner").innerHTML = `<b>Upload refused</b> from ${esc(r.device)} (${esc(r.ip)}) at ${esc(when(r.at))}: ${esc(r.reason)}. `
+        + `The device keeps the memo; fix the token in its settings (it must match <code>[server] token</code> in config.toml), then tap “Upload now”.`
+        + (fresh.length > 1 ? ` <span style="color:var(--muted)">(${fresh.length} refusals in the last 30 min)</span>` : "");
+    }
+    $("counts").textContent = Object.entries(s.counts).map(([k, v]) => `${v} ${k}`).join(" · ");
+  } catch {
+    pill("p-server", "bad", "server: not answering");
+  }
+}
+
+async function refreshMemos() {
+  let memos;
+  try { memos = await (await fetch("api/memos?limit=60")).json(); } catch { return; }
+  const key = JSON.stringify(memos);
+  if (key === lastMemos) return;          // unchanged: don't re-render (keeps audio playing)
+  lastMemos = key;
+  if (!memos.length) {
+    $("list").innerHTML = `<div class="empty-state">No memos yet. Record one on the phone or run “Jar: Send test memo”.</div>`;
+    return;
+  }
+  $("list").innerHTML = memos.map((m) => {
+    const actions = (m.actions || []).map((a) =>
+      `<li><span class="tool">${esc(a.tool)}</span> ${esc(a.summary)}</li>`).join("");
+    const timing = [m.transcribe_seconds != null ? `whisper ${m.transcribe_seconds}s` : "",
+                    m.llm_seconds != null ? `llm ${m.llm_seconds}s` : ""].filter(Boolean).join(" · ");
+    return `<article class="memo">
+      <div class="row">
+        <span class="status ${esc(m.status)}">${esc(m.status)}</span>
+        <span>${esc(when(m.recorded_at))}</span>
+        <span>${((m.duration_ms || 0) / 1000).toFixed(1)} s</span>
+        <span>${m.person && names[m.person] ? `<span class="who" dir="auto">${esc(names[m.person])}</span> · ` : ""}${esc(m.device_id)}</span>
+        ${m.language ? `<span>${esc(m.language)}</span>` : ""}
+        ${timing ? `<span>${esc(timing)}</span>` : ""}
+        ${m.fallback ? `<span title="the model made no tool call">fallback</span>` : ""}
+        <span class="spacer"></span>
+        ${m.private ? "" : `<audio controls preload="none" src="api/memos/${esc(m.id)}/audio"></audio>
+        <button data-id="${esc(m.id)}" data-t="1" title="Transcribe and file again from the audio">Redo all</button>
+        ${m.transcript ? `<button data-id="${esc(m.id)}" title="File the same transcript again">Re-file</button>` : ""}`}
+      </div>
+      ${m.transcript ? `<div class="text" dir="auto">${esc(m.transcript)}</div>`
+                     : `<div class="text empty">${m.status === "done" ? "No speech found." : "Not transcribed yet."}</div>`}
+      ${actions ? `<ul class="actions" dir="auto">${actions}</ul>` : ""}
+      ${m.summary && actions ? `<div class="summary" dir="auto">${esc(m.summary)}</div>` : ""}
+      ${m.error ? `<div class="err">${esc(m.error)}${m.attempts ? ` (attempt ${m.attempts})` : ""}</div>` : ""}
+    </article>`;
+  }).join("");
+}
+
+async function refreshTasks() {
+  let f;
+  try { f = await (await fetch("api/family")).json(); } catch { return; }
+  names = Object.fromEntries((f.people || []).map((p) => [p.id, p.name]));
+  const key = JSON.stringify(f);
+  if (key === lastTasks) return;
+  lastTasks = key;
+  const tasks = f.tasks || [];
+  $("tasks").hidden = (f.people || []).length < 2 && !tasks.length;
+  const order = {requested: 0, open: 1, done: 2};
+  const cols = (f.people || []).map((p) => {
+    const mine = tasks.filter((t) => t.assignee === p.id)
+      .sort((a, b) => (order[a.status] - order[b.status]) || String(a.due || "9").localeCompare(String(b.due || "9")));
+    const items = mine.map((t) => {
+      const bdi = (x) => `<bdi>${esc(x)}</bdi>`;
+      const meta = [t.due ? esc(t.due.replace("T", " ")) : "",
+                    t.created_by !== p.id ? "from " + bdi(names[t.created_by] || t.created_by) : "",
+                    t.snoozed_until && t.status === "open" ? "snoozed to " + esc(t.snoozed_until.replace("T", " ")) : "",
+                    t.status === "requested" ? "waiting for a parent's OK" : ""].filter(Boolean).join(" · ");
+      return `<li class="${t.status === "done" ? "done" : t.status === "requested" ? "req" : ""}"><bdi dir="auto">${esc(t.title)}</bdi>`
+        + (meta ? `<span class="meta" dir="ltr">${meta}</span>` : "") + `</li>`;
+    }).join("");
+    return `<div class="tcol"><h3 dir="auto">${esc(p.name)}</h3>${items ? `<ul>${items}</ul>`
+      : `<div class="meta" style="color:var(--muted);font-size:12.5px">nothing open</div>`}</div>`;
+  }).join("");
+  $("tasks").innerHTML = `<h2>Family tasks</h2><div class="tcols">${cols}</div>`;
+}
+
+$("list").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-id]");
+  if (!b) return;
+  const full = b.dataset.t === "1";
+  // Two clicks instead of confirm(): VS Code's built-in browser blocks dialogs.
+  if (!b.dataset.armed) {
+    b.dataset.armed = "1"; const label = b.textContent; b.textContent = "Click again";
+    setTimeout(() => { delete b.dataset.armed; b.textContent = label; }, 3000);
+    toast("It will be filed again (may add a second task/note)");
+    return;
+  }
+  await fetch(`api/memos/${b.dataset.id}/reprocess${full ? "?transcribe=true" : ""}`, {method: "POST"});
+  toast("Sent back to the worker");
+  refreshMemos(); refreshStatus();
+});
+
+refreshStatus(); refreshTasks().then(refreshMemos);
+setInterval(() => { refreshStatus(); refreshTasks(); refreshMemos(); }, 4000);
+</script>
+</body>
+</html>

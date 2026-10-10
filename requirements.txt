@@ -1,0 +1,15 @@
+# Server
+fastapi>=0.110
+uvicorn>=0.29
+qrcode>=7.4              # pairing QR code on the dashboard
+# Worker
+faster-whisper>=1.1
+tzdata                   # time zones on Windows (Python there has no IANA database)
+# GPU transcription on Windows/Linux: CUDA 12 libraries for CTranslate2
+nvidia-cublas-cu12; platform_system != "Darwin"
+nvidia-cudnn-cu12>=9,<10; platform_system != "Darwin"
+# Calendar + email drafts (docs/CONNECT.md)
+requests>=2.31
+msal>=1.28               # Outlook.com / Microsoft Graph sign-in
+google-auth>=2.29
+google-auth-oauthlib>=1.2   # Google sign-in (browser, once)

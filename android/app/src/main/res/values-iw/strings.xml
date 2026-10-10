@@ -1,0 +1,174 @@
+<resources>
+    <string name="subtitle">הטלפון מחליף את התליון: מקליטים תזכורות קוליות ושולחים אותן לשרת Jar.</string>
+
+    <string name="hold_to_record">החזיקו כדי להקליט</string>
+    <string name="release_to_save">שחררו כדי לשמור</string>
+    <string name="ready">מוכן · החזיקו ודברו, או הקישו להתחלה והקישו שוב לעצירה</string>
+    <string name="recording_time">מקליט %1$s</string>
+    <string name="need_mic_permission">אשרו גישה למיקרופון כדי להקליט</string>
+
+    <string name="section_queue">תור העלאה</string>
+    <string name="queue_empty">התור ריק · הכול נשלח</string>
+    <plurals name="queued_count">
+        <item quantity="one">הקלטה אחת ממתינה להעלאה</item>
+        <item quantity="two">%d הקלטות ממתינות להעלאה</item>
+        <item quantity="other">%d הקלטות ממתינות להעלאה</item>
+    </plurals>
+    <string name="upload_now">העלו עכשיו</string>
+    <string name="offline_sim">הדמיית אין Wi-Fi (ההקלטות נשארות בטלפון)</string>
+    <string name="offline_on">מצב בלי Wi-Fi פעיל</string>
+
+    <string name="section_server">שרת</string>
+    <string name="server_url">כתובת השרת</string>
+    <string name="token">אסימון המכשיר</string>
+    <string name="device_id">שם המכשיר</string>
+    <string name="save">שמירה</string>
+    <string name="test_connection">בדיקת חיבור</string>
+    <string name="testing">בודק…</string>
+    <string name="test_ok">מחובר: השרת פעיל ומקבל את האסימון</string>
+    <string name="test_bad_token">השרת זמין אבל דחה את האסימון. הוא חייב להיות זהה ל-[server] token בקובץ config.toml במחשב.</string>
+    <string name="test_failed">אין חיבור לשרת (%1$s)</string>
+    <string name="settings_saved">נשמר</string>
+
+    <string name="section_log">פעילות</string>
+    <string name="clear_log">ניקוי</string>
+    <string name="history_empty">עדיין אין כלום. הקליטו תזכורת כדי להתחיל.</string>
+    <string name="history_saved">%1$s · נשמרה הקלטה של %2$s שנ\'</string>
+    <string name="history_saved_partial">%1$s · נשמרה הקלטה של %2$s שנ\' (ההקלטה נקטעה)</string>
+    <string name="history_too_short">%1$s · קצרה מדי, נמחקה</string>
+    <string name="history_uploaded">%1$s · הועלתה הקלטה של %2$s שנ\' ✓</string>
+    <string name="history_retry">%1$s · ההעלאה נכשלה (%2$s), ננסה שוב</string>
+    <string name="history_refused">%1$s · השרת סירב (%2$s): בדקו את האסימון</string>
+    <string name="history_error">%1$s · שגיאה: %2$s</string>
+    <plurals name="history_recovered">
+        <item quantity="one">%1$s · שוחזרה הקלטה אחת שנקטעה</item>
+        <item quantity="two">%1$s · שוחזרו %2$d הקלטות שנקטעו</item>
+        <item quantity="other">%1$s · שוחזרו %2$d הקלטות שנקטעו</item>
+    </plurals>
+
+    <string name="channel_recording">הקלטה</string>
+    <string name="notification_recording">מקליט תזכורת</string>
+    <string name="action_stop">עצירה</string>
+
+    <string name="widget_label">הקלטת Jar</string>
+    <string name="widget_description">הקישו כדי להקליט, הקישו שוב כדי לעצור</string>
+    <string name="widget_tap_to_record">הקישו להקלטה</string>
+    <string name="widget_recording">מקליט · הקישו לעצירה</string>
+    <string name="widget_all_sent">כל ההקלטות נשלחו</string>
+    <string name="pair_button">צימוד למחשב</string>
+    <string name="pair_paste">הדבקת קישור</string>
+    <string name="pair_info_single">לא מצומד: סרקו את הקוד בלוח הבקרה במחשב (Pair a phone) כדי למלא הכול אוטומטית.</string>
+    <string name="pair_bad">זה לא קוד צימוד של Jar. פתחו את לוח הבקרה במחשב ← Pair a phone.</string>
+    <string name="pair_scan_failed">הסורק לא זמין (%1$s). השתמשו ב„הדבקת קישור”.</string>
+    <string name="test_ok_home">מחובר דרך הרשת הביתית (%1$s) · האסימון התקבל</string>
+    <string name="test_ok_tailscale">מחובר דרך Tailscale ‏(%1$s) · האסימון התקבל</string>
+    <string name="test_unreachable">אף אחת מ-%1$d הכתובות השמורות לא ענתה (%2$s). האם המחשב דלוק ו-Tailscale מחובר?</string>
+    <string name="section_remote">מחוץ לבית (Tailscale)</string>
+    <string name="ts_not_installed">Tailscale לא מותקן. התקינו והתחברו עם אותו חשבון כמו במחשב כדי לשלוח הקלטות מכל מקום.</string>
+    <string name="ts_off">Tailscale מותקן אבל לא מחובר. ההקלטות ימתינו בטלפון עד שתחזרו הביתה או שתחברו את Tailscale.</string>
+    <string name="ts_connected">Tailscale מחובר: ההקלטות מגיעות למחשב מכל מקום.</string>
+    <string name="ts_install">התקנת Tailscale</string>
+    <string name="ts_open">פתיחת Tailscale</string>
+    <plurals name="pair_info_paired">
+        <item quantity="one">מצומד · כתובת אחת שמורה</item>
+        <item quantity="two">מצומד · %d כתובות שמורות (רשת ביתית / Tailscale), משתמשים בזו שעונה</item>
+        <item quantity="other">מצומד · %d כתובות שמורות (רשת ביתית / Tailscale), משתמשים בזו שעונה</item>
+    </plurals>
+    <plurals name="history_paired">
+        <item quantity="one">%1$s · צומד למחשב (כתובת אחת)</item>
+        <item quantity="two">%1$s · צומד למחשב (%2$d כתובות)</item>
+        <item quantity="other">%1$s · צומד למחשב (%2$d כתובות)</item>
+    </plurals>
+
+    <!-- Family tasks -->
+    <string name="tasks_title">Jar</string>
+    <string name="tasks_title_for">Jar · %1$s</string>
+    <string name="tab_mine">שלי</string>
+    <string name="tab_asked">ביקשתי</string>
+    <string name="tab_family">משפחה</string>
+    <string name="fab_record">הקלטה</string>
+    <string name="fab_stop">עצירה %1$s</string>
+    <string name="fab_add_task">משימה</string>
+    <string name="menu_refresh">רענון</string>
+    <string name="menu_dashboard">פתיחת לוח הבקרה</string>
+    <string name="menu_settings">הגדרות וצימוד</string>
+    <string name="syncing">מסנכרן…</string>
+    <string name="synced_never">עוד לא סונכרן</string>
+    <string name="synced_at">סונכרן ב-%1$s</string>
+    <plurals name="pending_changes">
+        <item quantity="one">שינוי %d ממתין למחשב</item>
+        <item quantity="two">%d שינויים ממתינים למחשב</item>
+        <item quantity="other">%d שינויים ממתינים למחשב</item>
+    </plurals>
+    <string name="tasks_bad_token">המחשב לא מכיר את הטלפון הזה. צריך לצמד מחדש (תפריט ← הגדרות וצימוד).</string>
+    <string name="tasks_offline">אין חיבור למחשב כרגע · מוצג העותק האחרון</string>
+    <string name="tasks_not_paired">הטלפון עוד לא מצומד. סרקו את הקוד מהמחשב (לוח הבקרה ← Pair a phone, ובחרו את השם שלכם).</string>
+    <string name="tasks_first_sync">מביא את המשימות מהמחשב…</string>
+    <string name="header_need_ok">מחכות לאישור שלך</string>
+    <string name="header_mine">המשימות שלי</string>
+    <string name="empty_mine">אין מה לעשות. הקליטו למשל „תזכיר לי ל…”, או הקישו משימה.</string>
+    <string name="empty_asked">משימות שנתתם למישהו יופיעו כאן, עם ✓ כשהן בוצעו.</string>
+    <string name="empty_family">לילדים אין משימות פתוחות.</string>
+    <string name="dashboard_failed">לא הצלחתי לפתוח את לוח הבקרה (%1$s)</string>
+
+    <string name="action_done">בוצע</string>
+    <string name="action_reopen">עוד לא בוצע</string>
+    <string name="action_delete">מחיקה</string>
+    <string name="action_accept">מאשר</string>
+    <string name="action_decline">לא מאשר</string>
+    <string name="snooze_hour">נודניק לשעה</string>
+    <string name="snooze_tonight">הערב (20:00)</string>
+    <string name="snooze_tomorrow">מחר בבוקר</string>
+    <string name="snooze_pick">בחירת זמן…</string>
+    <string name="pick_day">באיזה יום?</string>
+    <string name="pick_time">באיזו שעה?</string>
+
+    <string name="add_title">משימה חדשה</string>
+    <string name="add_what">מה צריך לעשות?</string>
+    <string name="add_for">בשביל</string>
+    <string name="add_me">אני</string>
+    <string name="add_when">תזכורת</string>
+    <string name="add_request_hint">הורה יצטרך לאשר קודם.</string>
+    <string name="add_save">הוספה</string>
+    <string name="add_failed">אין חיבור למחשב, המשימה לא נוספה (%1$s)</string>
+    <string name="when_none">בלי שעה</string>
+    <string name="when_tonight">הערב</string>
+    <string name="when_tomorrow_morning">מחר 08:00</string>
+    <string name="when_pick">בחירה…</string>
+    <string name="when_today">היום</string>
+    <string name="when_tomorrow">מחר</string>
+
+    <string name="meta_for">בשביל %1$s</string>
+    <string name="meta_from">מ%1$s</string>
+    <string name="meta_snoozed">נדחה ל%1$s</string>
+    <string name="meta_waiting">מחכה לאישור הורה</string>
+    <string name="meta_declined">לא אושר</string>
+    <string name="meta_done_by">בוצע ע״י %1$s</string>
+
+    <string name="channel_task_reminders">תזכורות למשימות</string>
+    <string name="channel_task_new">משימות ובקשות חדשות</string>
+    <string name="channel_task_morning">סיכום בוקר</string>
+    <string name="notif_reminder">תזכורת</string>
+    <string name="notif_from">תזכורת · מ%1$s</string>
+    <string name="notif_new_from">משימה חדשה מ%1$s</string>
+    <string name="notif_request">%1$s מבקש/ת (בשביל %2$s) · צריך את האישור שלך</string>
+    <plurals name="morning_title">
+        <item quantity="one">דבר %d לעשות היום</item>
+        <item quantity="two">%d דברים לעשות היום</item>
+        <item quantity="other">%d דברים לעשות היום</item>
+    </plurals>
+
+    <!-- Updates -->
+    <string name="menu_update">בדיקת עדכונים</string>
+    <string name="menu_update_version">בדיקת עדכונים (מותקנת %1$s)</string>
+    <string name="update_available">גרסה %1$s של Jar זמינה (מותקנת %2$s)</string>
+    <string name="update_install">עדכון</string>
+    <string name="update_downloading">מוריד את העדכון…</string>
+    <string name="update_allow_installs">אשרו „התקנת אפליקציות לא מוכרות” עבור Jar וחזרו לכאן: העדכון ימשיך.</string>
+    <string name="update_failed">העדכון נכשל (%1$s)</string>
+    <string name="update_none">מותקנת הגרסה האחרונה (%1$s)</string>
+    <string name="update_check_failed">לא הצלחתי לבדוק עדכונים (%1$s)</string>
+    <string name="update_dev_build">זו גרסת פיתוח (%1$s): מעדכנים אותה מ-Android Studio.</string>
+    <string name="update_notif_title">גרסה %1$s של Jar מוכנה</string>
+    <string name="update_notif_text">פתחו את Jar והקישו עדכון.</string>
+</resources>

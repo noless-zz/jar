@@ -1,0 +1,274 @@
+"""Jar memo worker: picks up memos the server stored, transcribes them, lets the local
+model file them, and records everything in the memo's .json and the daily memo log.
+
+    python -m worker            run forever (poll every few seconds)
+    python -m worker --once     process what's waiting, then exit
+    python -m worker --check    check Whisper/Ollama setup and exit
+    python -m worker --warmup   download/load Whisper, transcribe 1 s of silence, report GPU or CPU
+    python -m worker --retry-failed   put failed memos back in the queue
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+import time
+from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from . import config as config_mod
+from .agent import Agent, OllamaUnavailable
+from .memos import MemoFile, pending
+from .tools import MemoContext, Notes
+from .transcribe import Transcriber
+
+log = logging.getLogger("jar")
+
+
+def setup_logging(data_dir: Path) -> None:
+    (data_dir / "logs").mkdir(parents=True, exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%Y-%m-%d %H:%M:%S")
+    fh = RotatingFileHandler(data_dir / "logs" / "worker.log", maxBytes=2_000_000, backupCount=3,
+                             encoding="utf-8")
+    fh.setFormatter(fmt)
+    root = logging.getLogger()
+    root.handlers[:] = [fh]
+    if sys.stdout and sys.stdout.isatty():
+        # Also print to the console when run by hand (not when start-jar.ps1 runs it hidden).
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(fmt)
+        root.addHandler(sh)
+    # Only Jar's own messages at INFO; libraries (Hugging Face downloads, httpx…) only when something is wrong.
+    root.setLevel(logging.WARNING)
+    logging.getLogger("jar").setLevel(logging.INFO)
+
+
+class SingleInstance:
+    """Holds an OS file lock so two workers never process the same memo. Released on exit/crash."""
+
+    def __init__(self, path: Path):
+        self.f = open(path, "a+")
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+                self.f.seek(0)
+                msvcrt.locking(self.f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise SystemExit(f"another worker is already running (lock: {path})")
+
+
+def recorded_local(meta: dict, tz: ZoneInfo) -> datetime:
+    raw = meta.get("recorded_at") or meta.get("received_at")
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        dt = datetime.now(timezone.utc)
+    return dt.astimezone(tz)
+
+
+class Worker:
+    def __init__(self, cfg: config_mod.Config):
+        self.cfg = cfg
+        self.tz = ZoneInfo(cfg.timezone)
+        self.transcriber = Transcriber(cfg.whisper_model, cfg.whisper_device, cfg.whisper_compute,
+                                       cfg.whisper_language, cfg.vocabulary)
+        self.agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
+                           about=cfg.about)
+        from .accounts import build as build_accounts
+        self.accounts = build_accounts(cfg)   # personal -> Outlook, school -> Google (None if not set up)
+        from .family import Family
+        from .taskstore import TaskStore
+        self.family = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir)
+        self.tasks = TaskStore(cfg.data_dir / "tasks.json", self.family, cfg.notes_dir / "Tasks.md")
+        try:
+            n = self.tasks.import_markdown(self.family.admin)
+            if n:
+                log.info("moved %d open task(s) from Tasks.md into the family task list", n)
+            self.tasks.purge_old()
+        except Exception:  # noqa: BLE001
+            log.exception("task list housekeeping failed")
+        self._ollama_warned = False
+        self._ollama_problem = ""
+        self.account_status: dict = {}
+
+    def process(self, m: MemoFile) -> None:
+        log.info("memo %s (%s, %.1f s, %s)", m.id, m.status, m.meta.get("duration_ms", 0) / 1000,
+                 m.meta.get("device_id", "?"))
+        try:
+            if m.status == "received":
+                t = self.transcriber.transcribe(m.wav)
+                m.wav.with_suffix(".txt").write_text(t.text + "\n", encoding="utf-8")
+                m.update(status="transcribed", transcript=t.text, language=t.language,
+                         language_probability=t.language_probability, transcribe_seconds=t.seconds,
+                         whisper=f"{self.cfg.whisper_model}/{self.transcriber.device}", error=None)
+                log.info("  transcript (%s, %.1f s): %s", t.language, t.seconds, t.text[:200] or "(no speech)")
+            if m.status == "transcribed":
+                self.route(m)
+        except OllamaUnavailable as e:
+            # Not the memo's fault: keep it as "transcribed" and try again next poll.
+            if not self._ollama_warned or str(e) != self._ollama_problem:
+                log.warning("  waiting for Ollama: %s", e)
+            self._ollama_warned, self._ollama_problem = True, str(e)
+            raise
+        except Exception as e:  # noqa: BLE001
+            attempts = m.meta.get("attempts", 0) + 1
+            failed = attempts >= self.cfg.max_attempts
+            m.update(attempts=attempts, error=f"{type(e).__name__}: {e}", status="failed" if failed else m.status)
+            log.exception("  %s (attempt %d/%d)", "gave up" if failed else "error", attempts,
+                          self.cfg.max_attempts)
+
+    def route(self, m: MemoFile) -> None:
+        when = recorded_local(m.meta, self.tz)
+        speaker = self.family.get(m.meta.get("person")) or self.family.admin
+        if speaker.admin:
+            notes = Notes(self.cfg.notes_dir, self.tz, MemoContext(m.id, when), accounts=self.accounts,
+                          store=self.tasks, family=self.family, speaker=speaker)
+        else:
+            # Everyone else's notes and memo log live in their own folder; no access to the admin's
+            # calendars or email.
+            from .tools import slug
+            notes = Notes(self.cfg.notes_dir / "Family" / slug(speaker.name), self.tz, MemoContext(m.id, when),
+                          store=self.tasks, family=self.family, speaker=speaker)
+        text = (m.meta.get("transcript") or "").strip()
+        if not text:
+            notes.log_memo(m.meta.get("duration_ms", 0), m.meta.get("device_id", "?"), "", m.meta.get("language", ""),
+                           "No speech found.")
+            m.update(status="done", actions=[], summary="No speech found.", processed_at=_now())
+            log.info("  no speech: nothing to file")
+            return
+        r = self.agent.run(text, notes, when, self.cfg.timezone, m.meta)
+        self._ollama_warned, self._ollama_problem = False, ""
+        notes.log_memo(m.meta.get("duration_ms", 0), m.meta.get("device_id", "?"), text,
+                       m.meta.get("language", ""), r.summary)
+        m.update(status="done", actions=r.actions, summary=r.summary, llm=self.cfg.llm_model,
+                 llm_seconds=r.seconds, llm_rounds=r.rounds, fallback=r.fallback, processed_at=_now(), error=None)
+        log.info("  done in %.1f s: %s", r.seconds, "; ".join(a["summary"] for a in r.actions))
+
+    def heartbeat(self, doing: str = "idle") -> None:
+        """data/worker.json: lets the dashboard and start-jar.ps1 -Status see the worker is alive."""
+        import json
+        import os
+        import time as _t
+        hb = {"pid": os.getpid(), "epoch": _t.time(), "at": _now(), "doing": doing,
+              "whisper": f"{self.cfg.whisper_model} on {self.transcriber.device}",
+              "llm": self.cfg.llm_model, "ollama_waiting": self._ollama_warned,
+              "ollama_problem": self._ollama_problem[:300], "accounts": self.account_status}
+        tmp = self.cfg.data_dir / "worker.json.tmp"
+        try:
+            tmp.write_text(json.dumps(hb), encoding="utf-8")
+            os.replace(tmp, self.cfg.data_dir / "worker.json")
+        except OSError:
+            pass  # never let the heartbeat stop real work
+
+    def retry_failed(self) -> int:
+        n = 0
+        for meta_path in (self.cfg.data_dir / "memos").glob("*/*.json"):
+            import json
+            m = MemoFile(meta_path, json.loads(meta_path.read_text(encoding="utf-8")))
+            if m.status == "failed":
+                m.update(status="transcribed" if m.meta.get("transcript") else "received", attempts=0, error=None)
+                n += 1
+        log.info("re-queued %d failed memo(s)", n)
+        return n
+
+    def run_once(self) -> int:
+        n = 0
+        for m in pending(self.cfg.data_dir):
+            self.heartbeat(f"memo {m.id}")
+            try:
+                self.process(m)
+            except OllamaUnavailable:
+                break  # every later memo needs Ollama too
+            n += 1
+        self.heartbeat()
+        return n
+
+    def warmup(self) -> bool:
+        import tempfile
+        import wave
+        silence = Path(tempfile.gettempdir()) / "jar-warmup.wav"
+        with wave.open(str(silence), "wb") as f:
+            f.setnchannels(1)
+            f.setsampwidth(2)
+            f.setframerate(16000)
+            f.writeframes(b"\0\0" * 16000)
+        try:
+            t = self.transcriber.transcribe(silence)
+        except Exception:  # noqa: BLE001
+            log.exception("Whisper warm-up failed")
+            return False
+        log.info("Whisper OK on %s (%s), test took %.1f s", self.transcriber.device,
+                 self.transcriber.compute_type, t.seconds)
+        return True
+
+    def check(self) -> bool:
+        ok = True
+        problem = self.agent.ping()
+        log.info("Ollama: %s", problem or f"ok, model {self.cfg.llm_model} available")
+        ok &= problem is None
+        log.info("Whisper: %s on %s (%s)", self.cfg.whisper_model, self.transcriber.device,
+                 self.transcriber.compute_type)
+        log.info("Data: %s   Notes: %s", self.cfg.data_dir, self.cfg.notes_dir)
+        self.account_status = {}
+        for role, conn in self.accounts.items():
+            try:
+                who = conn.account() if conn else None
+            except Exception:  # noqa: BLE001
+                who = None
+            self.account_status[role] = {"provider": conn.name if conn else "", "who": who or ""}
+            log.info("Account %s: %s", role, f"{conn.name}, {'connected as ' + who if who else 'not connected (falls back to files)'}"
+                     if conn else "not configured")
+        return ok
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(prog="python -m worker")
+    p.add_argument("--once", action="store_true", help="process waiting memos and exit")
+    p.add_argument("--check", action="store_true", help="check setup and exit")
+    p.add_argument("--warmup", action="store_true", help="download + load Whisper and test it")
+    p.add_argument("--retry-failed", action="store_true", help="put failed memos back in the queue and exit")
+    p.add_argument("--config", type=Path)
+    a = p.parse_args()
+
+    cfg = config_mod.load(a.config)
+    cfg.data_dir.mkdir(parents=True, exist_ok=True)
+    setup_logging(cfg.data_dir)
+    w = Worker(cfg)
+    if a.check:
+        raise SystemExit(0 if w.check() else 1)
+    if a.warmup:
+        raise SystemExit(0 if w.warmup() else 1)
+    if a.retry_failed:
+        w.retry_failed()
+        return
+
+    _lock = SingleInstance(cfg.data_dir / "worker.lock")  # noqa: F841 — held for the process lifetime
+    log.info("Jar worker started — Whisper %s, LLM %s, notes in %s", cfg.whisper_model, cfg.llm_model,
+             cfg.notes_dir)
+    w.check()
+    if a.once:
+        w.run_once()
+        return
+    try:
+        while True:
+            try:
+                w.run_once()
+            except Exception:  # noqa: BLE001 — the loop must survive anything
+                log.exception("unexpected error in loop")
+            time.sleep(cfg.poll_seconds)
+    except KeyboardInterrupt:
+        log.info("worker stopped")
+
+
+if __name__ == "__main__":
+    main()

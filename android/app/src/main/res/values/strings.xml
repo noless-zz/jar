@@ -1,0 +1,168 @@
+<resources>
+    <string name="subtitle">Your phone stands in for the pendant: record memos and send them to the Jar server.</string>
+
+    <string name="hold_to_record">Hold to record</string>
+    <string name="release_to_save">Release to save</string>
+    <string name="ready">Ready · hold to talk, or tap to start and tap again to stop</string>
+    <string name="recording_time">Recording %1$s</string>
+    <string name="need_mic_permission">Allow the microphone to record memos</string>
+
+    <string name="section_queue">Upload queue</string>
+    <string name="queue_empty">Queue empty · everything sent</string>
+    <plurals name="queued_count">
+        <item quantity="one">%d memo waiting to upload</item>
+        <item quantity="other">%d memos waiting to upload</item>
+    </plurals>
+    <string name="upload_now">Upload now</string>
+    <string name="offline_sim">Simulate no Wi-Fi (keep memos on the phone)</string>
+    <string name="offline_on">no-Wi-Fi mode on</string>
+
+    <string name="section_server">Server</string>
+    <string name="server_url">Server address</string>
+    <string name="token">Device token</string>
+    <string name="device_id">Device name</string>
+    <string name="save">Save</string>
+    <string name="test_connection">Test connection</string>
+    <string name="testing">Testing…</string>
+    <string name="test_ok">Connected: server is up and accepts the token</string>
+    <string name="test_bad_token">Server reached, but it rejected the token. It must match [server] token in config.toml on the PC.</string>
+    <string name="test_failed">Can\'t reach the server (%1$s)</string>
+    <string name="settings_saved">Saved</string>
+
+    <string name="section_log">Activity</string>
+    <string name="clear_log">Clear</string>
+    <string name="history_empty">Nothing yet. Record a memo to start.</string>
+    <string name="history_saved">%1$s · saved %2$s s</string>
+    <string name="history_saved_partial">%1$s · saved %2$s s (recording was cut off)</string>
+    <string name="history_too_short">%1$s · too short, discarded</string>
+    <string name="history_uploaded">%1$s · uploaded %2$s s memo ✓</string>
+    <string name="history_retry">%1$s · upload failed (%2$s), will retry</string>
+    <string name="history_refused">%1$s · server refused (%2$s): check the token</string>
+    <string name="history_error">%1$s · error: %2$s</string>
+    <plurals name="history_recovered">
+        <item quantity="one">%1$s · recovered %2$d interrupted memo</item>
+        <item quantity="other">%1$s · recovered %2$d interrupted memos</item>
+    </plurals>
+
+    <string name="channel_recording">Recording</string>
+    <string name="notification_recording">Recording a memo</string>
+    <string name="action_stop">Stop</string>
+
+    <string name="widget_label">Jar record</string>
+    <string name="widget_description">Tap to record a memo, tap again to stop</string>
+    <string name="widget_tap_to_record">Tap to record</string>
+    <string name="widget_recording">Recording · tap to stop</string>
+    <string name="widget_all_sent">All memos sent</string>
+    <string name="pair_button">Pair with PC</string>
+    <string name="pair_paste">Paste link</string>
+    <string name="pair_info_single">Not paired: scan the code on the PC dashboard (Pair a phone) to fill everything in.</string>
+    <string name="pair_bad">That is not a Jar pairing code. Open the PC dashboard → Pair a phone.</string>
+    <string name="pair_scan_failed">Scanner unavailable (%1$s). Use “Paste link” instead.</string>
+    <string name="test_ok_home">Connected over the home network (%1$s) · token accepted</string>
+    <string name="test_ok_tailscale">Connected over Tailscale (%1$s) · token accepted</string>
+    <string name="test_unreachable">None of the %1$d saved addresses answered (%2$s). Is the PC on, and Tailscale connected?</string>
+    <string name="section_remote">Away from home (Tailscale)</string>
+    <string name="ts_not_installed">Tailscale is not installed. Install it and sign in with the same account as your PC to send memos from anywhere.</string>
+    <string name="ts_off">Tailscale is installed but not connected. Memos wait on the phone until you are home or Tailscale is on.</string>
+    <string name="ts_connected">Tailscale is connected: memos reach the PC from anywhere.</string>
+    <string name="ts_install">Install Tailscale</string>
+    <string name="ts_open">Open Tailscale</string>
+    <plurals name="pair_info_paired">
+        <item quantity="one">Paired · %d address saved (home network / Tailscale)</item>
+        <item quantity="other">Paired · %d addresses saved (home network / Tailscale), the one that answers is used</item>
+    </plurals>
+    <plurals name="history_paired">
+        <item quantity="one">%1$s · paired with the PC (%2$d address)</item>
+        <item quantity="other">%1$s · paired with the PC (%2$d addresses)</item>
+    </plurals>
+
+    <!-- Family tasks -->
+    <string name="tasks_title">Jar</string>
+    <string name="tasks_title_for">Jar · %1$s</string>
+    <string name="tab_mine">Mine</string>
+    <string name="tab_asked">I asked</string>
+    <string name="tab_family">Family</string>
+    <string name="fab_record">Record</string>
+    <string name="fab_stop">Stop %1$s</string>
+    <string name="fab_add_task">Task</string>
+    <string name="menu_refresh">Refresh</string>
+    <string name="menu_dashboard">Open dashboard</string>
+    <string name="menu_settings">Settings &amp; pairing</string>
+    <string name="syncing">Syncing…</string>
+    <string name="synced_never">Not synced yet</string>
+    <string name="synced_at">Synced %1$s</string>
+    <plurals name="pending_changes">
+        <item quantity="one">%d change waiting to reach the PC</item>
+        <item quantity="other">%d changes waiting to reach the PC</item>
+    </plurals>
+    <string name="tasks_bad_token">The PC doesn\'t know this phone. Pair it again (menu → Settings &amp; pairing).</string>
+    <string name="tasks_offline">Can\'t reach the PC right now · showing the last copy</string>
+    <string name="tasks_not_paired">This phone isn\'t paired yet. Scan the code from the PC (dashboard → Pair a phone, pick your name).</string>
+    <string name="tasks_first_sync">Getting your tasks from the PC…</string>
+    <string name="header_need_ok">Waiting for your OK</string>
+    <string name="header_mine">My tasks</string>
+    <string name="empty_mine">Nothing to do. Record a memo like “remind me to…”, or tap Task.</string>
+    <string name="empty_asked">Tasks you give someone show up here, with a ✓ when they\'re done.</string>
+    <string name="empty_family">The kids have nothing open.</string>
+    <string name="dashboard_failed">Couldn\'t open the dashboard (%1$s)</string>
+
+    <string name="action_done">Done</string>
+    <string name="action_reopen">Not done yet</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_accept">OK, add it</string>
+    <string name="action_decline">Decline</string>
+    <string name="snooze_hour">Snooze 1 hour</string>
+    <string name="snooze_tonight">This evening (20:00)</string>
+    <string name="snooze_tomorrow">Tomorrow morning</string>
+    <string name="snooze_pick">Pick a time…</string>
+    <string name="pick_day">Which day?</string>
+    <string name="pick_time">What time?</string>
+
+    <string name="add_title">New task</string>
+    <string name="add_what">What needs doing?</string>
+    <string name="add_for">For</string>
+    <string name="add_me">Me</string>
+    <string name="add_when">Remind</string>
+    <string name="add_request_hint">A parent will need to OK it first.</string>
+    <string name="add_save">Add</string>
+    <string name="add_failed">Couldn\'t reach the PC, the task wasn\'t added (%1$s)</string>
+    <string name="when_none">No time</string>
+    <string name="when_tonight">This evening</string>
+    <string name="when_tomorrow_morning">Tomorrow 08:00</string>
+    <string name="when_pick">Pick…</string>
+    <string name="when_today">today</string>
+    <string name="when_tomorrow">tomorrow</string>
+
+    <string name="meta_for">for %1$s</string>
+    <string name="meta_from">from %1$s</string>
+    <string name="meta_snoozed">snoozed to %1$s</string>
+    <string name="meta_waiting">waiting for a parent\'s OK</string>
+    <string name="meta_declined">declined</string>
+    <string name="meta_done_by">done by %1$s</string>
+
+    <string name="channel_task_reminders">Task reminders</string>
+    <string name="channel_task_new">New tasks and requests</string>
+    <string name="channel_task_morning">Morning summary</string>
+    <string name="notif_reminder">Reminder</string>
+    <string name="notif_from">Reminder · from %1$s</string>
+    <string name="notif_new_from">New task from %1$s</string>
+    <string name="notif_request">%1$s asks (for %2$s) · needs your OK</string>
+    <plurals name="morning_title">
+        <item quantity="one">%d thing to do today</item>
+        <item quantity="other">%d things to do today</item>
+    </plurals>
+
+    <!-- Updates -->
+    <string name="menu_update">Check for updates</string>
+    <string name="menu_update_version">Check for updates (you have %1$s)</string>
+    <string name="update_available">Jar %1$s is available (you have %2$s)</string>
+    <string name="update_install">Update</string>
+    <string name="update_downloading">Downloading the update…</string>
+    <string name="update_allow_installs">Allow “Install unknown apps” for Jar, then come back: the update continues.</string>
+    <string name="update_failed">Update failed (%1$s)</string>
+    <string name="update_none">You have the latest version (%1$s)</string>
+    <string name="update_check_failed">Couldn\'t check for updates (%1$s)</string>
+    <string name="update_dev_build">This is the dev build (%1$s): update it from Android Studio.</string>
+    <string name="update_notif_title">Jar %1$s is ready</string>
+    <string name="update_notif_text">Open Jar and tap Update.</string>
+</resources>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jar · pair a phone</title>
+<style>
+  :root { --bg: #f6f5f1; --card: #fff; --ink: #1d2320; --muted: #66706b; --line: #e3e1da;
+          --accent: #2e6f57; --good: #2e7d4f; --warn: #b26a00; --bad: #b3261e; --chip: #eef1ee; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161a18; --card: #1e2321; --ink: #e8ece9; --muted: #98a39d; --line: #2c3330;
+            --accent: #6cc39c; --good: #6cc39c; --warn: #e3a64a; --bad: #f08a80; --chip: #26302c; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 20px 48px; }
+  a { color: var(--accent); }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .qr { background: #fff; border-radius: 10px; padding: 10px; }
+  .qr svg { width: 100%; height: auto; display: block; }
+  h2 { font-size: 14px; margin: 0 0 10px; }
+  ol { margin: 0; padding-inline-start: 20px; } li { margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--muted); white-space: nowrap; width: 1%; padding-inline-end: 12px; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 6px; }
+  .good { background: var(--good); } .warn { background: var(--warn); } .bad { background: var(--bad); }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .link { word-break: break-all; font-size: 12px; color: var(--muted); margin-top: 10px; }
+  button { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: transparent; color: var(--ink);
+           border-radius: 8px; padding: 4px 10px; cursor: pointer; margin-top: 8px; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .warnbox { border-color: var(--warn); }
+  .people a { display: inline-block; padding: 3px 12px; margin: 0 6px 6px 0; border: 1px solid var(--line);
+              border-radius: 999px; text-decoration: none; color: var(--ink); }
+  .people a.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="./">← Dashboard</a></p>
+  <h1>Pair {{WHO}}'s phone with Jar</h1>
+  <p class="people">{{PEOPLE}}</p>
+  <p class="sub">Scan once. The app saves the token and every address below, and uploads through whichever one answers —
+    home Wi-Fi at home, Tailscale everywhere else.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="qr">{{QR}}</div>
+      <div class="link" id="link">{{LINK}}</div>
+      <button id="copy">Copy pairing link</button>
+      <div class="hint">This code is {{WHO}}'s personal key: memos and tasks from that phone are theirs.</div>
+      <div class="hint">No camera? Send yourself this link (e.g. in WhatsApp) and tap it on the phone.</div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>On the phone</h2>
+        <ol>
+          <li>Install <b>Tailscale</b> from the Play Store and sign in with the same account as this PC
+            <span class="hint">(only needed for recording away from home)</span>.</li>
+          <li>Install <b>Jar</b> (<a href="https://github.com/noless-zz/jar/releases/latest" target="_blank">latest release</a> → the .apk), open it, tap <b>Pair with PC</b> and scan this code.</li>
+          <li>The app tests every address and tells you which one works.</li>
+        </ol>
+      </div>
+      <p></p>
+      <div class="card {{WARN_CLASS}}">
+        <h2>Addresses in this code</h2>
+        <table>{{ROWS}}</table>
+        {{TS_HINT}}
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  document.getElementById("copy").onclick = async () => {
+    const t = document.getElementById("link").textContent.trim();
+    try { await navigator.clipboard.writeText(t); } catch {
+      const r = document.createRange(); r.selectNodeContents(document.getElementById("link"));
+      getSelection().removeAllRanges(); getSelection().addRange(r); document.execCommand("copy");
+    }
+    document.getElementById("copy").textContent = "Copied";
+  };
+</script>
+</body>
+</html>

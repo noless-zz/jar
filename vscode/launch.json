@@ -1,0 +1,43 @@
+{
+  // F5 debugging. Stop the background Jar first ("Jar: Stop") so ports and the worker lock are free.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug: worker (loop)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "worker",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Debug: worker (--once)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "worker",
+      "args": ["--once"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug: server",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["server.server:app", "--host", "0.0.0.0", "--port", "8080"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Debug: tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "unittest",
+      "args": ["discover", "-s", "tests", "-t", ".", "-v"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

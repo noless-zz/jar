@@ -1,0 +1,66 @@
+# Jar configuration. setup.ps1 copies this to config.toml (and fills in a token).
+# Paths are relative to the jar folder unless absolute.
+
+[server]
+host = "0.0.0.0"
+port = 8080
+# The pendant and the phone app must use the same token.
+token = "CHANGE-ME"
+data_dir = "data"
+# Open the dashboard from your phone/laptop over Tailscale: http://<PC's Tailscale IP>:8080/
+# (only devices in your tailnet; the home Wi-Fi still gets "forbidden").
+dashboard_tailscale = true
+
+[transcribe]
+# "large-v3-turbo" handles Hebrew + English well and fits next to the LLM in 8 GB VRAM.
+# For better Hebrew, try "ivrit-ai/whisper-large-v3-turbo-ct2" (weaker on English).
+model = "large-v3-turbo"
+device = "auto"            # "auto" (GPU if available), "cuda" or "cpu"
+compute_type = "auto"      # auto = int8_float16 on GPU, int8 on CPU
+language = ""              # "" = detect per memo; or "he" / "en"
+# Words Whisper should spell right (names, places, jargon). Helps a lot with Hebrew.
+vocabulary = "Jar, Tailscale, Obsidian"
+
+[llm]
+ollama_url = "http://localhost:11434"
+model = "qwen3.5:9b"
+temperature = 0.2
+# How long Ollama keeps the model in VRAM after a memo. Short frees the GPU for games etc.
+keep_alive = "10m"
+max_rounds = 4
+# One sentence about you, so the model files things sensibly (optional):
+# about = "I'm a teacher; 'school' means my school's Google account."
+
+[notes]
+# Where notes, tasks and events are written. Point this at an Obsidian vault
+# (or a OneDrive folder) later; the files are plain Markdown + .ics.
+dir = "notes"
+timezone = "Asia/Jerusalem"
+
+[worker]
+poll_seconds = 5
+max_attempts = 3
+
+# ---- Calendar + email (docs/CONNECT.md). Jar creates events for you and email DRAFTS;
+# you press Send yourself. An account that isn't connected falls back to local files.
+[accounts]
+personal = "outlook"     # your Outlook.com account — anything not school/work
+school = "google"        # your school/work Google Workspace account
+
+[outlook]
+client_id = ""           # from the Microsoft app registration (docs/CONNECT.md, part A)
+
+[google]
+client_secrets = "data/secrets/google_client.json"   # downloaded OAuth client (part B)
+calendar_id = "primary"
+
+
+# ---- Family (docs/FAMILY.md). Each person pairs their own phone on the Pair page (http://localhost:8080/pair).
+# The admin (owner of this PC) keeps using [server] token; everyone else gets a personal token automatically.
+# Children's tasks for others arrive as requests a parent approves. Only the admin's memos can reach
+# the calendars and email above.
+# [family]
+# avi  = { name = "אבי",  role = "parent", admin = true, aliases = ["Avi", "אבא"] }
+# dana = { name = "דנה",  role = "parent", aliases = ["Dana", "אמא"] }
+# yoni = { name = "יוני", role = "child",  aliases = ["Yoni"] }
+# maya = { name = "מאיה", role = "child",  aliases = ["Maya"] }

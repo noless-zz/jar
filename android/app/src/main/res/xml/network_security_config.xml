@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Step 1 talks to the home server over plain HTTP on the LAN, like the pendant.
+     HTTPS replaces this when the server gets a certificate (spec: NFR-6). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
