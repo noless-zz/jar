@@ -37,6 +37,12 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1     # once: venv, packages,
 .\install-autostart.ps1                                  # optional: start at Windows login
 ```
 
+**It updates itself.** `start-jar.ps1` starts a small supervisor (`python -m server.supervise`). The supervisor runs the
+server and the worker and restarts them when code or `config.toml` changes, or when one of them crashes.
+Once this folder is linked to GitHub (VS Code: **More → Link this folder to GitHub**, needs `git`),
+it also pulls new commits every 10 minutes. It only fast-forwards and never overwrites local edits.
+The dashboard's **code** pill shows the version and the update status. Settings live under `[supervisor]` in `config.toml`.
+
 **Phone app:** start Jar, open the dashboard → **Pair a phone**, and scan the QR code with
 *Pair with PC* in Jar Companion. It saves the token and every address the PC has: home network
 and Tailscale. Uploads use whichever answers, so the same setup works at home and away.

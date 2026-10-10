@@ -157,7 +157,13 @@ def make_router(data_dir: Path, ollama_url: str, rejected=(), token: str = "", p
             ollama = {"up": True, "loaded": loaded}
         except Exception:  # noqa: BLE001
             ollama = {"up": False, "loaded": []}
-        return {"counts": counts, "worker": worker, "ollama": ollama, "server_pid": os.getpid(),
+        sup = None
+        try:
+            sup = json.loads((data_dir / "supervisor.json").read_text(encoding="utf-8"))
+            sup["age_seconds"] = round(time.time() - sup.get("epoch", 0))
+        except (OSError, ValueError):
+            sup = None
+        return {"counts": counts, "worker": worker, "ollama": ollama, "server_pid": os.getpid(), "supervisor": sup,
                 "rejected": list(rejected)[-5:][::-1]}
 
     def person_token(pid: str | None) -> tuple[str, str]:

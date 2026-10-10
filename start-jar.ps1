@@ -1,9 +1,13 @@
 <#
-  Jar - start / stop / check the server and the memo worker.
-    .\start-jar.ps1             start both in the background (logs in data\logs)
-    .\start-jar.ps1 -Status     are they running? last log lines, memo counts
-    .\start-jar.ps1 -Stop       stop both
-    .\start-jar.ps1 -Foreground run the worker in this window (server in background) - for watching/debugging
+  Jar - start / stop / check Jar.
+    .\start-jar.ps1             start in the background (logs in data\logs)
+    .\start-jar.ps1 -Status     is it running? code version, last log lines, memo counts
+    .\start-jar.ps1 -Stop       stop everything
+    .\start-jar.ps1 -Foreground start, then follow the worker log in this window (Ctrl+C stops following)
+
+  What runs: the supervisor (python -m server.supervise), which runs the server and the worker,
+  restarts them when code or config.toml changes (or one crashes), and pulls new code from
+  GitHub when this folder is linked to the repo. So after the first start you rarely need this script.
 #>
 param([switch]$Stop, [switch]$Status, [switch]$Foreground)
 $ErrorActionPreference = "Continue"
@@ -41,7 +45,8 @@ function Get-JarProcs {
     $out = @{}
     foreach ($p in Get-OurPython) {
         $cl = "$($p.CommandLine)"
-        if ($cl -match "server\.server:app" -and -not $out["server"]) { $out["server"] = $p }
+        if ($cl -match "-m\s+server\.supervise" -and -not $out["supervisor"]) { $out["supervisor"] = $p }
+        elseif ($cl -match "server\.server:app" -and -not $out["server"]) { $out["server"] = $p }
         elseif ($cl -match "-m\s+worker(\s|$)" -and $cl -notmatch "--(once|check|warmup|retry-failed)" -and -not $out["worker"]) { $out["worker"] = $p }
     }
     return $out
@@ -50,6 +55,13 @@ function Get-JarProcs {
 function Stop-Jar {
     $stopped = 0
     foreach ($round in 1..2) {          # launcher + child: a second pass catches anything left
+        # The supervisor first, or it would start the others again.
+        foreach ($p in Get-OurPython) {
+            if ("$($p.CommandLine)" -match "-m\s+server\.supervise") {
+                & taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null
+                $stopped++
+            }
+        }
         foreach ($p in Get-OurPython) {
             $cl = "$($p.CommandLine)"
             if ($cl -match "server\.server:app" -or ($cl -match "-m\s+worker(\s|$)" -and $cl -notmatch "--(check|warmup)")) {
@@ -65,9 +77,16 @@ function Stop-Jar {
 
 function Show-Status {
     $procs = Get-JarProcs
-    foreach ($name in @("server", "worker")) {
-        if ($procs[$name]) { Write-Host ("{0,-7} running (pid {1})" -f $name, $procs[$name].ProcessId) -ForegroundColor Green }
-        else               { Write-Host ("{0,-7} not running" -f $name) -ForegroundColor Yellow }
+    foreach ($name in @("supervisor", "server", "worker")) {
+        if ($procs[$name]) { Write-Host ("{0,-10} running (pid {1})" -f $name, $procs[$name].ProcessId) -ForegroundColor Green }
+        else               { Write-Host ("{0,-10} not running" -f $name) -ForegroundColor Yellow }
+    }
+    $sj = Join-Path $PSScriptRoot "data\supervisor.json"
+    if (Test-Path $sj) {
+        $s = Get-Content $sj -Raw | ConvertFrom-Json
+        $code = if ($s.code) { $s.code } else { "unknown" }
+        Write-Host ("code       {0} - GitHub: {1}" -f $code, $s.update)
+        if ($s.restarts -gt 0) { Write-Host ("           restarted {0}x, last: {1}" -f $s.restarts, $s.last_reason) }
     }
     try { Invoke-RestMethod "http://localhost:$port/v1/health" -TimeoutSec 3 | Out-Null; Write-Host "server  answers on port $port" -ForegroundColor Green }
     catch { Write-Host "server  not answering on port $port" -ForegroundColor Yellow }
@@ -104,21 +123,14 @@ if (-not (Test-Path $stamp) -or (Get-Item "requirements.txt").LastWriteTime -gt 
     & $vpy -m pip install -r requirements.txt --quiet
     if ($LASTEXITCODE -eq 0) { Set-Content $stamp (Get-Date -Format o) }
 }
-$server = Start-Process $vpy -ArgumentList "-m", "uvicorn", "server.server:app", "--host", "0.0.0.0", "--port", $port `
-          -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru `
-          -RedirectStandardOutput (Join-Path $logs "server.out.log") -RedirectStandardError (Join-Path $logs "server.log")
-$state = @{ server = $server.Id }
+$sup = Start-Process $vpy -ArgumentList "-m", "server.supervise" -WorkingDirectory $PSScriptRoot -WindowStyle Hidden `
+       -PassThru -RedirectStandardOutput (Join-Path $logs "supervisor.out.log") `
+       -RedirectStandardError (Join-Path $logs "supervisor.err.log")
+@{ supervisor = $sup.Id } | ConvertTo-Json | Set-Content $pids
+Start-Sleep -Seconds 6
+Show-Status
 
 if ($Foreground) {
-    $state | ConvertTo-Json | Set-Content $pids
-    Write-Host "server started (pid $($server.Id)); worker running here - Ctrl+C to stop it" -ForegroundColor Green
-    & $vpy -m worker
-    return
+    Write-Host "`nFollowing the worker log (Ctrl+C stops following; Jar keeps running)" -ForegroundColor Green
+    Get-Content (Join-Path $logs "worker.log") -Tail 20 -Wait -Encoding UTF8
 }
-
-$worker = Start-Process $vpy -ArgumentList "-m", "worker" -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru `
-          -RedirectStandardOutput (Join-Path $logs "worker.out.log") -RedirectStandardError (Join-Path $logs "worker.err.log")
-$state.worker = $worker.Id
-$state | ConvertTo-Json | Set-Content $pids
-Start-Sleep -Seconds 4
-Show-Status

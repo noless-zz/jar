@@ -56,7 +56,7 @@
     },
     {
       "label": "Jar: Worker (live)",
-      "detail": "Server in the background, worker in this terminal so you can watch it (trash-can icon to stop)",
+      "detail": "Start Jar if needed and follow the worker log here (closing the terminal does not stop Jar)",
       "type": "process",
       "command": "powershell.exe",
       "args": [

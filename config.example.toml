@@ -41,6 +41,14 @@ timezone = "Asia/Jerusalem"
 poll_seconds = 5
 max_attempts = 3
 
+[supervisor]
+# Restart server + worker when code or this file changes (or one crashes).
+auto_restart = true
+# When this folder is a git clone of the GitHub repo: pull new commits by itself
+# (fast-forward only; local edits are never overwritten).
+github_pull = true
+pull_minutes = 10
+
 # ---- Calendar + email (docs/CONNECT.md). Jar creates events for you and email DRAFTS;
 # you press Send yourself. An account that isn't connected falls back to local files.
 [accounts]

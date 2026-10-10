@@ -85,6 +85,7 @@
   <span class="pill" id="p-worker"><span class="dot"></span>worker</span>
   <span class="pill" id="p-ollama"><span class="dot"></span>ollama</span>
   <span id="p-accounts"></span>
+  <span class="pill" id="p-code" hidden><span class="dot"></span>code</span>
   <span class="counts" id="counts"></span>
   <a class="pair" href="pair">Pair a phone</a>
 </header>
@@ -140,6 +141,15 @@ async function refreshStatus() {
     showOllamaProblem(w && w.ollama_waiting ? w.ollama_problem : "");
     pill("p-ollama", s.ollama.up ? "good" : "bad",
          s.ollama.up ? `ollama${s.ollama.loaded.length ? ": " + s.ollama.loaded.join(", ") + " loaded" : " (idle)"}` : "ollama: down");
+    const sup = s.supervisor;
+    if (sup) {
+      const u = sup.update || "";
+      const state = sup.age_seconds > 60 ? "bad" : /^(up to date|updated)/.test(u) ? "good" : "warn";
+      $("p-code").hidden = false;
+      pill("p-code", state, sup.age_seconds > 60 ? "supervisor: not running"
+           : `code ${sup.code || "?"}${/^(up to date|updated)/.test(u) ? " · auto-update" : " · no auto-update"}`);
+      $("p-code").title = `GitHub: ${u}` + (sup.restarts ? `\nrestarted ${sup.restarts}x, last: ${sup.last_reason}` : "");
+    }
     const acc = (w && w.accounts) || {};
     $("p-accounts").innerHTML = Object.entries(acc).map(([role, a]) =>
       `<span class="pill" title="${esc(a.who ? "connected as " + a.who : "not connected: events and drafts are saved as files. Run Jar: Connect " + (a.provider || "") + " (More menu)")}">`
