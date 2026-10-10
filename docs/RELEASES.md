@@ -11,6 +11,7 @@ installs next to the family app and never replaces it.
 
 1. Commit your changes.
 2. In VS Code, open **More → Android: Publish release** and type a version higher than the last one, e.g. `0.4.0`.
+   It writes the version to `android/VERSION`, commits and pushes. Changing that file on GitHub's website works too.
 3. GitHub Actions builds and signs the APK (about 5 minutes) and attaches `jar-0.4.0.apk` to the release.
 4. Phones pick it up on their next check (every 6 hours), or right away from **⋮ → Check for updates**.
 

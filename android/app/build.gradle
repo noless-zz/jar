@@ -4,7 +4,10 @@ plugins {
 
 // ---- Version: from the release tag (CI passes -PjarVersion=1.2.3), else the dev default below.
 // versionCode = major*10000 + minor*100 + patch, so 1.2.3 -> 10203. Must only ever go up.
-def jarVersion = (project.findProperty("jarVersion") ?: "0.3.0").toString().replaceFirst(/^v/, "")
+// Default: android/VERSION (the file a release commit bumps).
+def versionFile = rootProject.file("VERSION")
+def defaultVersion = versionFile.exists() ? versionFile.text.trim() : "0.0.1"
+def jarVersion = (project.findProperty("jarVersion") ?: defaultVersion).toString().replaceFirst(/^v/, "")
 def parts = jarVersion.tokenize(".-")
 def jarVersionCode = (parts[0] as int) * 10000 + (parts.size() > 1 ? parts[1] as int : 0) * 100 +
         (parts.size() > 2 && parts[2].isInteger() ? parts[2] as int : 0)
