@@ -50,7 +50,7 @@ DATA_ROOT = DATA_DIR.parent
 _notes = Path(_raw.get("notes", {}).get("dir", "notes")).expanduser()
 NOTES_DIR = _notes if _notes.is_absolute() else ROOT / _notes
 TIMEZONE = _raw.get("notes", {}).get("timezone", "Asia/Jerusalem")
-FAMILY = Family.from_config(_raw.get("family", {}), TOKEN, DATA_ROOT)
+FAMILY = Family.from_config(_raw.get("family", {}), TOKEN, DATA_ROOT, _raw.get("contacts", {}))
 TASKS = TaskStore(DATA_ROOT / "tasks.json", FAMILY, NOTES_DIR / "Tasks.md")
 
 app = FastAPI(title="Jar server", version="0.3")

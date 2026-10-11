@@ -150,6 +150,18 @@ public final class TaskNotify {
     static void showNew(Context c, TaskCache cache, Task t) {
         Map<String, String> names = cache.names();
         NotificationCompat.Builder b;
+        if (t.isMessage()) {
+            PendingIntent send = PendingIntent.getActivity(c, id(t.id), new Intent(c, TasksActivity.class)
+                            .putExtra(TasksActivity.EXTRA_SEND, t.id)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            b = base(c, CH_NEW, c.getString(R.string.notif_message_ready, t.title), t.message)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(t.message))
+                    .setContentIntent(send)
+                    .addAction(0, c.getString(R.string.send_whatsapp), send);
+            post(c, id(t.id), b);
+            return;
+        }
         if (t.isRequested()) {
             String text = c.getString(R.string.notif_request, TaskLists.name(names, t.createdBy),
                     TaskLists.name(names, t.assignee));

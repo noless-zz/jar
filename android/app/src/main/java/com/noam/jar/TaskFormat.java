@@ -46,6 +46,10 @@ final class TaskFormat {
     /** "for Yoni · from Dana · tomorrow 18:00 · snoozed to 20:00 · waiting for a parent's OK". */
     static String meta(Context c, Task t, String me, Map<String, String> names) {
         List<String> parts = new ArrayList<>();
+        if (t.isMessage()) {
+            String m = t.message == null ? "" : t.message.replace('\n', ' ');
+            parts.add("“" + (m.length() > 70 ? m.substring(0, 70) + "…" : m) + "”");
+        }
         if (!me.equals(t.assignee)) parts.add(c.getString(R.string.meta_for, TaskLists.name(names, t.assignee)));
         if (!me.equals(t.createdBy) && !t.createdBy.equals(t.assignee))
             parts.add(c.getString(R.string.meta_from, TaskLists.name(names, t.createdBy)));

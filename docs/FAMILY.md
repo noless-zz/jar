@@ -44,6 +44,16 @@ The admin's phone keeps using `[server] token`, so it stays paired. Updating the
 - **By voice.** Record something like "move the dentist to Thursday at 10", "סיימתי לתלות כביסה" (I finished hanging the laundry)
   or "cancel the milk reminder". Jar finds the existing task and changes it instead of adding a new one.
 
+## WhatsApp messages (prepared, you press Send)
+
+Say "תשלח לסווטה שאני מגיע בשש" ("tell Sveta I'm coming at six") or "write Dana on WhatsApp that…". A 💬 item appears
+on **your** list, and a notification says the message is ready. Tap **Send in WhatsApp**: WhatsApp opens with the text
+filled in, and you press Send. Jar never sends anything by itself.
+
+- To open the right chat directly, add the number: `phone = "+972…"` on the person's line in `[family]`, or under
+  `[contacts]` for anyone else. Without a number, WhatsApp asks which chat. Jar never guesses numbers.
+- Tap the item for **Edit the message…** or **Copy the text**.
+
 ## Sharing and updating the app
 
 - **⋮ → Share the app** sends the download link (WhatsApp, SMS…).

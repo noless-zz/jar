@@ -57,6 +57,8 @@ import java.util.concurrent.Executors;
  */
 public final class TasksActivity extends AppCompatActivity {
     private static final int TAB_MINE = 0, TAB_ASKED = 1, TAB_FAMILY = 2;
+    /** From a notification: open this WhatsApp draft right away. */
+    static final String EXTRA_SEND = "send_message";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -148,6 +150,7 @@ public final class TasksActivity extends AppCompatActivity {
 
         TaskSync.schedule(this);
         askPermissions();
+        handleSend(getIntent());
     }
 
     @Override
@@ -175,6 +178,78 @@ public final class TasksActivity extends AppCompatActivity {
     }
 
     // ---------------------------------------------------------------- screen
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleSend(intent);
+    }
+
+    private void handleSend(Intent intent) {
+        String id = intent == null ? null : intent.getStringExtra(EXTRA_SEND);
+        if (id == null) return;
+        intent.removeExtra(EXTRA_SEND);
+        Task t = cache.find(id);
+        if (t != null && t.isMessage()) sendWhatsApp(t);
+    }
+
+    /** WhatsApp opens with the text (and the chat, if the number is known); the person presses Send. */
+    private void sendWhatsApp(Task t) {
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(t.whatsappUrl()));
+        for (String pkg : new String[] {"com.whatsapp", "com.whatsapp.w4b"}) {
+            try {
+                getPackageManager().getPackageInfo(pkg, 0);
+                i.setPackage(pkg);
+                break;
+            } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+                // try the next one; without WhatsApp the link opens in the browser
+            }
+        }
+        try {
+            startActivity(i);
+            act(t, "done", null);          // ticked as sent; "Not done yet" brings it back
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, R.string.whatsapp_missing, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void copyMessage(Task t) {
+        android.content.ClipboardManager cb = getSystemService(android.content.ClipboardManager.class);
+        if (cb != null) cb.setPrimaryClip(android.content.ClipData.newPlainText("Jar", t.message));
+        Toast.makeText(this, R.string.message_copied, Toast.LENGTH_SHORT).show();
+    }
+
+    private void editMessage(Task t) {
+        com.google.android.material.textfield.TextInputLayout layout =
+                new com.google.android.material.textfield.TextInputLayout(this);
+        int pad = (int) (20 * getResources().getDisplayMetrics().density);
+        layout.setPadding(pad, pad / 2, pad, 0);
+        TextInputEditText text = new TextInputEditText(layout.getContext());
+        text.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        text.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG);
+        text.setMinLines(3);
+        text.setText(t.message);
+        layout.addView(text);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(t.title)
+                .setView(layout)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.add_save, (d, w) -> {
+                    String m = text.getText() == null ? "" : text.getText().toString().trim();
+                    if (m.isEmpty()) return;
+                    io.execute(() -> {
+                        try {
+                            TaskApi.editMessage(prefs, t.id, m);
+                            main.post(() -> TaskSync.now(this));
+                        } catch (IOException e) {
+                            main.post(() -> Toast.makeText(this, getString(R.string.edit_failed, e.getMessage()),
+                                    Toast.LENGTH_LONG).show());
+                        }
+                    });
+                })
+                .show();
+    }
 
     @Override
     protected void onResume() {
@@ -394,6 +469,14 @@ public final class TasksActivity extends AppCompatActivity {
         TimeZone tz = TimeZone.getDefault();
         List<String> labels = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        if (t.isMessage() && t.isOpen()) {
+            labels.add(getString(R.string.send_whatsapp));
+            actions.add(() -> sendWhatsApp(t));
+            labels.add(getString(R.string.message_edit));
+            actions.add(() -> editMessage(t));
+            labels.add(getString(R.string.message_copy));
+            actions.add(() -> copyMessage(t));
+        }
         if (t.isRequested() && cache.iAmParent() && !me.equals(t.createdBy)) {
             labels.add(getString(R.string.action_accept));
             actions.add(() -> act(t, "accept", null));
@@ -418,7 +501,7 @@ public final class TasksActivity extends AppCompatActivity {
             labels.add(getString(R.string.action_reopen));
             actions.add(() -> act(t, "reopen", null));
         }
-        if (!"declined".equals(t.status)) {
+        if (!"declined".equals(t.status) && !t.isMessage()) {
             labels.add(getString(R.string.action_edit));
             actions.add(() -> showAddDialog(t));
         }
@@ -639,7 +722,7 @@ public final class TasksActivity extends AppCompatActivity {
             TextView title = h.itemView.findViewById(R.id.title);
             TextView meta = h.itemView.findViewById(R.id.meta);
             MaterialCheckBox check = h.itemView.findViewById(R.id.check);
-            title.setText(t.title);
+            title.setText(t.isMessage() ? "💬 " + t.title : t.title);
             boolean done = t.isDone() || "declined".equals(t.status);
             title.setPaintFlags(done ? title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG
                     : title.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);

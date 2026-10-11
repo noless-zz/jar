@@ -121,7 +121,8 @@ class TaskStore:
         return {"rev": data.get("rev", 0), "tasks": tasks}
 
     def add(self, creator: Person, title: str, assignee: Person | None = None, due: str | None = None,
-            notes: str = "", memo_id: str | None = None) -> dict:
+            notes: str = "", memo_id: str | None = None, kind: str = "task", message: str = "",
+            to: str = "", phone: str = "") -> dict:
         title = (title or "").strip()
         if not title:
             raise TaskError(400, "title is required")
@@ -131,6 +132,10 @@ class TaskStore:
              "assignee": assignee.id, "created_by": creator.id, "status": status,
              "due": clean_when(due), "snoozed_until": None, "created_at": _now(), "updated_at": _now(),
              "done_at": None, "done_by": None, "memo_id": memo_id}
+        if kind == "message":
+            # A prepared WhatsApp message: the phone shows "Send in WhatsApp"; the person presses Send.
+            t.update(kind="message", message=(message or "").strip()[:4000], to=(to or "").strip()[:100],
+                     phone="".join(ch for ch in (phone or "") if ch.isdigit())[:20])
         with self._locked():
             data = self._read()
             data["tasks"].append(t)
@@ -173,6 +178,8 @@ class TaskStore:
                     t["snoozed_until"] = None
                 if "notes" in f:
                     t["notes"] = str(f["notes"] or "").strip()[:2000]
+                if "message" in f and t.get("kind") == "message":
+                    t["message"] = str(f["message"] or "").strip()[:4000]
                 if f.get("assignee") and f["assignee"] != t["assignee"]:
                     who = self.family.get(f["assignee"])
                     if who is None:

@@ -17,6 +17,26 @@ public final class Task {
     public String doneAt;
     public String doneBy;
     public String updatedAt = "";
+    /** "task", or "message" = a prepared WhatsApp message the person sends themselves. */
+    public String kind = "task";
+    public String message = "";
+    public String to = "";
+    public String phone = "";       // digits only, "" = let WhatsApp ask which chat
+
+    public boolean isMessage() {
+        return "message".equals(kind);
+    }
+
+    /** Opens WhatsApp with the text filled in (and the chat, when the number is known). */
+    public String whatsappUrl() {
+        String text;
+        try {
+            text = java.net.URLEncoder.encode(message == null ? "" : message, "UTF-8").replace("+", "%20");
+        } catch (java.io.UnsupportedEncodingException e) {
+            text = "";
+        }
+        return "https://wa.me/" + (phone == null ? "" : phone) + "?text=" + text;
+    }
 
     public boolean isOpen() {
         return "open".equals(status);

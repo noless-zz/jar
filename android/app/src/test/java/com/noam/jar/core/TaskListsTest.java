@@ -81,6 +81,20 @@ public class TaskListsTest {
         assertTrue(TaskLists.news(all, "yoni", false, new HashSet<>(Arrays.asList("dog"))).isEmpty());
     }
 
+    @Test
+    public void whatsappDraft() {
+        Task m = t("msg", "avi", "avi", "open", null);
+        m.kind = "message";
+        m.message = "אני מגיע בשש & see you";
+        m.phone = "972501234567";
+        assertEquals("https://wa.me/972501234567?text=%D7%90%D7%A0%D7%99%20%D7%9E%D7%92%D7%99%D7%A2%20"
+                + "%D7%91%D7%A9%D7%A9%20%26%20see%20you", m.whatsappUrl());
+        m.phone = "";
+        assertTrue(m.whatsappUrl().startsWith("https://wa.me/?text="));
+        // my own memo made it, but I still get told it's ready to send
+        assertEquals(Arrays.asList("msg"), ids(TaskLists.news(Arrays.asList(m), "avi", true, new HashSet<>())));
+    }
+
     private static List<String> ids(List<Task> ts) {
         String[] out = new String[ts.size()];
         for (int i = 0; i < out.length; i++) out[i] = ts.get(i).id;

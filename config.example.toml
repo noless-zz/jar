@@ -72,3 +72,8 @@ calendar_id = "primary"
 # dana = { name = "דנה",  role = "parent", aliases = ["Dana", "אמא"] }
 # yoni = { name = "יוני", role = "child",  aliases = ["Yoni"] }
 # maya = { name = "מאיה", role = "child",  aliases = ["Maya"] }
+# Add phone = "+972501234567" to anyone above so "send Dana a WhatsApp…" opens her chat directly.
+
+# Other people for WhatsApp drafts (optional). Without a number, WhatsApp asks which chat.
+# [contacts]
+# "סבתא" = "+972501234567"

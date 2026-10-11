@@ -20,6 +20,8 @@
     <!-- Lets the app see whether Tailscale is installed (Android 11+ package visibility) -->
     <queries>
         <package android:name="com.tailscale.ipn" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 
     <application

@@ -227,7 +227,8 @@ async function refreshTasks() {
       const meta = [t.due ? esc(t.due.replace("T", " ")) : "",
                     t.created_by !== p.id ? "from " + bdi(names[t.created_by] || t.created_by) : "",
                     t.snoozed_until && t.status === "open" ? "snoozed to " + esc(t.snoozed_until.replace("T", " ")) : "",
-                    t.status === "requested" ? "waiting for a parent's OK" : ""].filter(Boolean).join(" · ");
+                    t.status === "requested" ? "waiting for a parent's OK" : "",
+                    t.kind === "message" ? "💬 " + bdi(String(t.message || "").slice(0, 60)) : ""].filter(Boolean).join(" · ");
       return `<li data-task="${esc(t.id)}" title="Click to edit" class="${t.status === "done" ? "done" : t.status === "requested" ? "req" : ""}"><bdi dir="auto">${esc(t.title)}</bdi>`
         + (meta ? `<span class="meta" dir="ltr">${meta}</span>` : "") + `</li>`;
     }).join("");

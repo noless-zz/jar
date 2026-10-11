@@ -34,6 +34,7 @@ class Config:
     about: str = ""          # [llm] about: who the owner is, one sentence for the model
     token: str = ""          # [server] token = the admin's phone/pendant token
     family: dict | None = None   # [family] table (see worker/family.py)
+    contacts: dict | None = None  # [contacts] name = "+972…" for WhatsApp drafts
 
 
 def _path(root: Path, value: str) -> Path:
@@ -74,4 +75,5 @@ def load(path: Path | None = None, root: Path = ROOT) -> Config:
         about=str(l.get("about", "")),
         token=str(s.get("token", "")),
         family=raw.get("family", {}),
+        contacts=raw.get("contacts", {}),
     )

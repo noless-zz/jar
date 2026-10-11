@@ -84,7 +84,7 @@ class Worker:
         self.accounts = build_accounts(cfg)   # personal -> Outlook, school -> Google (None if not set up)
         from .family import Family
         from .taskstore import TaskStore
-        self.family = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir)
+        self.family = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
         self.tasks = TaskStore(cfg.data_dir / "tasks.json", self.family, cfg.notes_dir / "Tasks.md")
         try:
             n = self.tasks.import_markdown(self.family.admin)

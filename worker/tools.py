@@ -194,6 +194,21 @@ class Notes:
         self.actions.append(a)
         return f"ok: {summary}"
 
+    def draft_whatsapp(self, text: str, to: str = "") -> str:
+        """A WhatsApp message prepared on the speaker's phone: they open it and press Send themselves."""
+        if self.store is None:
+            raise ToolError("there is no task list to put the message on")
+        if not text.strip():
+            raise ToolError("text is required")
+        name, phone = self.family.phone_for(to) if to.strip() else ("", "")
+        title = f"WhatsApp → {name}" if name else "WhatsApp message"
+        t = self.store.add(self.speaker, title, self.speaker, None, "", self.ctx.memo_id,
+                           kind="message", message=text.strip(), to=name, phone=phone)
+        where = f" to {name}" + ("" if phone else " (pick the chat in WhatsApp)") if name else " (pick the chat in WhatsApp)"
+        summary = f"WhatsApp message ready{where}: tap Send in WhatsApp in the app"
+        self.actions.append({"tool": "draft_whatsapp", "summary": summary, "task_id": t["id"], "file": "Tasks.md"})
+        return f"ok: {summary}"
+
     def find_tasks(self, query: str = "", for_person: str = "") -> str:
         """For corrections by voice: the open tasks that match, with ids for update_task."""
         if self.store is None:
@@ -374,7 +389,8 @@ class Notes:
 def registry(notes: Notes) -> dict[str, Tool]:
     tools = _all_tools(notes)
     if notes.restricted:
-        tools = {k: v for k, v in tools.items() if k in ("save_note", "add_task", "find_tasks", "update_task")}
+        tools = {k: v for k, v in tools.items()
+                 if k in ("save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp")}
     return tools
 
 
@@ -406,6 +422,15 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   notes=string("extra details, optional")),
               "required": ["title"]},
              "internal", notes.add_task),
+        Tool("draft_whatsapp", "Prepare a WhatsApp message on the speaker's phone; they review it and press "
+             "Send themselves (nothing is sent automatically). Use when the memo says to message, text or WhatsApp "
+             "someone ('תשלח לסווטה ש…', 'write to Dana on WhatsApp…', 'תכתוב בקבוצה…').",
+             {**s(text=string("the message itself, ready to send, in the memo's language, written as the speaker "
+                              "(first person), without 'tell her that'"),
+                  to=string("who it is for, as said (a family member's name or any contact name); empty if not said. "
+                            "Never invent phone numbers")),
+              "required": ["text"]},
+             "internal", notes.draft_whatsapp),
         Tool("find_tasks", "Look up EXISTING open tasks by words in them. Use first when the memo changes, "
              "moves, finishes or cancels something already on the list ('move the dentist to Thursday', "
              "'סיימתי לתלות כביסה', 'בטל את התזכורת על החלב', 'Yoni already did the dishes').",

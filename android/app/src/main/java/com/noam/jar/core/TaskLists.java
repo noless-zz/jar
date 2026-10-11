@@ -149,7 +149,13 @@ public final class TaskLists {
     public static List<Task> news(List<Task> all, String me, boolean iAmParent, java.util.Set<String> seen) {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
-            if (seen.contains(t.id) || me.equals(t.createdBy)) continue;
+            if (seen.contains(t.id)) continue;
+            // A WhatsApp draft from my own memo: tell me it's ready to send.
+            if (t.isMessage() && me.equals(t.assignee) && t.isOpen()) {
+                out.add(t);
+                continue;
+            }
+            if (me.equals(t.createdBy)) continue;
             boolean forMe = me.equals(t.assignee) && t.isOpen();
             boolean toApprove = iAmParent && t.isRequested();
             if (forMe || toApprove) out.add(t);

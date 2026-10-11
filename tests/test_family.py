@@ -133,7 +133,7 @@ class WorkerTool(Base):
 
     def test_child_gets_only_tasks_and_notes(self):
         n = self.notes("maya")
-        self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task"})
+        self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp"})
         self.assertIn("draft_email", registry(self.notes("avi")))
         out = n.add_task("לקנות מחברת", for_person="avi")
         self.assertIn("waits for a parent", out)
@@ -172,6 +172,27 @@ class Corrections(Base):
         n.add_task("old title")
         self.assertEqual(self.store.forget_memo(self.p["avi"], "feedfacefeedface"), 1)
         self.assertEqual(self.store.snapshot(self.p["avi"])["tasks"], [])
+
+
+class WhatsApp(Base):
+    def test_draft_goes_to_the_speakers_phone(self):
+        fam = Family.from_config({**FAMILY_CFG, "dana": {**FAMILY_CFG["dana"], "phone": "+972-50-123-4567"}},
+                                 "admin-token-123", self.tmp / "data", {"סבתא": "+972 52 000 0000"})
+        st = TaskStore(self.tmp / "data" / "t2.json", fam)
+        n = Notes(self.tmp / "notes", TZ, MemoContext("abcdef0123456789", datetime(2026, 10, 11, 9, 0, tzinfo=TZ)),
+                  store=st, family=fam, speaker=fam.people["yoni"])
+        out = n.draft_whatsapp("אני אחזור בשש", to="אמא")
+        self.assertIn("to דנה", out)
+        t = st.snapshot(fam.people["yoni"])["tasks"][0]
+        self.assertEqual((t["kind"], t["assignee"], t["to"], t["phone"], t["message"]),
+                         ("message", "yoni", "דנה", "972501234567", "אני אחזור בשש"))
+        self.assertEqual(t["status"], "open")                         # their own draft: no parent OK needed
+        n.draft_whatsapp("מה שלומך?", to="סבתא")
+        self.assertEqual(st.snapshot(fam.people["yoni"])["tasks"][1]["phone"], "972520000000")
+        out = n.draft_whatsapp("hi", to="Bob")                       # unknown: no number invented
+        self.assertIn("pick the chat", out)
+        self.assertEqual(st.snapshot(fam.people["yoni"])["tasks"][2]["phone"], "")
+        self.assertIn("draft_whatsapp", registry(n))
 
 
 class Api(Base):

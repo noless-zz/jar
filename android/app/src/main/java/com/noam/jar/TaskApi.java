@@ -73,6 +73,17 @@ public final class TaskApi {
         return call(prefs, "POST", "/v1/tasks/" + taskId + "/edit", body);
     }
 
+    /** Change a prepared WhatsApp message's text. */
+    public static JSONObject editMessage(Prefs prefs, String taskId, String message) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("message", message);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/tasks/" + taskId + "/edit", body);
+    }
+
     /** My recent memos: transcript and what Jar did with each. */
     public static JSONObject memos(Prefs prefs) throws IOException {
         return call(prefs, "GET", "/v1/memos?limit=40", null);
@@ -186,6 +197,10 @@ public final class TaskApi {
         t.doneAt = str(o, "done_at");
         t.doneBy = str(o, "done_by");
         t.updatedAt = o.optString("updated_at");
+        t.kind = o.optString("kind", "task");
+        t.message = o.optString("message", "");
+        t.to = o.optString("to", "");
+        t.phone = o.optString("phone", "");
         return t;
     }
 

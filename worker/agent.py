@@ -36,7 +36,9 @@ Your job: decide what the memo asks for and call the right tools to file it. Rul
   A teaching idea -> save_lesson_idea. "Deep work" / "עבודה עמוקה" or research -> escalate_deep_work.
   Changing, moving, finishing or cancelling a task that already exists -> find_tasks, then update_task
   (never add a second task for it).
-  Writing to someone -> draft_email (a draft only; never invent email addresses).
+  A message to someone (WhatsApp, SMS, "תשלח ל…", "תכתוב ל…") -> draft_whatsapp (prepared, not sent).
+  An email ("email", "מייל", formal letters, school staff/parents) -> draft_email (a draft only;
+  never invent email addresses).
 - For create_event and draft_email pick the account: "school" for classes, students, parents, staff,
   lessons, grades or the school; "personal" for everything else.
   Anything else -> save_note.
@@ -61,6 +63,7 @@ Your job: file the memo with the tools. Rules:
 - Resolve relative dates against the recording time below; dates YYYY-MM-DD, times HH:MM (24h).
 - Something to do or remember, or a request to someone in the family -> add_task.
   Changing, moving, finishing or cancelling an existing task -> find_tasks, then update_task.
+  A message to someone (WhatsApp, "תשלח ל…", "תכתוב ל…") -> draft_whatsapp (prepared, they press Send).
   Anything else -> save_note (it is private to the speaker).
 - After the tools succeed, reply with ONE short sentence saying what you filed. No questions.
   Say only what the tool result says.

@@ -192,4 +192,12 @@
     <string name="share_app">שיתוף האפליקציה</string>
     <string name="share_app_text">אפליקציית Jar למשימות של המשפחה: %1$s (פתחו בטלפון והתקינו את קובץ ה-apk שתחת Assets)</string>
     <string name="update_open_page">דף ההורדה</string>
+
+    <!-- WhatsApp drafts -->
+    <string name="send_whatsapp">שליחה בוואטסאפ</string>
+    <string name="message_edit">עריכת ההודעה…</string>
+    <string name="message_copy">העתקת הטקסט</string>
+    <string name="message_copied">הועתק</string>
+    <string name="whatsapp_missing">וואטסאפ לא מותקן. אפשר להשתמש ב„העתקת הטקסט”.</string>
+    <string name="notif_message_ready">%1$s · מוכן לשליחה</string>
 </resources>

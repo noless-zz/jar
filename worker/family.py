@@ -29,6 +29,7 @@ class Person:
     role: str = "parent"          # "parent" or "child"
     admin: bool = False
     aliases: list[str] = field(default_factory=list)
+    phone: str = ""               # optional, for "send a WhatsApp to …" (international format, +972…)
 
     @property
     def is_parent(self) -> bool:
@@ -49,7 +50,7 @@ class Family:
 
     # ---- construction ----
     @classmethod
-    def from_config(cls, raw: dict, admin_token: str, data_dir: Path) -> "Family":
+    def from_config(cls, raw: dict, admin_token: str, data_dir: Path, contacts: dict | None = None) -> "Family":
         people = []
         for pid, v in (raw or {}).items():
             if not isinstance(v, dict):
@@ -57,10 +58,13 @@ class Family:
             people.append(Person(id=str(pid).lower(), name=str(v.get("name") or pid),
                                  role="child" if str(v.get("role", "parent")).lower() == "child" else "parent",
                                  admin=bool(v.get("admin", False)),
-                                 aliases=[str(a) for a in v.get("aliases", [])]))
+                                 aliases=[str(a) for a in v.get("aliases", [])],
+                                 phone=str(v.get("phone", "")).strip()))
         if not people:
             people = [Person("me", "me", "parent", True)]
-        return cls(people, admin_token, data_dir / "secrets")
+        fam = cls(people, admin_token, data_dir / "secrets")
+        fam.contacts = {str(k): str(v).strip() for k, v in (contacts or {}).items()}
+        return fam
 
     @property
     def admin(self) -> Person:
@@ -115,6 +119,20 @@ class Family:
             if pid in self.people and hmac.compare_digest(token, t):
                 found = found or self.people[pid]
         return found
+
+    contacts: dict = {}
+
+    def phone_for(self, name: str) -> tuple[str, str]:
+        """(display name, phone) for a WhatsApp recipient: a family member, a [contacts] entry, or
+        just the name as said (phone "" = WhatsApp lets you pick the chat). Never guesses a number."""
+        n = (name or "").strip()
+        p = self.resolve(n)
+        if p is not None:
+            return p.name, p.phone
+        for k, v in self.contacts.items():
+            if k.casefold() == n.casefold():
+                return k, v
+        return n, ""
 
     def prompt_lines(self) -> str:
         """For the model: who's who, so 'remind Yoni' or 'תגיד לאמא' can be resolved."""
