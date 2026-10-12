@@ -32,6 +32,8 @@ class Config:
     google_client_secrets: Path
     google_calendar_id: str
     about: str = ""          # [llm] about: who the owner is, one sentence for the model
+    think: bool = True       # [llm] think: reason before calling tools (slower, better)
+    port: int = 8080         # [server] port, for pairing links in messages
     token: str = ""          # [server] token = the admin's phone/pendant token
     family: dict | None = None   # [family] table (see worker/family.py)
     contacts: dict | None = None  # [contacts] name = "+972…" for WhatsApp drafts
@@ -65,7 +67,7 @@ def load(path: Path | None = None, root: Path = ROOT) -> Config:
         llm_model=l.get("model", "qwen3.5:9b"),
         temperature=float(l.get("temperature", 0.2)),
         keep_alive=str(l.get("keep_alive", "10m")),
-        max_rounds=int(l.get("max_rounds", 4)),
+        max_rounds=max(6, int(l.get("max_rounds", 6))),
         poll_seconds=float(w.get("poll_seconds", 5)),
         max_attempts=int(w.get("max_attempts", 3)),
         accounts={k: str(v).lower() for k, v in acc.items()},
@@ -73,6 +75,8 @@ def load(path: Path | None = None, root: Path = ROOT) -> Config:
         google_client_secrets=_path(root, gg.get("client_secrets", "data/secrets/google_client.json")),
         google_calendar_id=gg.get("calendar_id", "primary"),
         about=str(l.get("about", "")),
+        think=bool(l.get("think", True)),
+        port=int(s.get("port", 8080)),
         token=str(s.get("token", "")),
         family=raw.get("family", {}),
         contacts=raw.get("contacts", {}),

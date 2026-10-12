@@ -87,6 +87,7 @@ class Notes:
     store: object = None        # TaskStore (family task list); None = old Tasks.md-only mode
     family: object = None       # Family
     speaker: object = None      # Person who recorded the memo
+    join_info: object = None    # callable(person) -> {"download", "pair_link"}: for get_join_instructions
 
     @property
     def restricted(self) -> bool:
@@ -193,6 +194,59 @@ class Notes:
             a["file"] = "Tasks.md"
         self.actions.append(a)
         return f"ok: {summary}"
+
+    def get_join_instructions(self, for_person: str = "", language: str = "he") -> str:
+        """Facts for a "how to install / join Jar" message: download link, the person's own pairing link."""
+        who = self.family.resolve(for_person) if (self.family is not None and for_person) else None
+        info = self.join_info(who) if callable(self.join_info) else {
+            "download": "https://github.com/noless-zz/jar/releases/latest", "pair_link": ""}
+        dl, pair = info.get("download", ""), info.get("pair_link", "")
+        if (language or "he").lower().startswith("en"):
+            steps = [f"1. On your Android phone open {dl} and tap the .apk file under Assets to install Jar "
+                     "(allow installing from the browser if asked).",
+                     "2. Open Jar and allow notifications and the microphone."]
+            if pair:
+                steps.append(f"3. Copy this personal link, then in Jar tap ⋮ → Settings & pairing → Paste link:\n{pair}")
+                steps.append("4. At home it works over the Wi-Fi. To use it outside, install Tailscale and I'll sign it in.")
+            else:
+                steps.append("3. Then ask me for your personal pairing code.")
+            steps.append("In Jar you see your tasks, tick them off, and record a voice memo with the mic button.")
+        else:
+            steps = [f"1. בטלפון (אנדרואיד) פתחו את הקישור {dl} ולחצו על קובץ ה-apk שתחת Assets כדי להתקין את Jar "
+                     "(אם שואלים – לאשר התקנה מהדפדפן).",
+                     "2. פותחים את Jar ומאשרים התראות ומיקרופון."]
+            if pair:
+                steps.append(f"3. מעתיקים את הקישור האישי הזה, ובאפליקציה: ⋮ ← הגדרות וצימוד ← הדבקת קישור:\n{pair}")
+                steps.append("4. בבית זה עובד דרך ה-WiFi. כדי שיעבוד גם בחוץ צריך להתקין Tailscale – אני אחבר.")
+            else:
+                steps.append("3. אחר כך תבקשו ממני את קוד הצימוד האישי.")
+            steps.append("ב-Jar רואים את המשימות, מסמנים מה בוצע, ומקליטים הודעה קולית בכפתור המיקרופון.")
+        note = "" if pair else " (no personal pairing link: not a family member in config.toml)"
+        return "Put these steps in the message (you may add a friendly opening line):" + note + "\n" + "\n".join(steps)
+
+    def search_notes(self, query: str) -> str:
+        """Find things the speaker saved before (notes, ideas, lesson ideas) to use in a message or task."""
+        words = [w for w in re.split(r"\W+", (query or "").casefold()) if len(w) >= 2]
+        if not words:
+            raise ToolError("query is required")
+        hits = []
+        for p in self.root.rglob("*.md"):
+            if p.name in ("Tasks.md",) or "Memos" in p.parts:
+                continue
+            try:
+                text = p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            low = text.casefold()
+            score = sum(1 for w in words if w in low or (len(w) > 3 and w[1:] in low))
+            if score:
+                i = min((low.find(w) for w in words if w in low), default=0)
+                snippet = text[max(0, i - 120): i + 280].replace("\n", " ").strip()
+                hits.append((score, p, snippet))
+        hits.sort(key=lambda h: -h[0])
+        if not hits:
+            return "nothing found in the saved notes."
+        return "\n".join(f"- {h[1].relative_to(self.root)}: …{h[2]}…" for h in hits[:3])
 
     def draft_whatsapp(self, text: str, to: str = "") -> str:
         """A WhatsApp message prepared on the speaker's phone: they open it and press Send themselves."""
@@ -390,7 +444,8 @@ def registry(notes: Notes) -> dict[str, Tool]:
     tools = _all_tools(notes)
     if notes.restricted:
         tools = {k: v for k, v in tools.items()
-                 if k in ("save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp")}
+                 if k in ("save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp",
+                          "get_join_instructions", "search_notes")}
     return tools
 
 
@@ -422,11 +477,23 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   notes=string("extra details, optional")),
               "required": ["title"]},
              "internal", notes.add_task),
+        Tool("get_join_instructions", "Get the real steps and links for installing and joining the Jar app "
+             "(download link and the person's own pairing link). Call it before writing any message about "
+             "installing, joining or setting up Jar, and put the steps into the message.",
+             {**s(for_person=FOR, language={"type": "string", "enum": ["he", "en"],
+                                            "description": "language of the message"}),
+              "required": ["for_person"]},
+             "none", notes.get_join_instructions),
+        Tool("search_notes", "Search the notes the speaker saved before (ideas, information, lesson ideas) for "
+             "facts to use in a message or task. Returns short snippets.",
+             {**s(query=string("a few key words")), "required": ["query"]},
+             "none", notes.search_notes),
         Tool("draft_whatsapp", "Prepare a WhatsApp message on the speaker's phone; they review it and press "
              "Send themselves (nothing is sent automatically). Use when the memo says to message, text or WhatsApp "
              "someone ('תשלח לסווטה ש…', 'write to Dana on WhatsApp…', 'תכתוב בקבוצה…').",
-             {**s(text=string("the message itself, ready to send, in the memo's language, written as the speaker "
-                              "(first person), without 'tell her that'"),
+             {**s(text=string("the complete message, ready to send as-is, in the memo's language, written as the "
+                              "speaker (first person). Include every detail the recipient needs (steps, links, "
+                              "times, places) — never 'here are the instructions' without them"),
                   to=string("who it is for, as said (a family member's name or any contact name); empty if not said. "
                             "Never invent phone numbers")),
               "required": ["text"]},

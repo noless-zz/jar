@@ -79,7 +79,7 @@ class Worker:
         self.transcriber = Transcriber(cfg.whisper_model, cfg.whisper_device, cfg.whisper_compute,
                                        cfg.whisper_language, cfg.vocabulary)
         self.agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
-                           about=cfg.about)
+                           about=cfg.about, think=cfg.think)
         from .accounts import build as build_accounts
         self.accounts = build_accounts(cfg)   # personal -> Outlook, school -> Google (None if not set up)
         from .family import Family
@@ -128,13 +128,13 @@ class Worker:
         speaker = self.family.get(m.meta.get("person")) or self.family.admin
         if speaker.admin:
             notes = Notes(self.cfg.notes_dir, self.tz, MemoContext(m.id, when), accounts=self.accounts,
-                          store=self.tasks, family=self.family, speaker=speaker)
+                          store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info)
         else:
             # Everyone else's notes and memo log live in their own folder; no access to the admin's
             # calendars or email.
             from .tools import slug
             notes = Notes(self.cfg.notes_dir / "Family" / slug(speaker.name), self.tz, MemoContext(m.id, when),
-                          store=self.tasks, family=self.family, speaker=speaker)
+                          store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info)
         if m.meta.get("actions"):
             # Filed before (Re-file / edited transcript): drop the open tasks that filing made.
             n = self.tasks.forget_memo(speaker, m.id)
@@ -154,6 +154,19 @@ class Worker:
         m.update(status="done", actions=r.actions, summary=r.summary, llm=self.cfg.llm_model,
                  llm_seconds=r.seconds, llm_rounds=r.rounds, fallback=r.fallback, processed_at=_now(), error=None)
         log.info("  done in %.1f s: %s", r.seconds, "; ".join(a["summary"] for a in r.actions))
+
+    def join_info(self, person) -> dict:
+        """What someone needs to start using Jar: the download page and, for family members, their own
+        pairing link (token + this PC's addresses at home and over Tailscale)."""
+        info = {"download": "https://github.com/noless-zz/jar/releases/latest", "pair_link": ""}
+        if person is not None:
+            try:
+                from server import pairing
+                urls = pairing.pairing_urls(pairing.discover(), self.cfg.port)
+                info["pair_link"] = pairing.pairing_link(self.family.token_for(person.id), urls)
+            except Exception as e:  # noqa: BLE001
+                log.warning("  pairing link unavailable: %s", e)
+        return info
 
     def heartbeat(self, doing: str = "idle") -> None:
         """data/worker.json: lets the dashboard and start-jar.ps1 -Status see the worker is alive."""
@@ -182,6 +195,25 @@ class Worker:
         log.info("re-queued %d failed memo(s)", n)
         return n
 
+    def maybe_eval(self) -> None:
+        """data/eval/run exists (VS Code task, or remotely): run the sample memos while idle."""
+        flag = self.cfg.data_dir / "eval" / "run"
+        if not flag.exists():
+            return
+        try:
+            flag.unlink()
+        except OSError:
+            return
+        from . import evaluate
+        self.heartbeat("testing the AI on sample memos")
+        log.info("AI test: running the sample memos")
+        try:
+            rep = evaluate.run(self.cfg)
+            log.info("AI test: %d/%d passed in %.0f s (data/eval/report.md)", rep["passed"], rep["total"],
+                     rep["seconds"])
+        except Exception:  # noqa: BLE001
+            log.exception("AI test failed to run")
+
     def run_once(self) -> int:
         n = 0
         for m in pending(self.cfg.data_dir):
@@ -191,6 +223,8 @@ class Worker:
             except OllamaUnavailable:
                 break  # every later memo needs Ollama too
             n += 1
+        if n == 0:
+            self.maybe_eval()
         self.heartbeat()
         return n
 

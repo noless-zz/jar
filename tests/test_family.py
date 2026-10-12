@@ -133,7 +133,8 @@ class WorkerTool(Base):
 
     def test_child_gets_only_tasks_and_notes(self):
         n = self.notes("maya")
-        self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp"})
+        self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp",
+                                             "get_join_instructions", "search_notes"})
         self.assertIn("draft_email", registry(self.notes("avi")))
         out = n.add_task("לקנות מחברת", for_person="avi")
         self.assertIn("waits for a parent", out)
@@ -193,6 +194,30 @@ class WhatsApp(Base):
         self.assertIn("pick the chat", out)
         self.assertEqual(st.snapshot(fam.people["yoni"])["tasks"][2]["phone"], "")
         self.assertIn("draft_whatsapp", registry(n))
+
+
+class Knowledge(Base):
+    def test_join_instructions_have_the_real_links(self):
+        n = Notes(self.tmp / "notes", TZ, MemoContext("abcdef0123456789", datetime(2026, 10, 12, 13, 0, tzinfo=TZ)),
+                  store=self.store, family=self.fam, speaker=self.p["avi"],
+                  join_info=lambda who: {"download": "https://github.com/noless-zz/jar/releases/latest",
+                                         "pair_link": f"jar://pair?v=1&t=TOKEN-{who.id}&u=x" if who else ""})
+        out = n.get_join_instructions("יוני")
+        self.assertIn("releases/latest", out)
+        self.assertIn("jar://pair?v=1&t=TOKEN-yoni", out)
+        self.assertIn("הדבקת קישור", out)
+        self.assertIn("Paste link", n.get_join_instructions("yoni", "en"))
+        self.assertIn("ask me for your personal pairing code", n.get_join_instructions("Bob", "en"))
+
+    def test_search_notes(self):
+        root = self.tmp / "notes"
+        (root / "Inbox").mkdir(parents=True)
+        (root / "Inbox" / "wifi.md").write_text("# ראוטר\nהסיסמה של הוויפי של האורחים היא jar-guest-2026\n",
+                                                encoding="utf-8")
+        n = Notes(root, TZ, MemoContext("abcdef0123456789", datetime(2026, 10, 12, 13, 0, tzinfo=TZ)),
+                  store=self.store, family=self.fam, speaker=self.p["avi"])
+        self.assertIn("jar-guest-2026", n.search_notes("סיסמה ויפי אורחים"))
+        self.assertIn("nothing found", n.search_notes("פיצה"))
 
 
 class Api(Base):

@@ -24,6 +24,7 @@
         { "label": "$(refresh) Retry failed memos", "task": "Jar: Retry failed memos" },
         { "label": "$(checklist) Check setup", "task": "Jar: Check setup", "description": "Ollama + Whisper device" },
         { "label": "$(beaker) Run tests", "task": "Jar: Run tests" },
+        { "label": "$(sparkle) Test the AI on sample memos", "task": "Jar: Test the AI on sample memos", "description": "real model, throwaway copy" },
         { "label": "$(calendar) Connect Outlook (personal)", "task": "Jar: Connect Outlook (personal)", "description": "once, opens the browser" },
         { "label": "$(mortar-board) Connect Google (school)", "task": "Jar: Connect Google (school)", "description": "once, opens the browser" },
         { "label": "$(account) Accounts status", "task": "Jar: Accounts status" },

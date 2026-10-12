@@ -287,6 +287,21 @@
       "problemMatcher": []
     },
     {
+      "label": "Jar: Test the AI on sample memos",
+      "detail": "10 realistic memos with known right answers, on the real model, in a throwaway copy (results in data\\eval\\report.md)",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "worker.evaluate"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Jar: Open notes folder",
       "type": "process",
       "command": "explorer.exe",

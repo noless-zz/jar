@@ -27,7 +27,9 @@ model = "qwen3.5:9b"
 temperature = 0.2
 # How long Ollama keeps the model in VRAM after a memo. Short frees the GPU for games etc.
 keep_alive = "10m"
-max_rounds = 4
+max_rounds = 6
+# Let the model reason before choosing tools: slower (some seconds per memo), much better decisions.
+think = true
 # One sentence about you, so the model files things sensibly (optional):
 # about = "I'm a teacher; 'school' means my school's Google account."
 
