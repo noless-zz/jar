@@ -318,12 +318,17 @@ class Notes:
         if not text.strip():
             raise ToolError("text is required")
         name, phone = self.family.phone_for(to) if to.strip() else ("", "")
+        for a in self.actions:
+            if a.get("tool") == "draft_whatsapp" and a.get("to") == name:
+                # One prepared message per person per memo: the model sometimes writes a second one.
+                return f"ok: the message to {name or 'them'} is already prepared; nothing more to do"
         title = f"WhatsApp → {name}" if name else "WhatsApp message"
         t = self.store.add(self.speaker, title, self.speaker, None, "", self.ctx.memo_id,
                            kind="message", message=text.strip(), to=name, phone=phone)
         where = f" to {name}" + ("" if phone else " (pick the chat in WhatsApp)") if name else " (pick the chat in WhatsApp)"
         summary = f"WhatsApp message ready{where}: tap Send in WhatsApp in the app"
-        self.actions.append({"tool": "draft_whatsapp", "summary": summary, "task_id": t["id"], "file": "Tasks.md"})
+        self.actions.append({"tool": "draft_whatsapp", "summary": summary, "task_id": t["id"], "file": "Tasks.md",
+                             "to": name})
         return f"ok: {summary}"
 
     def find_tasks(self, query: str = "", for_person: str = "") -> str:
@@ -543,7 +548,8 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
              "internal", notes.add_task),
         Tool("draft_join_instructions", "Prepare a WhatsApp message to someone explaining how to install the "
              "Jar app and join (real download link + their own pairing link + steps). Use for any memo about "
-             "sending someone instructions to install / join / set up Jar or 'the app'.",
+             "sending someone instructions to install / join / set up Jar or 'the app'. It prepares the whole "
+             "message, so don't call draft_whatsapp for it too.",
              {**s(for_person=FOR,
                   greeting=string("optional short opening line in the speaker's voice, e.g. 'היי ליבני, הנה מה "
                                   "שצריך כדי להתחבר לאפליקציה של המשפחה'"),

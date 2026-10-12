@@ -238,6 +238,9 @@ class Knowledge(Base):
         self.assertTrue(msg.startswith("היי יוני!"))
         self.assertIn("jar://pair?v=1&t=TOKEN-yoni", msg)
         self.assertIn("releases/latest", msg)
+        again = n.draft_whatsapp("עוד הודעה", to="yoni")                # second one in the same memo: ignored
+        self.assertIn("already prepared", again)
+        self.assertEqual(len([t for t in self.store.snapshot(self.p["avi"])["tasks"] if t.get("kind") == "message"]), 1)
 
     def test_search_notes(self):
         root = self.tmp / "notes"
