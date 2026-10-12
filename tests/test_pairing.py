@@ -5,7 +5,7 @@ import unittest
 from urllib.parse import parse_qs, urlparse
 
 from server.pairing import (Addresses, Tailscale, is_lan, pairing_link, pairing_urls,
-                            parse_tailscale_status, qr_svg)
+                            parse_funnel, parse_tailscale_status, qr_svg)
 
 STATUS = {
     "BackendState": "Running",
@@ -98,3 +98,26 @@ class DashboardLogin(unittest.TestCase):
         self.assertTrue(L.ok(L.cookie_value))
         self.assertFalse(L.ok("tok"))
         self.assertFalse(L.ok(None))
+
+
+class FunnelTest(unittest.TestCase):
+    def test_funnel_on_v1(self):
+        raw = json.dumps({"Web": {"my-pc.tail1234.ts.net:443": {"Handlers": {"/v1": {"Proxy": "http://127.0.0.1:8080/v1"}}}},
+                          "AllowFunnel": {"my-pc.tail1234.ts.net:443": True}})
+        self.assertEqual(parse_funnel(raw), "https://my-pc.tail1234.ts.net")
+
+    def test_other_port(self):
+        raw = json.dumps({"Web": {"pc.ts.net:8443": {"Handlers": {"/": {}}}}, "AllowFunnel": {"pc.ts.net:8443": True}})
+        self.assertEqual(parse_funnel(raw), "https://pc.ts.net:8443")
+
+    def test_serve_without_funnel_or_nothing(self):
+        raw = json.dumps({"Web": {"pc.ts.net:443": {"Handlers": {"/v1": {}}}}})
+        self.assertEqual(parse_funnel(raw), "")
+        self.assertEqual(parse_funnel(""), "")
+        self.assertEqual(parse_funnel("not json"), "")
+
+    def test_public_address_comes_before_tailscale(self):
+        ts = Tailscale(installed=True, running=True, ip="100.101.102.103", dns_name="pc.ts.net",
+                       funnel_url="https://pc.ts.net")
+        urls = pairing_urls(Addresses(lan=["192.168.1.87"], tailscale=ts), 8080)
+        self.assertEqual(urls.index("https://pc.ts.net"), 1)

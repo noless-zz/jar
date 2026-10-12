@@ -62,6 +62,7 @@
     <string name="pair_scan_failed">הסורק לא זמין (%1$s). השתמשו ב„הדבקת קישור”.</string>
     <string name="test_ok_home">מחובר דרך הרשת הביתית (%1$s) · האסימון התקבל</string>
     <string name="test_ok_tailscale">מחובר דרך Tailscale ‏(%1$s) · האסימון התקבל</string>
+    <string name="test_ok_public">מחובר דרך האינטרנט, מוצפן (%1$s) · האסימון התקבל</string>
     <string name="test_unreachable">אף אחת מ-%1$d הכתובות השמורות לא ענתה (%2$s). האם המחשב דלוק ו-Tailscale מחובר?</string>
     <string name="section_remote">מחוץ לבית (Tailscale)</string>
     <string name="ts_not_installed">Tailscale לא מותקן. התקינו והתחברו עם אותו חשבון כמו במחשב כדי לשלוח הקלטות מכל מקום.</string>

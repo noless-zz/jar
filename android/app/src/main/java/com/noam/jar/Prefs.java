@@ -53,6 +53,14 @@ public final class Prefs {
                 .putString(KEY_SERVER_URL, urls.get(0)).remove(KEY_LAST_GOOD).apply();
     }
 
+    /** Addresses the PC reports on each sync (e.g. a new public one). Keeps the last one that worked. */
+    public void mergeServerUrls(List<String> fromPc) {
+        if (fromPc.isEmpty()) return;
+        List<String> merged = ServerList.merge(serverUrls(), fromPc);
+        if (merged.equals(serverUrls())) return;
+        sp.edit().putString(KEY_SERVER_URLS, ServerList.join(merged)).putString(KEY_SERVER_URL, merged.get(0)).apply();
+    }
+
     public String lastGoodUrl() {
         return sp.getString(KEY_LAST_GOOD, "");
     }

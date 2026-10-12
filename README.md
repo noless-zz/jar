@@ -46,8 +46,11 @@ The dashboard's **code** pill shows the version and the update status. Settings 
 **Phone app:** start Jar, open the dashboard → **Pair a phone**, and scan the QR code with
 *Pair with PC* in Jar Companion. It saves the token and every address the PC has: home network
 and Tailscale. Uploads use whichever answers, so the same setup works at home and away.
-For away-from-home: install Tailscale on PC and phone with the same account; the pairing page
-picks up the PC's Tailscale address automatically. `allow-firewall.ps1` (one UAC prompt) opens
+For away-from-home with nothing on the phones: run **More → Let phones connect from anywhere**
+(`tools/enable-anywhere.ps1`, once). Tailscale Funnel then publishes only `/v1` over HTTPS at the PC's
+`.ts.net` name; the dashboard stays private, internet requests to anything else get 404, and wrong tokens
+are throttled. Phones learn the address on their next sync. Alternatively install Tailscale on PC and phone
+with the same account; the pairing page picks up the PC's Tailscale address automatically. `allow-firewall.ps1` (one UAC prompt) opens
 TCP 8080 for the home network and for Tailscale.
 
 ### In VS Code

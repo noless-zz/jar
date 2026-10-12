@@ -287,6 +287,43 @@
       "problemMatcher": []
     },
     {
+      "label": "Jar: Let phones connect from anywhere",
+      "detail": "Once: publish only the phone API over HTTPS (Tailscale Funnel), so family phones need no Tailscale",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\enable-anywhere.ps1"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jar: Stop phones connecting from anywhere",
+      "detail": "Turn the public phone address off again",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\enable-anywhere.ps1",
+        "-Off"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Jar: Test the AI on sample memos",
       "detail": "10 realistic memos with known right answers, on the real model, in a throwaway copy (results in data\\eval\\report.md)",
       "type": "process",
@@ -412,7 +449,11 @@
     }
   ],
   "inputs": [
-    {"id": "releaseVersion", "type": "promptString", "description": "Version to publish, e.g. 0.4.0"},
+    {
+      "id": "releaseVersion",
+      "type": "promptString",
+      "description": "Version to publish, e.g. 0.4.0"
+    },
     {
       "id": "wavPath",
       "type": "promptString",

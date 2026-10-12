@@ -25,14 +25,19 @@ plus private notes in `notes/Family/<name>/`.
 
 ## Setting up a phone
 
-1. Install **Tailscale** from the Play Store and sign in with **the same account as the PC**.
-   The phone can then reach Jar from anywhere. At home on Wi-Fi it works without Tailscale.
+1. Nothing to install for away-from-home, once the admin has run **More → Let phones connect from anywhere**
+   on the PC (once). That publishes only the phone part of Jar (`/v1`) at an `https://….ts.net` address
+   through Tailscale Funnel. The dashboard stays private, and every request needs that person's code.
+   Without it, a phone reaches Jar only on the home Wi-Fi, or with the Tailscale app signed in to the PC's account.
 2. Install the app: on the phone open https://github.com/noless-zz/jar/releases/latest and tap the `.apk` under Assets. Android asks to allow installs from the browser once. After that the app updates itself (see [RELEASES.md](RELEASES.md)).
 3. On the PC, open the dashboard and click **Pair a phone**, then pick the person's name. Each person has their own code.
 4. In the app, tap **Pair with PC** and scan the code. The title then shows their name.
 5. Allow **notifications** when asked. Otherwise reminders can't appear.
 
 The admin's phone keeps using `[server] token`, so it stays paired. Updating the app keeps the pairing.
+
+Phones paired before the public address existed learn it by themselves on their next sync at home (app 0.6.0 or newer),
+or scan the pair code again. **Test connection** then says "Connected over the internet, encrypted" when away.
 
 ## Fixing things
 

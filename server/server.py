@@ -56,6 +56,30 @@ TASKS = TaskStore(DATA_ROOT / "tasks.json", FAMILY, NOTES_DIR / "Tasks.md")
 app = FastAPI(title="Jar server", version="0.3")
 
 
+@app.middleware("http")
+async def public_only_v1(request: Request, call_next):
+    """Requests from the internet (Tailscale Funnel) may only use the phone API under /v1.
+    The dashboard, pairing page and memo audio stay on this PC and the tailnet."""
+    if request.headers.get("tailscale-funnel-request") and not request.url.path.startswith("/v1/"):
+        return JSONResponse(status_code=404, content={"detail": "not found"})
+    return await call_next(request)
+
+
+# Wrong tokens per address: after 20 in 10 minutes, that address waits (stops token guessing).
+_FAILS: dict[str, deque] = {}
+
+
+def _remote_ip(request: Request | None) -> str:
+    if request is None:
+        return "?"
+    host = request.client.host if request.client else "?"
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd and host in ("127.0.0.1", "::1"):
+        # Tailscale on this PC appends the real address last; earlier entries are whatever the sender wrote.
+        return fwd.split(",")[-1].strip() or host
+    return host
+
+
 def _ollama_url() -> str:
     for name in ("config.toml", "config.example.toml"):
         p = ROOT / name
@@ -77,10 +101,16 @@ def check_auth(authorization: str | None, request: Request | None = None, device
     if not TOKEN:
         raise HTTPException(500, "no device token configured on the server (config.toml [server] token)")
     sent = (authorization or "").removeprefix("Bearer ").strip()
+    ip = _remote_ip(request)
+    fails = _FAILS.setdefault(ip, deque(maxlen=50))
+    while fails and fails[0] < time.time() - 600:
+        fails.popleft()
+    if len(fails) >= 20:
+        raise HTTPException(429, "too many wrong tokens from this address; try again in a few minutes")
     person = FAMILY.who(sent)
     if person is None:
+        fails.append(time.time())
         why = "no token sent" if not sent else f"unknown token ({len(sent)} chars; {FAMILY.admin.name}'s is {len(TOKEN)})"
-        ip = request.client.host if request and request.client else "?"
         REJECTED.append({"at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                          "ip": ip, "device": device or "?", "reason": why})
         log.warning("refused upload from %s (%s): %s", ip, device or "?", why)
@@ -185,11 +215,28 @@ def _task_error(e: TaskError):
     raise HTTPException(e.status, str(e))
 
 
+_URLS: dict = {"at": 0.0, "urls": []}
+
+
+def current_urls() -> list[str]:
+    """Every address phones can use right now (cached 5 min): lets the app learn a new one, e.g. the
+    public Funnel address, without pairing again."""
+    if time.time() - _URLS["at"] > 300:
+        try:
+            from . import pairing
+            _URLS["urls"] = pairing.pairing_urls(pairing.discover(), int(_cfg.get("port", 8080)))
+        except Exception:  # noqa: BLE001
+            pass
+        _URLS["at"] = time.time()
+    return _URLS["urls"]
+
+
 @app.get("/v1/me")
 def me(request: Request, authorization: str | None = Header(None), x_device_id: str = Header("")):
     p = check_auth(authorization, request, x_device_id)
     return {"person": p.public(), "family": [x.public() for x in FAMILY.people.values()],
-            "timezone": TIMEZONE, "server_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+            "timezone": TIMEZONE, "server_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "urls": current_urls()}
 
 
 @app.get("/v1/tasks")

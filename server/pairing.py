@@ -3,6 +3,8 @@
 The PC works out how a phone can reach it:
   * home network — its LAN IPv4 addresses (192.168.x.x, 10.x.x.x …)
   * Tailscale    — its 100.x.y.z address and MagicDNS name, if Tailscale is installed and up
+  * anywhere     — https://<pc>.<tailnet>.ts.net when Tailscale Funnel publishes /v1 (phones then need
+                   nothing installed; tools/enable-anywhere.ps1 turns it on)
 and packs them with the device token into a link:
 
     jar://pair?v=1&t=<token>&u=http://192.168.1.87:8080&u=http://100.101.102.103:8080
@@ -33,6 +35,7 @@ class Tailscale:
     ip: str = ""
     dns_name: str = ""
     problem: str = ""
+    funnel_url: str = ""      # public https address when Funnel serves Jar's /v1
 
 
 @dataclass
@@ -69,6 +72,24 @@ def parse_tailscale_status(raw: str) -> Tailscale:
     return ts
 
 
+def parse_funnel(raw: str) -> str:
+    """`tailscale serve status --json` → the public https URL that reaches Jar's /v1, or "" (pure)."""
+    try:
+        cfg = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return ""
+    allow = cfg.get("AllowFunnel") or {}
+    for hostport, handlers in (cfg.get("Web") or {}).items():
+        if not allow.get(hostport):
+            continue
+        paths = (handlers or {}).get("Handlers") or {}
+        if not any(p in ("/", "/v1", "/v1/") for p in paths):
+            continue
+        host, _, port = hostport.rpartition(":")
+        return f"https://{host}" + ("" if port in ("443", "") else f":{port}")
+    return ""
+
+
 def tailscale_status(timeout: float = 4) -> Tailscale:
     exe = _tailscale_exe()
     if not exe:
@@ -80,7 +101,15 @@ def tailscale_status(timeout: float = 4) -> Tailscale:
         return Tailscale(installed=True, problem=f"tailscale CLI failed ({type(e).__name__})")
     if not out.stdout.strip():
         return Tailscale(installed=True, problem=(out.stderr.strip() or "Tailscale service not running")[:200])
-    return parse_tailscale_status(out.stdout)
+    ts = parse_tailscale_status(out.stdout)
+    if ts.running:
+        try:
+            serve = subprocess.run([exe, "serve", "status", "--json"], capture_output=True, text=True,
+                                   timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            ts.funnel_url = parse_funnel(serve.stdout)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return ts
 
 
 def is_lan(ip: str) -> bool:
@@ -119,9 +148,12 @@ def discover() -> Addresses:
 
 def pairing_urls(addrs: Addresses, port: int) -> list[str]:
     """Order matters: the app tries them in this order the first time.
-    Home network first (fastest at home), then Tailscale IP, then its MagicDNS name."""
+    Home network first (fastest at home), then the public Funnel address (works anywhere, nothing to
+    install), then the Tailscale IP and MagicDNS name (for phones that run Tailscale)."""
     urls = [f"http://{ip}:{port}" for ip in addrs.lan[:2]]
     ts = addrs.tailscale
+    if ts.funnel_url:
+        urls.append(ts.funnel_url)
     if ts.ip:
         urls.append(f"http://{ts.ip}:{port}")
     if ts.dns_name:

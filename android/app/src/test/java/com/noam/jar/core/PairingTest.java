@@ -63,5 +63,20 @@ public class PairingTest {
         assertFalse(ServerList.isTailscale("http://192.168.1.87:8080"));
         assertFalse(ServerList.isTailscale("http://100.1.2.3:8080"));     // 100.x outside 100.64/10
         assertFalse(ServerList.isTailscale("http://10.0.2.2:8080"));
+        assertFalse(ServerList.isTailscale("https://my-pc.tail1234.ts.net"));   // public Funnel address
+        assertTrue(ServerList.isPublic("https://my-pc.tail1234.ts.net"));
+        assertFalse(ServerList.isPublic("http://192.168.1.87:8080"));
+    }
+
+    @Test
+    public void pcAddressesMergeIntoSavedOnes() {
+        java.util.List<String> saved = java.util.Arrays.asList("http://192.168.1.87:8080", "http://100.101.102.103:8080");
+        java.util.List<String> pc = java.util.Arrays.asList("http://192.168.1.87:8080", "https://pc.ts.net/",
+                "http://100.101.102.103:8080");
+        assertEquals(java.util.Arrays.asList("http://192.168.1.87:8080", "https://pc.ts.net",
+                "http://100.101.102.103:8080"), ServerList.merge(saved, pc));
+        assertEquals(java.util.Arrays.asList("https://pc.ts.net", "http://my-typed:8080"),
+                ServerList.merge(java.util.Collections.singletonList("http://my-typed:8080"),
+                        java.util.Collections.singletonList("https://pc.ts.net")));
     }
 }

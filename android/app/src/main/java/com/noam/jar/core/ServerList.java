@@ -32,8 +32,28 @@ public final class ServerList {
         return out;
     }
 
+    /**
+     * The PC's current addresses (from /v1/me) merged into the saved ones: the PC's list in its
+     * order, then any saved address it no longer mentions (a hand-typed one keeps working).
+     */
+    public static List<String> merge(List<String> saved, List<String> fromPc) {
+        List<String> out = new ArrayList<>();
+        for (String u : fromPc) {
+            String t = u == null ? "" : u.trim().replaceAll("/+$", "");
+            if (!t.isEmpty() && !out.contains(t)) out.add(t);
+        }
+        for (String u : saved) if (!out.contains(u)) out.add(u);
+        return out;
+    }
+
+    /** The public HTTPS address (Tailscale Funnel): works anywhere, no app needed on the phone. */
+    public static boolean isPublic(String url) {
+        return url != null && url.startsWith("https://");
+    }
+
     /** "Tailscale" or "home network", for messages like "Connected via Tailscale". */
     public static boolean isTailscale(String url) {
+        if (isPublic(url)) return false;
         String host = url.replaceFirst("^https?://", "").replaceFirst("[:/].*$", "");
         if (host.endsWith(".ts.net")) return true;
         String[] p = host.split("\\.");

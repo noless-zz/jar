@@ -235,8 +235,9 @@ public final class MainActivity extends AppCompatActivity {
             Uploader.Check c = Uploader.testConnection(prefs);
             main.post(() -> {
                 if (c.problem == null) {
-                    testResult.setText(getString(ServerList.isTailscale(c.url)
-                            ? R.string.test_ok_tailscale : R.string.test_ok_home, hostOf(c.url)));
+                    testResult.setText(getString(ServerList.isPublic(c.url) ? R.string.test_ok_public
+                            : ServerList.isTailscale(c.url) ? R.string.test_ok_tailscale
+                            : R.string.test_ok_home, hostOf(c.url)));
                     urlField.setText(prefs.serverUrl());
                     UploadWorker.enqueue(this);   // anything waiting can go now
                     TaskSync.now(this);           // and fetch who this phone belongs to + the tasks

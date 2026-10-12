@@ -71,6 +71,12 @@ public final class TaskSync extends Worker {
             flush(prefs, cache);
             JSONObject me = TaskApi.me(prefs);
             cache.setMe(me);
+            JSONArray urls = me.optJSONArray("urls");
+            if (urls != null) {
+                java.util.List<String> got = new java.util.ArrayList<>();
+                for (int i = 0; i < urls.length(); i++) got.add(urls.optString(i));
+                prefs.mergeServerUrls(got);
+            }
             cache.setTasks(TaskApi.tasks(prefs));
         } catch (TaskApi.HttpError e) {
             prefs.setTaskProblem(e.code == 401 ? c.getString(R.string.tasks_bad_token) : e.getMessage());

@@ -36,6 +36,8 @@
         { "label": "$(rocket) Android: Publish release", "task": "Android: Publish release", "description": "new family version" },
         { "label": "$(key) Set GitHub release secrets", "task": "Jar: Set GitHub release secrets", "description": "once" },
         { "label": "$(github) Link this folder to GitHub", "task": "Jar: Link this folder to GitHub", "description": "once" },
+        { "label": "$(globe) Let phones connect from anywhere", "task": "Jar: Let phones connect from anywhere", "description": "once, no Tailscale on phones" },
+        { "label": "$(circle-slash) Stop phones connecting from anywhere", "task": "Jar: Stop phones connecting from anywhere" },
         { "label": "$(circuit-board) Firmware: build", "task": "Firmware: Build" },
         { "label": "$(arrow-up) Firmware: upload", "task": "Firmware: Upload to pendant" },
         { "label": "$(terminal) Firmware: serial monitor", "task": "Firmware: Serial monitor" }

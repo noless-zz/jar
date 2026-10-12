@@ -316,6 +316,25 @@ class Api(Base):
         r = self.c.post("/v1/dashboard-login", headers=self.h("avi"))
         self.assertTrue(r.json()["path"].startswith("login?n="))
 
+    def test_internet_requests_only_reach_the_phone_api(self):
+        funnel = {"Tailscale-Funnel-Request": "?1"}
+        self.assertEqual(self.c.get("/", headers=funnel).status_code, 404)
+        self.assertEqual(self.c.get("/pair", headers=funnel).status_code, 404)
+        self.assertEqual(self.c.get("/v1/health", headers=funnel).status_code, 200)
+        r = self.c.get("/v1/me", headers={**self.h("yoni"), **funnel})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("urls", r.json())
+
+    def test_wrong_tokens_are_throttled_per_address(self):
+        self.server._FAILS.clear()
+        # Funnel traffic arrives from 127.0.0.1 with the real address appended last.
+        bad = lambda ip: {"Authorization": "Bearer nope", "X-Forwarded-For": f"1.2.3.{ip}, 203.0.113.9"}  # noqa: E731
+        for i in range(20):
+            self.assertEqual(self.c.get("/v1/me", headers=bad(i)).status_code, 401)
+        self.assertEqual(self.c.get("/v1/me", headers=bad(99)).status_code, 429)   # spoofed first entry doesn't help
+        self.server._FAILS.clear()
+        self.assertEqual(self.c.get("/v1/me", headers=self.h("yoni")).status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
