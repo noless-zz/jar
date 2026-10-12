@@ -192,8 +192,21 @@ class Agent:
         notes.transcript = transcript
         tools = registry(notes)
         schemas = [t.schema() for t in tools.values()]
+        context = ""
+        if notes.store is not None and notes.speaker is not None:
+            try:
+                near = notes.store.find(notes.speaker, transcript, limit=5)
+            except Exception:  # noqa: BLE001
+                near = []
+            if near:
+                name = lambda pid: notes.family.get(pid).name if notes.family and notes.family.get(pid) else pid  # noqa: E731
+                context = ("\n\nOpen tasks that may be what this memo is about (if the memo finishes, moves, changes "
+                           "or cancels one of them, use update_task with its id instead of adding a new task):\n"
+                           + "\n".join(f"- id={t['id']} | {t['title']} | for {name(t['assignee'])}"
+                                       + (f" | due {t['due'].replace('T', ' ')}" if t.get("due") else "")
+                                       for t in near))
         messages = [
-            {"role": "system", "content": system_prompt(notes, recorded_local, tz_name, self.about)},
+            {"role": "system", "content": system_prompt(notes, recorded_local, tz_name, self.about) + context},
             {"role": "user", "content": transcript},
         ]
         summary, rounds, nudged = "", 0, False
