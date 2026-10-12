@@ -151,10 +151,10 @@ class Agent:
         self.max_rounds, self.timeout = max_rounds, timeout
 
     # -- HTTP --
-    def _chat(self, messages: list[dict], tools: list[dict]) -> dict:
+    def _chat(self, messages: list[dict], tools: list[dict], think: bool | None = None) -> dict:
         body = json.dumps({
             "model": self.model, "messages": messages, "tools": tools, "stream": False,
-            "think": self.think,                # qwen3.x: reason before choosing tools (slower, much better)
+            "think": self.think if think is None else think,   # qwen3.x: reason before choosing tools
             "keep_alive": self.keep_alive,
             "options": {"temperature": self.temperature},
         }).encode()
@@ -205,14 +205,31 @@ class Agent:
                            + "\n".join(f"- id={t['id']} | {t['title']} | for {name(t['assignee'])}"
                                        + (f" | due {t['due'].replace('T', ' ')}" if t.get("due") else "")
                                        for t in near))
-        messages = [
-            {"role": "system", "content": system_prompt(notes, recorded_local, tz_name, self.about) + context},
-            {"role": "user", "content": transcript},
-        ]
+        system = system_prompt(notes, recorded_local, tz_name, self.about) + context
+        summary, rounds = self._loop(transcript, system, tools, schemas, notes, self.think)
+        if not notes.actions and self.think:
+            # Thinking mode sometimes ends with a plain-text answer and no tool call. One more try,
+            # without thinking (that mode reliably calls a tool), before falling back to a note.
+            log.info("  nothing filed with thinking on; retrying once without it")
+            summary, more = self._loop(transcript, system, tools, schemas, notes, False)
+            rounds += more
+
+        fallback = False
+        if not notes.actions:
+            # The model never managed a successful tool call: keep the memo, don't lose it.
+            fallback = True
+            first = " ".join(transcript.split()[:8]) or "Memo"
+            notes.save_note(title=first, body=transcript, tags=["unsorted"])
+            summary = summary or "Saved as an unsorted note."
+        return AgentResult(notes.actions, summary, rounds, round(time.monotonic() - t0, 2), fallback)
+
+    def _loop(self, transcript: str, system: str, tools: dict, schemas: list, notes: Notes,
+              think: bool) -> tuple[str, int]:
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": transcript}]
         summary, rounds, nudged = "", 0, False
         for rounds in range(1, self.max_rounds + 1):
             try:
-                msg = self._chat(messages, schemas)
+                msg = self._chat(messages, schemas, think)
             except Exception as e:  # noqa: BLE001
                 if not notes.actions:
                     raise          # nothing filed yet: safe to retry the whole memo later
@@ -220,8 +237,10 @@ class Agent:
                 log.warning("  model failed after filing (%s); keeping the %d action(s)", e, len(notes.actions))
                 summary = "Filed; the model stopped before its closing summary."
                 break
-            calls = msg.get("tool_calls") or []
+            calls = msg.get("tool_calls") or _calls_in_text(msg.get("content", ""), tools)
             if not calls:
+                if msg.get("content"):
+                    log.info("  model answered without a tool: %s", _clean(msg.get("content", ""))[:200])
                 if not notes.actions and not nudged and rounds < self.max_rounds:
                     # It only looked things up (or just talked): ask once to actually file the memo.
                     nudged = True
@@ -238,15 +257,7 @@ class Agent:
                 result = self._execute(tools, fn.get("name", ""), fn.get("arguments", {}))
                 log.info("  tool %s -> %s", fn.get("name"), result)
                 messages.append({"role": "tool", "content": result, "tool_name": fn.get("name", "")})
-
-        fallback = False
-        if not notes.actions:
-            # The model never managed a successful tool call: keep the memo, don't lose it.
-            fallback = True
-            first = " ".join(transcript.split()[:8]) or "Memo"
-            notes.save_note(title=first, body=transcript, tags=["unsorted"])
-            summary = summary or "Saved as an unsorted note."
-        return AgentResult(notes.actions, summary, rounds, round(time.monotonic() - t0, 2), fallback)
+        return summary, rounds
 
     @staticmethod
     def _execute(tools: dict[str, Tool], name: str, args) -> str:
@@ -274,6 +285,23 @@ class Agent:
         except Exception as e:  # noqa: BLE001 — report, don't crash the worker
             log.exception("tool %s failed", name)
             return f"error: {type(e).__name__}: {e}"
+
+
+def _calls_in_text(content: str, tools: dict) -> list[dict]:
+    """Tool calls the model wrote as text (<tool_call>{...}</tool_call> or a bare JSON object with
+    "name" and "arguments") instead of calling the tool. Only names of real tools are accepted."""
+    calls = []
+    text = re.sub(r"<think>.*?</think>", "", content or "", flags=re.S)
+    blobs = re.findall(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", text, flags=re.S) or \
+        re.findall(r"\{[^{}]*\"name\"\s*:\s*\"[a-z_]+\"[^{}]*\"arguments\"\s*:\s*\{.*?\}\s*\}", text, flags=re.S)
+    for b in blobs:
+        try:
+            obj = json.loads(b)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and obj.get("name") in tools:
+            calls.append({"function": {"name": obj["name"], "arguments": obj.get("arguments", {})}})
+    return calls
 
 
 def _clean(text: str) -> str:

@@ -26,7 +26,7 @@ class FakeAgent(Agent):
         super().__init__("http://unused", "fake")
         self.replies, self.seen = list(replies), []
 
-    def _chat(self, messages, tools):
+    def _chat(self, messages, tools, think=None):
         self.seen.append([dict(m) for m in messages])
         return self.replies.pop(0) if self.replies else {"content": "Done."}
 
@@ -132,7 +132,7 @@ class AgentTest(unittest.TestCase):
 class FlakyAgent(FakeAgent):
     """First reply works, then Ollama breaks (like the 0.40 symlink bug)."""
 
-    def _chat(self, messages, tools):
+    def _chat(self, messages, tools, think=None):
         if self.seen:
             from worker.agent import OllamaUnavailable
             raise OllamaUnavailable("Ollama error 500: untrusted mount point")
@@ -151,7 +151,7 @@ class AgentFailureTest(unittest.TestCase):
         from worker.agent import OllamaUnavailable
 
         class Down(FakeAgent):
-            def _chat(self, messages, tools):
+            def _chat(self, messages, tools, think=None):
                 raise OllamaUnavailable("down")
         with self.assertRaises(OllamaUnavailable):
             Down([]).run("x", make_notes(Path(tempfile.mkdtemp())), WHEN, "Asia/Jerusalem")
