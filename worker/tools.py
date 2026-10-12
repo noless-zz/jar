@@ -258,6 +258,18 @@ class Notes:
         note = "" if pair else " (no personal pairing link: not a family member in config.toml)"
         return "Put these steps in the message (you may add a friendly opening line):" + note + "\n" + "\n".join(steps)
 
+    def draft_join_instructions(self, for_person: str, greeting: str = "", language: str = "he") -> str:
+        """The whole "how to install and join Jar" WhatsApp message in one step: greeting + real steps
+        + the person's own pairing link, prepared on the speaker's phone."""
+        facts = self.get_join_instructions(for_person, language)
+        steps = facts.split("\n", 1)[1] if "\n" in facts else facts
+        who = self.family.resolve(for_person) if self.family is not None else None
+        hello = (greeting or "").strip() or (
+            (f"היי {who.name}! " if who else "היי! ") + "ככה מתקינים את Jar ומתחברים:"
+            if not (language or "he").lower().startswith("en") else
+            (f"Hi {who.name}! " if who else "Hi! ") + "Here's how to install Jar and join:")
+        return self.draft_whatsapp(hello + "\n\n" + steps, to=who.name if who else for_person)
+
     def search_notes(self, query: str) -> str:
         """Find things the speaker saved before (notes, ideas, lesson ideas) to use in a message or task."""
         words = [w for w in re.split(r"\W+", (query or "").casefold()) if len(w) >= 2]
@@ -479,7 +491,7 @@ def registry(notes: Notes) -> dict[str, Tool]:
     if notes.restricted:
         tools = {k: v for k, v in tools.items()
                  if k in ("save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp",
-                          "get_join_instructions", "search_notes")}
+                          "draft_join_instructions", "search_notes")}
     return tools
 
 
@@ -512,13 +524,15 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   notes=string("extra details, optional")),
               "required": ["title"]},
              "internal", notes.add_task),
-        Tool("get_join_instructions", "Get the real steps and links for installing and joining the Jar app "
-             "(download link and the person's own pairing link). Call it before writing any message about "
-             "installing, joining or setting up Jar, and put the steps into the message.",
-             {**s(for_person=FOR, language={"type": "string", "enum": ["he", "en"],
-                                            "description": "language of the message"}),
+        Tool("draft_join_instructions", "Prepare a WhatsApp message to someone explaining how to install the "
+             "Jar app and join (real download link + their own pairing link + steps). Use for any memo about "
+             "sending someone instructions to install / join / set up Jar or 'the app'.",
+             {**s(for_person=FOR,
+                  greeting=string("optional short opening line in the speaker's voice, e.g. 'היי ליבני, הנה מה "
+                                  "שצריך כדי להתחבר לאפליקציה של המשפחה'"),
+                  language={"type": "string", "enum": ["he", "en"], "description": "language of the message"}),
               "required": ["for_person"]},
-             "none", notes.get_join_instructions),
+             "internal", notes.draft_join_instructions),
         Tool("search_notes", "Search the notes the speaker saved before (ideas, information, lesson ideas) for "
              "facts to use in a message or task. Returns short snippets.",
              {**s(query=string("a few key words")), "required": ["query"]},

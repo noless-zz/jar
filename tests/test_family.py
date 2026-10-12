@@ -134,7 +134,7 @@ class WorkerTool(Base):
     def test_child_gets_only_tasks_and_notes(self):
         n = self.notes("maya")
         self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp",
-                                             "get_join_instructions", "search_notes"})
+                                             "draft_join_instructions", "search_notes"})
         self.assertIn("draft_email", registry(self.notes("avi")))
         out = n.add_task("לקנות מחברת", for_person="avi")
         self.assertIn("waits for a parent", out)
@@ -222,6 +222,12 @@ class Knowledge(Base):
         self.assertIn("הדבקת קישור", out)
         self.assertIn("Paste link", n.get_join_instructions("yoni", "en"))
         self.assertIn("ask me for your personal pairing code", n.get_join_instructions("Bob", "en"))
+        out = n.draft_join_instructions("yoni")
+        self.assertIn("WhatsApp message ready to יוני", out)
+        msg = [t for t in self.store.snapshot(self.p["avi"])["tasks"] if t.get("kind") == "message"][0]["message"]
+        self.assertTrue(msg.startswith("היי יוני!"))
+        self.assertIn("jar://pair?v=1&t=TOKEN-yoni", msg)
+        self.assertIn("releases/latest", msg)
 
     def test_search_notes(self):
         root = self.tmp / "notes"

@@ -59,8 +59,9 @@ MESSAGE_RULES = """
 Messages (draft_whatsapp, draft_email) — write the real message, complete and ready to send:
 - It goes to the recipient as-is. Write it as the speaker, in first person, warm and natural.
 - If the memo asks to send instructions, details, a link or an explanation, the message must CONTAIN them,
-  not "here are the instructions". Get facts first: get_join_instructions for joining/installing the Jar app;
-  search_notes for anything the speaker saved before. Never invent links, numbers, addresses or facts.
+  not "here are the instructions". For installing/joining the Jar app use draft_join_instructions (it writes
+  the whole message with the real links). For other facts, search_notes first. Never invent links, numbers,
+  addresses or facts.
 - Short is fine for simple messages ("אני מגיע בשש"); instructions get numbered steps."""
 
 FAMILY_RULES = """
