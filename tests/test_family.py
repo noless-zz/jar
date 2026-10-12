@@ -209,6 +209,16 @@ class DayWords(unittest.TestCase):
         self.assertIsNone(_date("sometime", mon))
         self.assertIsNone(_date("יום רביעי"))                 # no "today" given: only ISO works
 
+    def test_words_in_the_memo_correct_a_miscounted_date(self):
+        from worker.tools import MemoContext, Notes
+        tz = ZoneInfo("Asia/Jerusalem")
+        n = Notes(Path(tempfile.mkdtemp()), tz, MemoContext("e" * 16, datetime(2026, 10, 12, 13, 0, tzinfo=tz)))
+        n.transcript = "קבע לי תור לרופא שיניים ביום רביעי בתשע"
+        self.assertEqual(str(n._day("2026-10-15")), "2026-10-14")     # model said Thursday: corrected
+        self.assertEqual(str(n._day("2026-10-14")), "2026-10-14")
+        n.transcript = "פגישה ב-15 באוקטובר"                            # no weekday said: keep the date
+        self.assertEqual(str(n._day("2026-10-15")), "2026-10-15")
+
 
 class Knowledge(Base):
     def test_join_instructions_have_the_real_links(self):

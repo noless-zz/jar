@@ -189,6 +189,7 @@ class Agent:
     def run(self, transcript: str, notes: Notes, recorded_local: datetime, tz_name: str,
             meta: dict | None = None) -> AgentResult:
         t0 = time.monotonic()
+        notes.transcript = transcript
         tools = registry(notes)
         schemas = [t.schema() for t in tools.values()]
         messages = [

@@ -122,6 +122,23 @@ class Notes:
     family: object = None       # Family
     speaker: object = None      # Person who recorded the memo
     join_info: object = None    # callable(person) -> {"download", "pair_link"}: for get_join_instructions
+    transcript: str = ""        # what was said: lets day words in the memo correct a miscomputed date
+
+    def _day(self, value: str | None):
+        """A date for a tool call. If the model gave YYYY-MM-DD but the memo names exactly one weekday and the
+        date falls on another weekday, trust the words (models miscount weekdays)."""
+        today = self.ctx.recorded_local.date()
+        d = _date(value, today)
+        if d is None or not value or not re.match(r"^\s*\d{4}-\d{2}-\d{2}", value) or not self.transcript:
+            return d
+        said = {_date(w, today) for w in re.findall(r"\S+", self.transcript)
+                if _date(w, today) is not None and not re.match(r"^\d{4}-", w)
+                and re.sub(r"^(ו?ב?יום|ב|ה|ו)", "", w.casefold().strip(",.")) in (*HE_WEEKDAYS, *EN_WEEKDAYS)}
+        if len(said) == 1:
+            want = next(iter(said))
+            if want.weekday() != d.weekday() and abs((want - d).days) < 7:
+                return want
+        return d
 
     @property
     def restricted(self) -> bool:
@@ -179,7 +196,7 @@ class Notes:
                  for_person: str = "") -> str:
         if not title.strip():
             raise ToolError("title is required")
-        d, tm = _date(due_date, self.ctx.recorded_local.date()), _time(due_time)
+        d, tm = self._day(due_date), _time(due_time)
         if due_date and not d:
             raise ToolError("due_date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
         if tm and not d:
@@ -333,7 +350,7 @@ class Notes:
         if title.strip():
             fields["title"] = title.strip()
             did.append(f"renamed to “{title.strip()}”")
-        d, tm = _date(due_date, self.ctx.recorded_local.date()), _time(due_time)
+        d, tm = self._day(due_date), _time(due_time)
         if due_date and not d:
             raise ToolError("due_date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
         if tm and not d:
@@ -373,7 +390,7 @@ class Notes:
     def create_event(self, title: str, date: str, start_time: str = "", duration_min: int = 60,
                      location: str = "", notes: str = "", account: str = "personal") -> str:
         """In the account's real calendar when connected; otherwise an .ics file to double-click."""
-        d, tm = _date(date, self.ctx.recorded_local.date()), _time(start_time)
+        d, tm = self._day(date), _time(start_time)
         if not title.strip():
             raise ToolError("title is required")
         if not d:
