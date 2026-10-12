@@ -138,14 +138,14 @@ def cases(admin: str, fam: Family) -> list[Case]:
     ][:]
 
 
-def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None) -> dict:
+def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repeats: int = 1) -> dict:
     cfg = cfg or config_mod.load()
     tz = ZoneInfo(cfg.timezone)
     agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
                   about=cfg.about, think=cfg.think)
     real = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
     results, t_all = [], time.monotonic()
-    for c in cases(real.admin.id, real):
+    for c in [c for c in cases(real.admin.id, real) for _ in range(max(1, repeats))]:
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             fam = Family.from_config(cfg.family or {}, "eval-token", tmp, cfg.contacts)
@@ -179,14 +179,20 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None) -> di
                 "actions": [a["summary"] for a in res.actions],
                 "messages": [m["message"] for m in res.new("message")],
                 "reply": summary})
+    by_case: dict[str, list[bool]] = {}
+    for r in results:
+        by_case.setdefault(r["case"], []).append(r["ok"])
     report = {"model": cfg.llm_model, "think": cfg.think, "at": time.strftime("%Y-%m-%d %H:%M"),
+              "repeats": max(1, repeats),
+              "per_case": {k: f"{sum(v)}/{len(v)}" for k, v in by_case.items()},
               "passed": sum(r["ok"] for r in results), "total": len(results),
               "seconds": round(time.monotonic() - t_all, 1), "results": results}
     out = out_dir or (cfg.data_dir / "eval")
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     lines = [f"# AI test: {report['passed']}/{report['total']} passed",
-             f"{report['model']}, thinking {'on' if report['think'] else 'off'}, {report['seconds']} s, {report['at']}", ""]
+             f"{report['model']}, thinking {'on' if report['think'] else 'off'}, {report['seconds']} s, {report['at']}", "",
+             "| case | passed |", "|---|---|"] + [f"| {k} | {v} |" for k, v in report["per_case"].items()] + [""]
     for r in results:
         lines.append(f"## {'✅' if r['ok'] else '❌'} {r['case']} ({r['seconds']} s)")
         lines.append(f"> {r['memo']}")
@@ -200,7 +206,8 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None) -> di
 
 
 def main() -> None:
-    rep = run()
+    import sys
+    rep = run(repeats=int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 1)
     for r in rep["results"]:
         print(("PASS " if r["ok"] else "FAIL ") + r["case"] + ("" if r["ok"] else f"  -> {r['problem']}"))
     print(f"\n{rep['passed']}/{rep['total']} passed in {rep['seconds']} s — details in data/eval/report.md")

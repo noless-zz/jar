@@ -59,7 +59,7 @@ class ToolsTest(unittest.TestCase):
 
     def test_bad_date_is_reported_to_model(self):
         r = Agent._execute({"add_task": __import__("worker.tools", fromlist=["registry"]).registry(self.n)["add_task"]},
-                           "add_task", {"title": "x", "due_date": "next Thursday"})
+                           "add_task", {"title": "x", "due_date": "someday soon"})
         self.assertTrue(r.startswith("error: due_date"))
 
     def test_event_ics_is_utc_and_valid(self):

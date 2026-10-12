@@ -34,13 +34,47 @@ def slug(text: str, limit: int = 50) -> str:
     return (s[:limit].rstrip() or "untitled")
 
 
-def _date(value: str | None) -> date | None:
+HE_WEEKDAYS = {"שני": 0, "שלישי": 1, "רביעי": 2, "חמישי": 3, "שישי": 4, "שבת": 5, "ראשון": 6}
+EN_WEEKDAYS = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+
+
+def _date(value: str | None, today: date | None = None) -> date | None:
+    """YYYY-MM-DD, or the day as said: "מחר", "מחרתיים", "יום רביעי", "ברביעי", "Thursday", "tomorrow".
+    Weekday words become the next such day (today's weekday = next week), so the model never has to
+    do calendar arithmetic, which small models get wrong."""
     if not value:
         return None
+    v = value.strip()
     try:
-        return date.fromisoformat(value.strip()[:10])
+        return date.fromisoformat(v[:10])
     except ValueError:
+        pass
+    if today is None:
         return None
+    w = re.sub(r"[^\w\s]", " ", v.casefold())
+    words = w.split()
+    if not words:
+        return None
+    if any(x in words for x in ("today", "היום", "הערב", "tonight")):
+        return today
+    if "מחרתיים" in words or "day after tomorrow" in w:
+        return today + timedelta(days=2)
+    if any(x in words for x in ("tomorrow", "מחר")):
+        return today + timedelta(days=1)
+    target = None
+    for word in words:
+        bare = re.sub(r"^(ו?ב?יום|ב|ה|ו)", "", word) if word not in HE_WEEKDAYS else word
+        if word in EN_WEEKDAYS:
+            target = EN_WEEKDAYS[word]
+        elif word in HE_WEEKDAYS:
+            target = HE_WEEKDAYS[word]
+        elif bare in HE_WEEKDAYS:
+            target = HE_WEEKDAYS[bare]
+        if target is not None:
+            break
+    if target is None:
+        return None
+    return today + timedelta(days=(target - today.weekday()) % 7 or 7)
 
 
 def _time(value: str | None) -> str | None:
@@ -145,9 +179,9 @@ class Notes:
                  for_person: str = "") -> str:
         if not title.strip():
             raise ToolError("title is required")
-        d, tm = _date(due_date), _time(due_time)
+        d, tm = _date(due_date, self.ctx.recorded_local.date()), _time(due_time)
         if due_date and not d:
-            raise ToolError("due_date must be YYYY-MM-DD")
+            raise ToolError("due_date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
         if tm and not d:
             d = self.ctx.recorded_local.date()
             if tm <= f"{self.ctx.recorded_local:%H:%M}":
@@ -287,9 +321,9 @@ class Notes:
         if title.strip():
             fields["title"] = title.strip()
             did.append(f"renamed to “{title.strip()}”")
-        d, tm = _date(due_date), _time(due_time)
+        d, tm = _date(due_date, self.ctx.recorded_local.date()), _time(due_time)
         if due_date and not d:
-            raise ToolError("due_date must be YYYY-MM-DD")
+            raise ToolError("due_date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
         if tm and not d:
             d = self.ctx.recorded_local.date()
             if tm <= f"{self.ctx.recorded_local:%H:%M}":
@@ -327,11 +361,11 @@ class Notes:
     def create_event(self, title: str, date: str, start_time: str = "", duration_min: int = 60,
                      location: str = "", notes: str = "", account: str = "personal") -> str:
         """In the account's real calendar when connected; otherwise an .ics file to double-click."""
-        d, tm = _date(date), _time(start_time)
+        d, tm = _date(date, self.ctx.recorded_local.date()), _time(start_time)
         if not title.strip():
             raise ToolError("title is required")
         if not d:
-            raise ToolError("date must be YYYY-MM-DD")
+            raise ToolError("date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
         try:
             duration = max(5, min(int(duration_min or 60), 24 * 60))
         except (TypeError, ValueError):
@@ -472,7 +506,8 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
              "also when asking a family member to do something.",
              {**s(title=string("the task, short and imperative, in the memo's language, without the person's name"),
                   for_person=FOR,
-                  due_date=string("YYYY-MM-DD if a day was mentioned, else empty"),
+                  due_date=string("the day AS SAID ('מחר', 'יום רביעי', 'Thursday', 'today') or YYYY-MM-DD for an explicit "
+                                  "calendar date ('15 באוקטובר'); empty if no day was said"),
                   due_time=string("HH:MM 24h if a time was mentioned, else empty"),
                   notes=string("extra details, optional")),
               "required": ["title"]},
@@ -509,7 +544,7 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
              "person, or status done / cancel / reopen. Only the fields you give change.",
              {**s(task_id=string("the id from find_tasks"),
                   title=string("new title, or empty"),
-                  due_date=string("new date YYYY-MM-DD, or empty"),
+                  due_date=string("new day AS SAID ('יום חמישי', 'מחר') or YYYY-MM-DD, or empty"),
                   due_time=string("new time HH:MM, or empty"),
                   for_person=FOR,
                   status={"type": "string", "enum": ["", "done", "cancel", "reopen"],
@@ -517,7 +552,7 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
               "required": ["task_id"]},
              "internal", notes.update_task),
         Tool("create_event", "Create a calendar event: a meeting, appointment or anything at a set time.",
-             {**s(title=string("event title"), date=string("YYYY-MM-DD"),
+             {**s(title=string("event title"), date=string("the day AS SAID ('מחר', 'ביום רביעי', 'Thursday') or YYYY-MM-DD for an explicit calendar date"),
                   start_time=string("HH:MM 24h, empty for all-day"),
                   duration_min={"type": "integer", "description": "minutes, default 60"},
                   location=string("optional"), notes=string("optional"),

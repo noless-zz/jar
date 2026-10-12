@@ -46,8 +46,8 @@ Tools:
 - Anything else -> save_note. If the memo is unclear, save it as a note tagged "unsorted".
 {messages}
 - Write in the memo's language. Fix obvious transcription errors (names especially); keep every detail.
-- Resolve relative dates against the recording time below ("tomorrow", "Thursday", "מחר", "ביום חמישי");
-  dates YYYY-MM-DD, times HH:MM (24h). A weekday means the next such day.
+- Days: pass them AS SAID ("מחר", "יום רביעי", "Thursday") — the tools turn them into dates. Use YYYY-MM-DD
+  only for an explicit calendar date ("15 באוקטובר"). Times as HH:MM (24h): "בשש בערב" = 18:00.
 - After the tools succeed, reply with ONE short sentence saying what you filed. No questions.
   Say only what the tool results say (don't promise a reminder if a result says there is no time).
 {family}
@@ -90,7 +90,7 @@ Tools:
 - Anything else -> save_note (it is private to the speaker).
 {messages}
 - Write in the memo's language; fix obvious transcription errors.
-- Resolve relative dates against the recording time below; dates YYYY-MM-DD, times HH:MM (24h).
+- Days: pass them AS SAID ("מחר", "יום רביעי") — the tools turn them into dates. Times HH:MM (24h).
 - After the tools succeed, reply with ONE short sentence saying what you filed. No questions.
   Say only what the tool results say.
 {family}
@@ -194,7 +194,7 @@ class Agent:
             {"role": "system", "content": system_prompt(notes, recorded_local, tz_name, self.about)},
             {"role": "user", "content": transcript},
         ]
-        summary, rounds = "", 0
+        summary, rounds, nudged = "", 0, False
         for rounds in range(1, self.max_rounds + 1):
             try:
                 msg = self._chat(messages, schemas)
@@ -207,6 +207,14 @@ class Agent:
                 break
             calls = msg.get("tool_calls") or []
             if not calls:
+                if not notes.actions and not nudged and rounds < self.max_rounds:
+                    # It only looked things up (or just talked): ask once to actually file the memo.
+                    nudged = True
+                    messages.append({"role": "assistant", "content": msg.get("content", "")})
+                    messages.append({"role": "user", "content":
+                                     "Nothing is filed yet. Now call the tool that does what the memo asks "
+                                     "(for example draft_whatsapp with the complete message, or add_task)."})
+                    continue
                 summary = _clean(msg.get("content", ""))
                 break
             messages.append({"role": "assistant", "content": msg.get("content", ""), "tool_calls": calls})

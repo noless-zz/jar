@@ -196,6 +196,20 @@ class WhatsApp(Base):
         self.assertIn("draft_whatsapp", registry(n))
 
 
+class DayWords(unittest.TestCase):
+    def test_days_as_said(self):
+        from datetime import date
+        from worker.tools import _date
+        mon = date(2026, 10, 12)
+        for said, want in [("יום רביעי", "2026-10-14"), ("ביום רביעי", "2026-10-14"), ("ברביעי", "2026-10-14"),
+                           ("Wednesday", "2026-10-14"), ("מחר", "2026-10-13"), ("tomorrow", "2026-10-13"),
+                           ("מחרתיים", "2026-10-14"), ("היום", "2026-10-12"), ("יום שני", "2026-10-19"),
+                           ("ביום ראשון", "2026-10-18"), ("שבת", "2026-10-17"), ("2026-11-02", "2026-11-02")]:
+            self.assertEqual(str(_date(said, mon)), want, said)
+        self.assertIsNone(_date("sometime", mon))
+        self.assertIsNone(_date("יום רביעי"))                 # no "today" given: only ISO works
+
+
 class Knowledge(Base):
     def test_join_instructions_have_the_real_links(self):
         n = Notes(self.tmp / "notes", TZ, MemoContext("abcdef0123456789", datetime(2026, 10, 12, 13, 0, tzinfo=TZ)),

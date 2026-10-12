@@ -201,6 +201,8 @@ class Worker:
         if not flag.exists():
             return
         try:
+            txt = flag.read_text(encoding="utf-8", errors="ignore").strip()
+            repeats = int(txt) if txt.isdigit() else 1          # "3" in the file = run each memo 3 times
             flag.unlink()
         except OSError:
             return
@@ -208,7 +210,7 @@ class Worker:
         self.heartbeat("testing the AI on sample memos")
         log.info("AI test: running the sample memos")
         try:
-            rep = evaluate.run(self.cfg)
+            rep = evaluate.run(self.cfg, repeats=repeats)
             log.info("AI test: %d/%d passed in %.0f s (data/eval/report.md)", rep["passed"], rep["total"],
                      rep["seconds"])
         except Exception:  # noqa: BLE001
