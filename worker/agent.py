@@ -51,7 +51,9 @@ Tools:
 - After the tools succeed, reply with ONE short sentence saying what you filed. No questions.
   Say only what the tool results say (don't promise a reminder if a result says there is no time).
 {family}
-Recording time: {when} ({weekday}), timezone {tz}."""
+Recording time: {when} ({weekday}), timezone {tz}.
+Dates of the coming days (use these, don't compute weekdays yourself):
+{days}"""
 
 MESSAGE_RULES = """
 Messages (draft_whatsapp, draft_email) — write the real message, complete and ready to send:
@@ -92,7 +94,23 @@ Tools:
 - After the tools succeed, reply with ONE short sentence saying what you filed. No questions.
   Say only what the tool results say.
 {family}
-Recording time: {when} ({weekday}), timezone {tz}."""
+Recording time: {when} ({weekday}), timezone {tz}.
+Dates of the coming days (use these, don't compute weekdays yourself):
+{days}"""
+
+
+HE_DAYS = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
+
+
+def day_table(recorded_local: datetime) -> str:
+    """Today .. +7 days with English and Hebrew weekday names: 'Wednesday' / 'יום רביעי' -> a date."""
+    from datetime import timedelta
+    rows = []
+    for i in range(8):
+        d = (recorded_local + timedelta(days=i)).date()
+        tag = " (today, היום)" if i == 0 else " (tomorrow, מחר)" if i == 1 else " (מחרתיים)" if i == 2 else ""
+        rows.append(f"  {d:%A} / יום {HE_DAYS[d.weekday()]}: {d.isoformat()}{tag}")
+    return "\n".join(rows) + "\n  A weekday that is today means next week's, unless the time is still ahead today."
 
 
 def system_prompt(notes: Notes, recorded_local: datetime, tz_name: str, about: str = "") -> str:
@@ -106,7 +124,7 @@ def system_prompt(notes: Notes, recorded_local: datetime, tz_name: str, about: s
     about = (about or "").strip()
     return base.format(when=f"{recorded_local:%Y-%m-%d %H:%M}", weekday=f"{recorded_local:%A}", tz=tz_name,
                        family=fam, speaker=getattr(notes.speaker, "name", ""), owner=owner,
-                       about=(about + " ") if about else "", messages=MESSAGE_RULES)
+                       about=(about + " ") if about else "", messages=MESSAGE_RULES, days=day_table(recorded_local))
 
 
 class OllamaUnavailable(Exception):

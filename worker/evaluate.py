@@ -124,7 +124,9 @@ def cases(admin: str, fam: Family) -> list[Case]:
              seed=[{"title": "תור לרופא שיניים", "due": "2026-10-14T09:00"}]),
         Case("appointment goes to the calendar",
              "קבע לי תור לרופא שיניים ביום רביעי בתשע בבוקר",
-             lambda r: None if "create_event" in r.tools() else f"no calendar event (tools: {r.tools()})"),
+             lambda r: (f"no calendar event (tools: {r.tools()})" if "create_event" not in r.tools()
+                        else None if any("2026-10-14 09:00" in a["summary"] for a in r.actions)
+                        else f"wrong day/time: {[a['summary'] for a in r.actions]}")),
         Case("a child asking a parent makes a request",
              "תזכיר לאבא לקנות לי מחברת חשבון",
              lambda r: (_one_task(r, admin, "מחברת") or
