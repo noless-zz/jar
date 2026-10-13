@@ -34,13 +34,14 @@ Before calling tools, work out:
    recipient can act on without asking back.
 
 Tools:
-- A reminder / something to do -> add_task (due_date/due_time if said). A memo that just names an action is a
-  task even without "remind me": an infinitive or "I need to" ("להכין לוח שנה לסבתא", "לקנות סוללות",
-  "צריך להתקשר ל…", "to call the bank") -> add_task for the speaker, NOT a note.
+- A reminder / something to do -> add_task (due_date/due_time if said).
   Something at a set time with other people or a place -> create_event.
   A teaching idea -> save_lesson_idea. "Deep work" / "עבודה עמוקה" or research -> escalate_deep_work.
 - Changing, moving, finishing or cancelling a task that already exists ("סיימתי…", "בטל…", "תעביר את…",
   "done with…", "move…") -> find_tasks, then update_task. Never add a second task for it.
+- A NEW to-do said as just an action, without "remind me" — an infinitive or "I need to" ("לקנות סוללות",
+  "להכין לוח שנה לסבתא", "לחדש את הביטוח של האוטו של סווטה", "to call the bank") -> add_task, NOT a note.
+  It is the speaker's own task, even when it is about someone else's thing (see "Who does it").
 - A message to someone (WhatsApp, SMS, "תשלח ל…", "תכתוב ל…", "תגיד ל… בוואטסאפ") -> draft_whatsapp.
   An email ("email", "מייל", formal letters, school staff/parents) -> draft_email (never invent addresses).
   draft_email also adds a "send it" task by itself: do not add one.
