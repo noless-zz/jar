@@ -79,7 +79,7 @@ class Worker:
         self.transcriber = Transcriber(cfg.whisper_model, cfg.whisper_device, cfg.whisper_compute,
                                        cfg.whisper_language, cfg.vocabulary)
         self.agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
-                           about=cfg.about, think=cfg.think)
+                           about=cfg.about, think=cfg.think, num_ctx=cfg.num_ctx)
         from .accounts import build as build_accounts
         self.accounts = build_accounts(cfg)   # personal -> Outlook, school -> Google (None if not set up)
         from .family import Family

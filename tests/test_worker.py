@@ -194,3 +194,32 @@ class MemoStoreTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContextBudget(unittest.TestCase):
+    """The instructions and tool list must fit in the model's context with room for the memo and the
+    model's reasoning; past it Ollama silently drops the memo (it happened: 10/26 in the AI test)."""
+
+    def test_prompt_and_tools_fit(self):
+        import json
+        import tempfile
+        from datetime import datetime
+        from pathlib import Path
+        from zoneinfo import ZoneInfo
+
+        from worker.agent import Agent, system_prompt
+        from worker.family import Family
+        from worker.taskstore import TaskStore
+        from worker.tools import MemoContext, Notes, registry
+        tz = ZoneInfo("Asia/Jerusalem")
+        cfg = {"a": {"name": "נועם", "role": "parent", "admin": True}, "b": {"name": "סווטה", "role": "parent"},
+               "c": {"name": "ליבנה", "role": "child"}, "d": {"name": "אלונה", "role": "child"}}
+        tmp = Path(tempfile.mkdtemp())
+        fam = Family.from_config(cfg, "t", tmp)
+        n = Notes(tmp / "n", tz, MemoContext("e" * 16, datetime(2026, 10, 12, 13, 0, tzinfo=tz)), accounts={},
+                  store=TaskStore(tmp / "t.json", fam), family=fam, speaker=fam.admin)
+        text = system_prompt(n, datetime(2026, 10, 12, 13, 0, tzinfo=tz), "Asia/Jerusalem", "x" * 200)
+        text += json.dumps([t.schema() for t in registry(n).values()], ensure_ascii=False)
+        tokens = len(text) / 2.5                          # pessimistic for Hebrew-heavy text
+        agent = Agent("http://x", "m")
+        self.assertLess(tokens, agent.num_ctx * 0.7, f"~{tokens:.0f} tokens of {agent.num_ctx}")

@@ -156,7 +156,7 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
     cfg = cfg or config_mod.load()
     tz = ZoneInfo(cfg.timezone)
     agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
-                  about=cfg.about, think=cfg.think)
+                  about=cfg.about, think=cfg.think, num_ctx=cfg.num_ctx)
     real = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
     results, t_all = [], time.monotonic()
     for c in [c for c in cases(real.admin.id, real) for _ in range(max(1, repeats))]:

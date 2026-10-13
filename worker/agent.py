@@ -39,19 +39,15 @@ Tools:
   A teaching idea -> save_lesson_idea. "Deep work" / "עבודה עמוקה" or research -> escalate_deep_work.
 - Changing, moving, finishing or cancelling a task that already exists ("סיימתי…", "בטל…", "תעביר את…",
   "done with…", "move…") -> find_tasks, then update_task. Never add a second task for it.
-- A question or remark about an existing task ("תשאל את ליבנה אם הוא כבר סידר את החדר", "תגיד לאלונה
-  שהשיעורים בעמוד 40", answering a question someone asked about a task) -> find_tasks, then note_on_task
-  (ask=true for a question). Not a WhatsApp message and not a new task.
-- A NEW to-do said as just an action, without "remind me" — an infinitive or "I need to" ("לקנות סוללות",
-  "להכין לוח שנה לסבתא", "לחדש את הביטוח של האוטו של סווטה", "to call the bank") -> add_task, NOT a note.
-  It is the speaker's own task, even when it is about someone else's thing (see "Who does it").
+- A question or remark about a task that already exists ("ask X whether they did <task>") -> find_tasks,
+  then note_on_task (ask=true for a question).
+- A new to-do said as just an action (an infinitive, "I need to…") is a task for the speaker, not a note.
 - A message to someone (WhatsApp, SMS, "תשלח ל…", "תכתוב ל…", "תגיד ל… בוואטסאפ") -> draft_whatsapp.
   An email ("email", "מייל", formal letters, school staff/parents) -> draft_email (never invent addresses).
   draft_email also adds a "send it" task by itself: do not add one.
 - For create_event and draft_email pick the account: "school" for classes, students, parents, staff,
   lessons, grades or the school; "personal" for everything else.
-- Anything else -> save_note: only information to keep (an idea, a fact, a list, a thought). If the memo is
-  unclear, save it as a note tagged "unsorted".
+- Anything else -> save_note. If the memo is unclear, save it as a note tagged "unsorted".
 {messages}
 - Write in the memo's language. Fix obvious transcription errors (names especially); keep every detail.
 - Days: pass them AS SAID ("מחר", "יום רביעי", "Thursday") — the tools turn them into dates. Use YYYY-MM-DD
@@ -94,11 +90,9 @@ contain to be useful.
 
 Tools:
 - Something to do or remember, or a request to someone in the family -> add_task. A memo that just names an
-  action ("להכין לוח שנה לסבתא", "ללמוד למבחן", "לקנות מחברת", "צריך ל…") is a task for the speaker.
-  The speaker sees tasks in the app; notes they never see, so when in doubt make it a task.
+  action (an infinitive, "I need to…") is a task for the speaker: they see tasks in the app, never notes.
 - Changing, moving, finishing or cancelling an existing task -> find_tasks, then update_task.
-- A question or answer about an existing task ("לשאול את אבא אם…", "לענות לאמא ש…") -> find_tasks, then
-  note_on_task (ask=true for a question).
+- A question or answer about a task that already exists -> find_tasks, then note_on_task (ask=true for a question).
 - A message to someone (WhatsApp, "תשלח ל…", "תכתוב ל…") -> draft_whatsapp (prepared, they press Send).
 - Only information to keep that isn't something to do -> save_note (private; the speaker won't see it in the app).
 {messages}
@@ -155,7 +149,11 @@ class AgentResult:
 
 class Agent:
     def __init__(self, url: str, model: str, temperature: float = 0.2, keep_alive: str = "10m",
-                 max_rounds: int = 4, timeout: float = 300, about: str = "", think: bool = True):
+                 max_rounds: int = 4, timeout: float = 300, about: str = "", think: bool = True,
+                 num_ctx: int = 8192):
+        # Context window. Ollama's default (4096) is smaller than Jar's instructions plus tool list:
+        # past it Ollama silently drops the start of the conversation, i.e. the memo itself.
+        self.num_ctx = max(4096, int(num_ctx))
         self.think = think          # [llm] think: let the model reason before calling tools
         self.about = about          # [llm] about: a sentence about the owner, for context
         self.url, self.model = url.rstrip("/"), model
@@ -168,7 +166,7 @@ class Agent:
             "model": self.model, "messages": messages, "tools": tools, "stream": False,
             "think": self.think if think is None else think,   # qwen3.x: reason before choosing tools
             "keep_alive": self.keep_alive,
-            "options": {"temperature": self.temperature},
+            "options": {"temperature": self.temperature, "num_ctx": self.num_ctx},
         }).encode()
         req = urllib.request.Request(self.url + "/api/chat", data=body,
                                      headers={"Content-Type": "application/json"})

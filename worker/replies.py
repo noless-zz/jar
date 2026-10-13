@@ -23,7 +23,8 @@ The note is written by {me}.{waiting}
 Suggest {n} different short messages {me} could send now (each under 20 words), in the conversation's
 language ({lang}), friendly and natural for a family; for a child keep it simple. Vary them: e.g. a direct
 answer, a question back, an update. Use only facts from the task and the notes; never invent times,
-places or promises beyond what's written.
+places or promises beyond what's written. In Hebrew you don't know if {me} is male or female: prefer
+past tense or wording without gender ("סיימתי", "עוד לא", "אפשר עד מחר?").
 Reply with JSON only: {{"replies": ["...", "..."]}}"""
 
 
