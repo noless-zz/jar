@@ -85,7 +85,8 @@ Effort 1-10, by the real time it takes and how unpleasant it is:
 2 easy: a small routine, 5-10 minutes
 3 light: 10-20 minutes of simple work
 4 a bit of work: 20-30 minutes
-5 real work or concentration: 30-45 minutes, or helping someone with something fiddly (phone, computer, forms)
+5 real work or concentration: 30-45 minutes
+Helping someone with a phone, computer or forms is at least 5: it takes patience and always runs longer than planned.
 6 about an hour
 7 big job: 1-2 hours, or physically hard
 8 unpleasant or heavy, even when it is short: anything with human or animal waste or dirt that disgusts (sanitary cleaning, litter, nappies, smelly bins, vomit)
