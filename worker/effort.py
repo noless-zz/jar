@@ -81,8 +81,8 @@ def rule_rating(title: str, kind: str, person) -> dict | None:
 PROMPT = """You rate how much effort a household task takes for a grown-up, for a family chores game.
 Task: "{title}"{notes}
 Effort 1-10, by the real time it takes and how unpleasant it is:
-1 trivial: a minute or two, no real work
-2 easy: a small routine, about 5 minutes
+1 trivial: up to 5 minutes, no real work
+2 easy: a small routine, 5-10 minutes
 3 light: 10-20 minutes of simple work
 4 a bit of work: 20-30 minutes
 5 real work or concentration: 30-45 minutes, or helping someone with something fiddly (phone, computer, forms)
@@ -91,7 +91,7 @@ Effort 1-10, by the real time it takes and how unpleasant it is:
 8 unpleasant or heavy, even when it is short: anything with human or animal waste or dirt that disgusts (sanitary cleaning, litter, nappies, smelly bins, vomit)
 9 most of a morning
 10 a whole day of hard work
-Be realistic about time. Judge a person who does this every day: quick routines take 2-5 minutes (effort 1-2), but a task with several separate steps, or a whole room or home, takes 45-90 minutes (effort 6-7), not 25.
+Rate only what the task says: do not imagine extra steps (stripping, washing, sorting) it doesn't mention. Be realistic about time. Judge a person who does this every day: quick routines take 2-5 minutes (effort 1-2), but a task with several separate steps, or a whole room or home, takes 45-90 minutes (effort 6-7), not 25.
 For an adult's errands (insurance, repairs, paperwork, appointments) rate the time and the hassle.
 Also give: minutes (typical time), category (one of {categories}), chore_key (2-3 English words, lowercase, hyphens: the same chore always gets the same key, however it is worded), reason (English, at most 12 words).{keys}
 Reply with JSON only: {{"effort": 1-10, "minutes": 0, "category": "...", "chore_key": "...", "reason": "..."}}"""
@@ -149,7 +149,7 @@ def chat(ollama_url: str, model: str, prompt: str, num_ctx: int = 8192, keep_ali
     the model between a memo and a rating."""
     body = json.dumps({"model": model, "stream": False, "think": False, "format": "json",
                        "keep_alive": keep_alive,
-                       "options": {"temperature": 0.1, "num_ctx": num_ctx},
+                       "options": {"temperature": 0, "seed": 7, "num_ctx": num_ctx},
                        "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(ollama_url.rstrip("/") + "/api/chat", data=body,
                                  headers={"Content-Type": "application/json"})
