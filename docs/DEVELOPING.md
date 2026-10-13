@@ -25,7 +25,7 @@
 - **Before pushing:** `python -m unittest discover -s tests -t .` and, for the app,
   `./gradlew testDebugUnitTest assembleDebug lintDebug` (needs `local.properties` with sdk.dir).
 - **AI changes:** run the AI test on the PC: Settings → PC → *Run AI test* (or write `data/eval/run` with
-  repeats 1–3). Report in `data/eval/report.md`; last result 26/26.
+  repeats 1–3). Report in `data/eval/report.md`; last result 46/46 (13 memo + 10 rating cases, 2 repeats).
 
 ## Hard-won lessons
 - Prompt + tool schemas must stay well under `num_ctx` (8192): past it Ollama silently drops the memo.
