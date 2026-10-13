@@ -1,6 +1,6 @@
 # Points & leaderboard — design (agreed 2026-10-13)
 
-Status: phase 1 not started. Decisions below are final unless family feedback changes them.
+Status: phase 1 shipped in app 1.1.0 (E only; phase 2 waits for the family's feedback). Decisions below are final unless family feedback changes them.
 
 ## Formula
 
@@ -61,10 +61,23 @@ Phase 1 ships E only (R = S = T = 1.0); phase 2 turns on R, S, T, the cap and fa
 | `data/points.json` ratings | chore_key → parent effort |
 | `GET /v1/points` | week + all-time totals, streaks, my ledger |
 | `POST /v1/tasks/{id}/points` | parent: set effort / no_coins |
-| `POST /v1/points/{line}/revoke` | parent: take back, with note |
+| `POST /v1/points/{line}/revoke` | parent: take back, with note (phase 2) |
+| `POST /v1/lessons` | child: `{title, learned}` → finished lesson task, AI rates the note 1-5 (by length if the AI is away), 3 a day |
+| `POST /v1/points/work-day` | parent: fixed `work_day_coins`, once per local day (409 when logged) |
 
 Coins are paid when the PC records the task as done (offline ticks pay at sync, at the tick's time).
 `[points]` config: daily_cap, work_day_coins, parent_ok_over, week_start = sunday, announce = "sat 20:00".
+
+## Phase 1 as built
+- `worker/effort.py` rates (rules first: WhatsApp drafts and "send the email" earn nothing, a parent's "work day" is the
+  fixed base; else the model, JSON, thinking off). A parent's earlier slider value for the same `chore_key` replaces the
+  model's effort. Unrated tasks (AI away) are stored with effort 3 and `rated_by: default`; the worker rates them later.
+- `worker/points.py` is the ledger: `pay` is idempotent per task, reopen/delete/reassign `reverse`, a parent's change
+  `repay`s. Weeks run Sunday–Saturday in the family's time zone. Ledger lines of private tasks show title `null`.
+- Offline ticks send `at` (epoch s); the PC pays at that time (within 14 days, never in the future).
+- App: 🪙 on task rows (grey = what it will pay), 🏆 Board tab, parent-only "What's it worth…" slider in the task menu,
+  toast after done, Saturday notification from the phone's own alarm (cache remembers the announced week), widget footer.
+- The AI test has 10 rating cases (`worker/evaluate.py: rating_cases`), tolerance ±1.
 
 ## Phases
 1. AI rating + parent slider + ledger + coins on tasks + leaderboard tab + Saturday winner + jobs & lessons.

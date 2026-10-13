@@ -78,34 +78,39 @@ def rule_rating(title: str, kind: str, person) -> dict | None:
 
 # ---------------------------------------------------------------- the model
 
-PROMPT = """You rate how much effort a household task takes for the person who has to do it, for a family chores game.
+PROMPT = """You rate how much effort a household task takes for a grown-up, for a family chores game.
 Task: "{title}"{notes}
-Done by: {who}.
-Effort for THIS person, 1-10:
-1 trivial: under 2 minutes, no real work
-2 easy: about 5 minutes
+Effort 1-10, by the real time it takes and how unpleasant it is:
+1 trivial: a minute or two, no real work
+2 easy: a small routine, about 5 minutes
 3 light: 10-20 minutes of simple work
 4 a bit of work: 20-30 minutes
 5 real work or concentration: 30-45 minutes, or helping someone with something fiddly (phone, computer, forms)
 6 about an hour
 7 big job: 1-2 hours, or physically hard
-8 very unpleasant or heavy (dirty bathroom, smelly bins, pet mess), even when it is short
+8 unpleasant or heavy, even when it is short: anything with human or animal waste or dirt that disgusts (sanitary cleaning, litter, nappies, smelly bins, vomit)
 9 most of a morning
 10 a whole day of hard work
-{age}For an adult's errands (insurance, repairs, paperwork, appointments) rate the time and the hassle.
-Also give: minutes (typical time for this person), category (one of {categories}), chore_key (2-3 English words, lowercase, hyphens: the same chore always gets the same key, however it is worded), reason (English, at most 12 words).{keys}
+Daily routines that need no thought (straightening one small thing, putting an item away) are 1 or 2, not 3.
+For an adult's errands (insurance, repairs, paperwork, appointments) rate the time and the hassle.
+Also give: minutes (typical time), category (one of {categories}), chore_key (2-3 English words, lowercase, hyphens: the same chore always gets the same key, however it is worded), reason (English, at most 12 words).{keys}
 Reply with JSON only: {{"effort": 1-10, "minutes": 0, "category": "...", "chore_key": "...", "reason": "..."}}"""
+
+
+def child_bump(person) -> int:
+    """What a child's version of a chore adds to the grown-up rating: 1 point (2 under 10, where it takes
+    them longer and tires them sooner). Added here, not asked of the model, which double-counts it."""
+    if getattr(person, "is_parent", True):
+        return 0
+    age = int(getattr(person, "age", 0) or 0)
+    return 2 if 0 < age < 10 else 1
 
 
 def build_prompt(title: str, notes: str, person, known_keys: list[str] | None = None) -> str:
     notes = (notes or "").strip()
-    child = not getattr(person, "is_parent", True)
     return PROMPT.format(
         title=(title or "").strip()[:200],
         notes=f"\nNotes: {notes[:300]}" if notes else "",
-        who=describe(person),
-        age=("A child finds long, heavy or fiddly chores harder than an adult does: add 1 to the effort an "
-             "adult would get, and 2 for a child under 10.\n") if child else "",
         categories=", ".join(CATEGORIES),
         keys=(f"\nKnown chore keys (reuse one if it is the same chore): {', '.join(known_keys[:15])}."
               if known_keys else ""))
@@ -160,7 +165,7 @@ def rate(ollama_url: str, model: str, title: str, notes: str, person, known_keys
          timeout: float = 45) -> dict:
     """The rating for a task, for the person who does it. Rules first (no model needed), then the model;
     a parent's earlier correction for the same chore key replaces the model's effort (the starting
-    point next time). Raises RateError when the model is away or gives nothing usable."""
+    point next time). A child's chore gets the adult rating plus child_bump(). Raises RateError when the model is away or gives nothing usable."""
     ruled = rule_rating(title, "task", person)
     if ruled is not None:
         return ruled
@@ -168,6 +173,10 @@ def rate(ollama_url: str, model: str, title: str, notes: str, person, known_keys
     rating = parse(raw, title)
     if rating is None:
         raise RateError("the AI didn't give an effort rating")
+    bump = child_bump(person)
+    if bump:
+        rating["effort"] = min(10, rating["effort"] + bump)
+        rating["reason"] = (rating["reason"] + f" · +{bump} for a child").strip(" ·")[:140]
     earlier = parent_effort(rating["chore_key"]) if parent_effort else None
     if earlier:
         rating["effort"] = int(earlier)

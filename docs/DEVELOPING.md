@@ -1,4 +1,4 @@
-# Developing Jar — state and workflow (as of app 1.0.1, 2026-10-13)
+# Developing Jar — state and workflow (as of app 1.1.0, 2026-10-13)
 
 ## Layout
 | Path | What |
@@ -11,6 +11,7 @@
 | `worker/agent.py` | prompts (SYSTEM for admin, GUEST for family), tool loop, think/no-think retry, num_ctx |
 | `worker/tools.py` | tools: add_task, update_task, find_tasks, note_on_task, draft_whatsapp, draft_join_instructions, draft_email (+ send task), create_event, save_note, lesson idea, search_notes |
 | `worker/taskstore.py` | family task store (`data/tasks.json`): visibility, requests, actions, thread/waiting_on |
+| `worker/effort.py`, `points.py`, `filelock.py` | points game: AI effort rating + rules, coin ledger (`data/points.json`), shared file lock — see POINTS.md |
 | `worker/family.py`, `config.py`, `join.py`, `replies.py`, `evaluate.py` | family/tokens, config, invite text + join page, ✨ quick replies, AI test |
 | `android/` | app (Java, minSdk 29): tasks, thread screen, settings pages, 2 widgets, updater; version in `android/VERSION` |
 | `android/CHANGES.md` | one line per version `x.y.z \| עברית \| English` — shown in the app's update bar |

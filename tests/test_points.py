@@ -59,24 +59,31 @@ class EffortRating(unittest.TestCase):
 
     def test_prompt_knows_who_and_never_names_the_test_chores(self):
         kid = effort.build_prompt("לתלות כביסה", "", Person("c", "C", "child", age=9), ["hang-laundry", "wash-car"])
-        self.assertIn("a 9-year-old child", kid)
-        self.assertIn("add 1 to the effort", kid)
+        self.assertIn("for a grown-up", kid)             # the model rates the adult version; the code adds the child's bump
         self.assertIn("hang-laundry, wash-car", kid)
         adult = effort.build_prompt("לשלם חשבון", "אונליין", Person("a", "A", "parent"))
-        self.assertIn("an adult", adult)
-        self.assertNotIn("add 1 to the effort", adult)
         self.assertIn("Notes: אונליין", adult)
         self.assertIn("insurance, repairs, paperwork", adult)
         for word in CALIBRATION_WORDS:                       # the model must judge, not copy
             self.assertNotIn(word, effort.PROMPT.lower())
         self.assertLess(len(effort.PROMPT), 2200)
 
+    def test_a_child_gets_the_adult_rating_plus_a_bump(self):
+        reply = '{"effort": 3, "minutes": 15, "category": "laundry", "chore_key": "hang-laundry", "reason": "ok"}'
+        with mock.patch.object(effort, "chat", return_value=reply):
+            for age, expect in ((0, 4), (9, 5), (12, 4)):
+                r = effort.rate("http://x", "m", "לתלות כביסה", "", Person("c", "C", "child", age=age), [])
+                self.assertEqual(r["effort"], expect, age)
+            self.assertEqual(effort.rate("http://x", "m", "לתלות כביסה", "", Person("a", "A", "parent"), [])["effort"], 3)
+        with mock.patch.object(effort, "chat", return_value=reply.replace('"effort": 3', '"effort": 9')):
+            self.assertEqual(effort.rate("http://x", "m", "x", "", Person("c", "C", "child", age=8), [])["effort"], 10)
+
     def test_a_parents_earlier_correction_is_the_starting_point(self):
         reply = '{"effort": 4, "minutes": 20, "category": "laundry", "chore_key": "hang-laundry", "reason": "ok"}'
         with mock.patch.object(effort, "chat", return_value=reply) as chat:
             who = Person("c", "C", "child", age=9)
             r = effort.rate("http://x", "m", "לתלות כביסה", "", who, [], lambda key: None)
-            self.assertEqual(r["effort"], 4)
+            self.assertEqual(r["effort"], 6)    # 4 from the model + 2 for a child under 10
             r = effort.rate("http://x", "m", "לתלות כביסה", "", who, [], lambda key: 6 if key == "hang-laundry" else None)
             self.assertEqual((r["effort"], r["rated_by"]), (6, "ai"))
             self.assertIn("parent", r["reason"])
