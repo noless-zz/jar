@@ -254,4 +254,5 @@
     <string name="widget_marked_done">Done ✓</string>
     <string name="widget_accepted">Added ✓</string>
     <string name="update_whats_new">New: %1$s</string>
+    <string name="pair_no_address">This link has the code but not the PC\'s address. Ask for a new invitation (⋮ → Invite someone to Jar).</string>
 </resources>

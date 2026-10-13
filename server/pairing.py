@@ -95,9 +95,9 @@ def tailscale_status(timeout: float = 4) -> Tailscale:
     if not exe:
         return Tailscale(problem="not installed")
     try:
-        out = subprocess.run([exe, "status", "--json"], capture_output=True, text=True, timeout=timeout,
+        out = subprocess.run([exe, "status", "--json"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except (OSError, subprocess.TimeoutExpired) as e:
+    except (OSError, subprocess.TimeoutExpired, ValueError) as e:
         return Tailscale(installed=True, problem=f"tailscale CLI failed ({type(e).__name__})")
     if not out.stdout.strip():
         return Tailscale(installed=True, problem=(out.stderr.strip() or "Tailscale service not running")[:200])
@@ -105,9 +105,9 @@ def tailscale_status(timeout: float = 4) -> Tailscale:
     if ts.running:
         try:
             serve = subprocess.run([exe, "serve", "status", "--json"], capture_output=True, text=True,
-                                   timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                   encoding="utf-8", errors="replace", timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             ts.funnel_url = parse_funnel(serve.stdout)
-        except (OSError, subprocess.TimeoutExpired):
+        except (OSError, subprocess.TimeoutExpired, ValueError):
             pass
     return ts
 
@@ -143,7 +143,17 @@ def lan_addresses() -> list[str]:
 
 
 def discover() -> Addresses:
-    return Addresses(lan=lan_addresses(), tailscale=tailscale_status())
+    """Never fails: a part that can't be found is just left out (Tailscale names with Hebrew letters,
+    a slow CLI…), so pairing links always carry at least the home address."""
+    try:
+        lan = lan_addresses()
+    except Exception:  # noqa: BLE001
+        lan = []
+    try:
+        ts = tailscale_status()
+    except Exception as e:  # noqa: BLE001
+        ts = Tailscale(problem=f"{type(e).__name__}: {e}"[:200])
+    return Addresses(lan=lan, tailscale=ts)
 
 
 def pairing_urls(addrs: Addresses, port: int) -> list[str]:

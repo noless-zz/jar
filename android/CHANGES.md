@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+0.9.1 | לחיצה על קישור ההזמנה בוואטסאפ פותחת את Jar ישר; הזמנות תמיד עם כתובת המחשב | Tapping the invite link in WhatsApp opens Jar directly; invites always carry the PC's address
 0.9.0 | הקלטה שהיא פעולה (להכין…, לקנות…) נכנסת כמשימה; רואים מה חדש בכל עדכון | A memo that's a to-do ("to make…", "to buy…") becomes a task; see what's new in each update
 0.8.2 | העלאת הקלטות עובדת מיד אחרי צימוד, גם עם שם מכשיר בעברית | Recordings upload right after pairing, even with a Hebrew device name
 0.8.1 | הדבקת קישור מקבלת את קישור ההזמנה או את כל ההודעה | Paste link accepts the invite link or the whole message

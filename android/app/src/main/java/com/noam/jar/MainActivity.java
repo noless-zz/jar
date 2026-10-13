@@ -215,13 +215,18 @@ public final class MainActivity extends AppCompatActivity {
             testResult.setText(R.string.pair_bad);
             return;
         }
+        boolean known = !prefs.lastGoodUrl().isEmpty() || prefs.serverUrls().size() > 1;
+        if (link.urls.isEmpty() && !known) {
+            testResult.setText(R.string.pair_no_address);   // a code without the PC's address: nothing to try
+            return;
+        }
         if (!link.token.equals(prefs.token())) cache.clearAll();   // someone else's phone now
         prefs.setToken(link.token);
-        prefs.setServerUrls(link.urls);
+        if (!link.urls.isEmpty()) prefs.setServerUrls(link.urls);
         tokenField.setText(link.token);
         urlField.setText(prefs.serverUrl());
-        prefs.addHistory(getResources().getQuantityString(R.plurals.history_paired, link.urls.size(),
-                Jar.localTime(), link.urls.size()));
+        int n = prefs.serverUrls().size();
+        prefs.addHistory(getResources().getQuantityString(R.plurals.history_paired, n, Jar.localTime(), n));
         refresh();
         testConnection(false);   // find the address that works right now
     }

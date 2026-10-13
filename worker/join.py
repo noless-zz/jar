@@ -88,8 +88,10 @@ JOIN_PAGE = """<!doctype html>
 <script>
  var q = location.hash.replace(/^#/, "");
  if (/(^|&)t=/.test(q)) {
-   document.getElementById("open").href = "intent://pair?" + q + "#Intent;scheme=jar;package=com.noam.jar;S.browser_fallback_url=" +
+   var app = "intent://pair?" + q + "#Intent;scheme=jar;package=com.noam.jar;S.browser_fallback_url=" +
        encodeURIComponent("__DOWNLOAD__") + ";end";
+   document.getElementById("open").href = app;
+   setTimeout(function () { location.href = app; }, 300);   // opens Jar straight away when the browser allows
  } else { document.getElementById("open").hidden = true; document.getElementById("bad").hidden = false; }
 </script>
 </body></html>

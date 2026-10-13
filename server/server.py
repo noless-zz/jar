@@ -219,17 +219,24 @@ def _task_error(e: TaskError):
 _URLS: dict = {"at": 0.0, "urls": []}
 
 
-def current_urls() -> list[str]:
-    """Every address phones can use right now (cached 5 min): lets the app learn a new one, e.g. the
-    public Funnel address, without pairing again."""
-    if time.time() - _URLS["at"] > 300:
+def current_urls(request: Request | None = None) -> list[str]:
+    """Every address phones can use right now (cached 5 min; 30 s after a failure): lets the app learn a
+    new one, e.g. the public Funnel address, without pairing again. A request that came in over the
+    internet adds the public address it used, so links built for it always work outside."""
+    if time.time() - _URLS["at"] > (300 if _URLS["urls"] else 30):
         try:
             from . import pairing
             _URLS["urls"] = pairing.pairing_urls(pairing.discover(), int(_cfg.get("port", 8080)))
         except Exception:  # noqa: BLE001
-            pass
+            log.exception("couldn't list this PC's addresses")
         _URLS["at"] = time.time()
-    return _URLS["urls"]
+    urls = list(_URLS["urls"])
+    if request is not None and request.headers.get("tailscale-funnel-request"):
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        public = "https://" + host.split(",")[0].strip() if host else ""
+        if public and public not in urls:
+            urls.insert(min(2, len(urls)), public)
+    return urls
 
 
 @app.get("/v1/me")
@@ -237,7 +244,7 @@ def me(request: Request, authorization: str | None = Header(None), x_device_id: 
     p = check_auth(authorization, request, x_device_id)
     return {"person": p.public(), "family": [x.public() for x in FAMILY.people.values()],
             "timezone": TIMEZONE, "server_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "urls": current_urls()}
+            "urls": current_urls(request)}
 
 
 @app.post("/v1/invite")
@@ -253,7 +260,9 @@ def invite(request: Request, body: dict = Body(...), authorization: str | None =
     who = FAMILY.get(str(body.get("person", ""))) or FAMILY.resolve(str(body.get("person", "")))
     if who is None:
         raise HTTPException(400, "no such family member")
-    urls = current_urls()
+    urls = current_urls(request)
+    if not urls:
+        raise HTTPException(503, "the PC can't tell its own address right now; try again in a minute")
     link = pairing.pairing_link(FAMILY.token_for(who.id), urls)
     page = join.join_url(urls, link)
     lang = str(body.get("language", "he"))

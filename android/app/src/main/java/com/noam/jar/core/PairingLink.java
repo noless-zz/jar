@@ -57,7 +57,8 @@ public final class PairingLink {
                 default: break;  // newer servers may add fields; ignore them
             }
         }
-        if (!"1".equals(version) || token == null || token.isEmpty() || urls.isEmpty()) return null;
+        // No address (an old invite): still a valid code; the app keeps the addresses it already has.
+        if (!"1".equals(version) || token == null || token.isEmpty()) return null;
         return new PairingLink(token, urls);
     }
 

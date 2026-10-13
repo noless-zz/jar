@@ -260,4 +260,5 @@
     <string name="widget_marked_done">בוצע ✓</string>
     <string name="widget_accepted">נוסף ✓</string>
     <string name="update_whats_new">מה חדש: %1$s</string>
+    <string name="pair_no_address">בקישור יש קוד אבל לא את כתובת המחשב. בקשו הזמנה חדשה (⋮ ← הזמנה ל-Jar).</string>
 </resources>

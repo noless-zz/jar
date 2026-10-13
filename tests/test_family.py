@@ -379,6 +379,18 @@ class Api(Base):
         self.assertEqual(self.c.post("/v1/admin/command", headers=self.h("yoni"), json={"cmd": "restart"}).status_code, 403)
         self.assertEqual(self.c.post("/v1/admin/command", headers=self.h("avi"), json={"cmd": "rm"}).status_code, 400)
 
+    def test_invite_over_the_internet_uses_the_public_address_it_came_in_on(self):
+        import time as _t
+        self.server._URLS.update(at=_t.time(), urls=[])          # discovery failed on the PC
+        try:
+            h = {**self.h("avi"), "Tailscale-Funnel-Request": "?1", "Host": "pc.tail1.ts.net"}
+            r = self.c.post("/v1/invite", headers=h, json={"person": "yoni"})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertIn("https://pc.tail1.ts.net/v1/join#v=1&t=", r.json()["text"])
+            self.assertEqual(self.c.post("/v1/invite", headers=self.h("avi"), json={"person": "yoni"}).status_code, 503)
+        finally:
+            self.server._URLS.update(at=0.0, urls=[])
+
     def test_internet_requests_only_reach_the_phone_api(self):
         funnel = {"Tailscale-Funnel-Request": "?1"}
         self.assertEqual(self.c.get("/", headers=funnel).status_code, 404)

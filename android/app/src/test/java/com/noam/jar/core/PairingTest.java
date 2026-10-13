@@ -36,7 +36,7 @@ public class PairingTest {
         assertNull(PairingLink.parse("https://example.com"));
         assertNull(PairingLink.parse("jar://pair?v=2&t=x&u=http%3A%2F%2Fa"));          // unknown version
         assertNull(PairingLink.parse("jar://pair?v=1&u=http%3A%2F%2Fa"));              // no token
-        assertNull(PairingLink.parse("jar://pair?v=1&t=x&u=ftp%3A%2F%2Fa"));           // no usable url
+        assertEquals(0, PairingLink.parse("jar://pair?v=1&t=x&u=ftp%3A%2F%2Fa").urls.size());   // code only
         assertNull(PairingLink.parse(null));
         assertNull(PairingLink.parse("https://pc.ts.net/v1/join#"));                    // empty
     }
