@@ -155,7 +155,8 @@ async def upload_memo(
     if not ID_RE.match(x_memo_id):
         raise HTTPException(400, "bad memo id")
     if not DEVICE_RE.match(x_device_id):
-        raise HTTPException(400, "bad device id")
+        # e.g. a Hebrew name typed in the app: keep the safe part rather than refuse the memo
+        x_device_id = re.sub(r"[^A-Za-z0-9_-]", "", x_device_id)[:32] or "phone"
     expected = x_sha256.lower()
 
     # Idempotent: a retry of a memo we already stored is acknowledged again.

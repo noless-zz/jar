@@ -46,6 +46,16 @@ public final class ServerList {
         return out;
     }
 
+    /**
+     * The device name goes in an HTTP header, which only carries plain ASCII: "ליבנה" or
+     * "my phone!" would stop every upload. Keeps letters, digits, - and _ (else "phone").
+     */
+    public static String cleanDeviceId(String v) {
+        String s = v == null ? "" : v.trim().replace(' ', '-').replaceAll("[^A-Za-z0-9_-]", "");
+        if (s.length() > 32) s = s.substring(0, 32);
+        return s.isEmpty() ? "phone" : s;
+    }
+
     /** The public HTTPS address (Tailscale Funnel): works anywhere, no app needed on the phone. */
     public static boolean isPublic(String url) {
         return url != null && url.startsWith("https://");

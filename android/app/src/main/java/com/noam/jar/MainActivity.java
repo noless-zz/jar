@@ -255,7 +255,7 @@ public final class MainActivity extends AppCompatActivity {
                             : ServerList.isTailscale(c.url) ? R.string.test_ok_tailscale
                             : R.string.test_ok_home, hostOf(c.url)));
                     urlField.setText(prefs.serverUrl());
-                    UploadWorker.enqueue(this);   // anything waiting can go now
+                    UploadWorker.now(this);       // anything waiting can go now
                     TaskSync.now(this);           // and fetch who this phone belongs to + the tasks
                 } else if (Uploader.BAD_TOKEN.equals(c.problem)) {
                     testResult.setText(R.string.test_bad_token);
@@ -278,10 +278,10 @@ public final class MainActivity extends AppCompatActivity {
     private void setUpMemos() {
         offlineSwitch.setOnCheckedChangeListener((b, on) -> {
             prefs.setOfflineSim(on);
-            if (!on) UploadWorker.enqueue(this);   // "Wi-Fi is back": flush the queue
+            if (!on) UploadWorker.now(this);       // "Wi-Fi is back": flush the queue
             refresh();
         });
-        findViewById(R.id.upload_now).setOnClickListener(v -> UploadWorker.enqueue(this));
+        findViewById(R.id.upload_now).setOnClickListener(v -> UploadWorker.now(this));
         findViewById(R.id.open_memos).setOnClickListener(v -> startActivity(new Intent(this, MemosActivity.class)));
         findViewById(R.id.clear_log).setOnClickListener(v -> {
             prefs.clearHistory();

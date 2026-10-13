@@ -80,11 +80,11 @@ public final class Prefs {
 
     /** Shows up in the server's metadata so phone memos are easy to tell from the pendant's. */
     public String deviceId() {
-        return sp.getString(KEY_DEVICE_ID, "phone-01");
+        return com.noam.jar.core.ServerList.cleanDeviceId(sp.getString(KEY_DEVICE_ID, "phone-01"));
     }
 
     public void setDeviceId(String v) {
-        sp.edit().putString(KEY_DEVICE_ID, v.trim()).apply();
+        sp.edit().putString(KEY_DEVICE_ID, com.noam.jar.core.ServerList.cleanDeviceId(v)).apply();
     }
 
     /** Pretend there is no Wi-Fi: memos stay queued, like the pendant away from home. */

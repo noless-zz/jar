@@ -91,4 +91,12 @@ public class PairingTest {
         assertEquals("abc", PairingLink.parse(msg).token);
         assertEquals("abc", PairingLink.parse("copy: jar://pair?" + q + " thanks").token);
     }
+
+    @Test
+    public void deviceNameIsHeaderSafe() {
+        assertEquals("phone", ServerList.cleanDeviceId("ליבנה"));
+        assertEquals("livne-s23", ServerList.cleanDeviceId(" livne s23 "));
+        assertEquals("phone-01", ServerList.cleanDeviceId("phone-01"));
+        assertEquals(32, ServerList.cleanDeviceId("x".repeat(40)).length());
+    }
 }

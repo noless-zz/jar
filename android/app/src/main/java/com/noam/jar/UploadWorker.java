@@ -29,6 +29,16 @@ public final class UploadWorker extends Worker {
         super(context, params);
     }
 
+    /** "Upload now", a new pairing, a passed connection test: skip any back-off and try at once. */
+    public static void now(Context c) {
+        OneTimeWorkRequest req = new OneTimeWorkRequest.Builder(UploadWorker.class)
+                .setConstraints(new Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build();
+        WorkManager.getInstance(c).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, req);
+    }
+
     public static void enqueue(Context c) {
         OneTimeWorkRequest req = new OneTimeWorkRequest.Builder(UploadWorker.class)
                 .setConstraints(new Constraints.Builder()

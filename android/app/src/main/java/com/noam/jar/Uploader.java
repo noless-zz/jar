@@ -100,8 +100,8 @@ public final class Uploader {
                 // Error pages aren't JSON; the HTTP code below is enough to decide.
             }
             return new Outcome(UploadResult.decide(code, sha, serverSha), "HTTP " + code);
-        } catch (IOException e) {
-            return new Outcome(UploadResult.RETRY, e.getClass().getSimpleName());
+        } catch (IOException | RuntimeException e) {
+            return new Outcome(UploadResult.RETRY, e.getClass().getSimpleName() + ": " + e.getMessage());
         } finally {
             if (http != null) http.disconnect();
         }
@@ -151,7 +151,7 @@ public final class Uploader {
             if (code == 200) return null;
             if (code == 401) return BAD_TOKEN;
             return "HTTP " + code;
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             String m = e.getMessage();
             return e.getClass().getSimpleName() + (m == null ? "" : ": " + m);
         } finally {
