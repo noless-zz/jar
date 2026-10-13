@@ -69,9 +69,21 @@ public final class TaskLists {
     /** "Asked": what I gave or asked someone else to do. */
     public static List<Task> asked(List<Task> all, String me) {
         List<Task> out = new ArrayList<>();
-        for (Task t : all) if (me.equals(t.createdBy) && !me.equals(t.assignee)) out.add(t);
+        for (Task t : all) {
+            if ((me.equals(t.createdBy) && !me.equals(t.assignee)) || iAskedAndWait(t, me)) out.add(t);
+        }
         Collections.sort(out, ORDER);
         return out;
+    }
+
+    /** A question of mine on someone else's task, still waiting for their answer. */
+    static boolean iAskedAndWait(Task t, String me) {
+        if (t.waitingOn.isEmpty() || t.waitingOn(me)) return false;
+        for (int i = t.thread.size() - 1; i >= 0; i--) {
+            Task.Note n = t.thread.get(i);
+            if (n.ask) return me.equals(n.by);
+        }
+        return false;
     }
 
     /** "Family" (parents): everything else the server let me see — mostly the children's tasks. */

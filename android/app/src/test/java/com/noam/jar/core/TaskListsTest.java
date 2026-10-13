@@ -151,4 +151,18 @@ public class TaskListsTest {
         q.thread.add(note(2, "yoni", false));                       // another note: news again
         org.junit.Assert.assertEquals(1, TaskLists.newNotes(java.util.Collections.singletonList(q), "dana", seen).size());
     }
+
+    @Test
+    public void myQuestionOnSomeoneElsesTaskIsUnderAsked() {
+        Task q = t("q", "yoni", "yoni", "open", null);            // Yoni's own task
+        Task.Note n = new Task.Note();
+        n.id = 1;
+        n.by = "dana";
+        n.ask = true;
+        q.thread.add(n);
+        q.waitingOn = "yoni";
+        org.junit.Assert.assertEquals(1, TaskLists.asked(java.util.Collections.singletonList(q), "dana").size());
+        q.waitingOn = "";                                            // answered: back off the list
+        org.junit.Assert.assertEquals(0, TaskLists.asked(java.util.Collections.singletonList(q), "dana").size());
+    }
 }
