@@ -108,7 +108,7 @@ def cases(admin: str, fam: Family) -> list[Case]:
              lambda r: _one_task(r, son, "כלב", "2026-10-12T18:00")),
         Case("join instructions contain the real steps",
              "לשלוח לליבנה בוואטסאפ הוראות איך להתקין את האפליקציה של Jar ולהצטרף",
-             lambda r: _message(r, name(son), r"releases/latest", r"jar://pair")),
+             lambda r: _message(r, name(son), r"releases/latest", r"(jar://pair|/v1/join#)")),
         Case("short WhatsApp message",
              "תשלח לסווטה שאני מגיע בשש",
              lambda r: _message(r, name(wife), r"(שש|18)")),

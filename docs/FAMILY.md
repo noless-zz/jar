@@ -34,6 +34,12 @@ plus private notes in `notes/Family/<name>/`.
 4. In the app, tap **Pair with PC** and scan the code. The title then shows their name.
 5. Allow **notifications** when asked. Otherwise reminders can't appear.
 
+**From anywhere (no PC needed):** on the admin's phone, ⋮ → **Invite someone to Jar…**, pick the person, and WhatsApp
+opens with their message: the download link and their own join link. Once the public address is on, they tap the link,
+then **Open in Jar**, and they're paired. Saying "send Livne how to join Jar" in a memo makes the same message.
+
+**Emails:** Jar only drafts emails. Each draft also makes a task "send the email: …", so tick it once you've sent it.
+
 The admin's phone keeps using `[server] token`, so it stays paired. Updating the app keeps the pairing.
 
 Phones paired before the public address existed learn it by themselves on their next sync at home (app 0.6.0 or newer),

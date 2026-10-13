@@ -195,6 +195,31 @@ class WhatsApp(Base):
         self.assertEqual(st.snapshot(fam.people["yoni"])["tasks"][2]["phone"], "")
         self.assertIn("draft_whatsapp", registry(n))
 
+    def test_email_draft_comes_with_a_send_task(self):
+        n = Notes(self.tmp / "notes", TZ, MemoContext("abcdef0123456789", datetime(2026, 10, 11, 9, 0, tzinfo=TZ)),
+                  accounts={}, store=self.store, family=self.fam, speaker=self.p["avi"])
+        out = n.draft_email("אסיפת הורים", "שלום, ...", to="ruth@example.com", account="school")
+        self.assertIn("task to send it", out)
+        tasks = self.store.snapshot(self.p["avi"])["tasks"]
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual((tasks[0]["assignee"], tasks[0].get("kind", "task")), ("avi", "task"))
+        self.assertIn("לשלוח את המייל: אסיפת הורים", tasks[0]["title"])
+        self.assertIn("already exists", n.add_task("לשלוח את המייל לרות"))     # the model adding its own: skipped
+        self.assertEqual(len(self.store.snapshot(self.p["avi"])["tasks"]), 1)
+
+    def test_join_message_uses_the_public_page(self):
+        from worker import join
+        link = "jar://pair?v=1&t=SECRET&u=http%3A%2F%2F192.168.1.5%3A8080&u=https%3A%2F%2Fpc.ts.net"
+        page = join.join_url(["http://192.168.1.5:8080", "https://pc.ts.net"], link)
+        self.assertEqual(page, "https://pc.ts.net/v1/join#v=1&t=SECRET&u=http%3A%2F%2F192.168.1.5%3A8080&u=https%3A%2F%2Fpc.ts.net")
+        self.assertEqual(join.join_url(["http://192.168.1.5:8080"], link), "")
+        msg = join.message("ליבנה", join.DOWNLOAD, link, page)
+        self.assertIn(page, msg)
+        self.assertNotIn("jar://", msg)
+        self.assertNotIn("Tailscale", msg)
+        self.assertIn("jar://pair", join.message("ליבנה", join.DOWNLOAD, link, ""))    # no public address
+        self.assertNotIn("SECRET", join.page())
+
 
 class DayWords(unittest.TestCase):
     def test_days_as_said(self):
@@ -315,6 +340,22 @@ class Api(Base):
         self.assertEqual(self.c.post("/v1/dashboard-login", headers=self.h("dana")).status_code, 403)
         r = self.c.post("/v1/dashboard-login", headers=self.h("avi"))
         self.assertTrue(r.json()["path"].startswith("login?n="))
+
+    def test_invite_from_the_admins_phone(self):
+        self.server._URLS.update(at=9e18, urls=["http://192.168.1.5:8080", "https://pc.ts.net"])
+        try:
+            funnel = {"Tailscale-Funnel-Request": "?1"}
+            r = self.c.post("/v1/invite", headers={**self.h("avi"), **funnel}, json={"person": "yoni"})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertTrue(r.json()["public"])
+            self.assertIn("https://pc.ts.net/v1/join#v=1&t=" + self.fam.token_for("yoni"), r.json()["text"])
+            self.assertEqual(self.c.post("/v1/invite", headers=self.h("dana"), json={"person": "yoni"}).status_code, 403)
+            self.assertEqual(self.c.post("/v1/invite", headers=self.h("avi"), json={"person": "bob"}).status_code, 400)
+            page = self.c.get("/v1/join", headers=funnel)
+            self.assertEqual(page.status_code, 200)
+            self.assertIn("intent://pair?", page.text)
+        finally:
+            self.server._URLS.update(at=0.0, urls=[])
 
     def test_internet_requests_only_reach_the_phone_api(self):
         funnel = {"Tailscale-Funnel-Request": "?1"}

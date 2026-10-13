@@ -121,6 +121,7 @@ class Notes:
     store: object = None        # TaskStore (family task list); None = old Tasks.md-only mode
     family: object = None       # Family
     speaker: object = None      # Person who recorded the memo
+    _email_reminded: bool = False   # one "send the email" task per memo
     join_info: object = None    # callable(person) -> {"download", "pair_link"}: for get_join_instructions
     transcript: str = ""        # what was said: lets day words in the memo correct a miscomputed date
 
@@ -204,6 +205,8 @@ class Notes:
             if tm <= f"{self.ctx.recorded_local:%H:%M}":
                 d += timedelta(days=1)          # "at 8" said in the evening means tomorrow
         if self.store is not None:
+            if self._email_reminded and not for_person and re.search(r"(מייל|אימייל|e-?mail|\bmail)", title, re.I):
+                return "ok: the task to send the email already exists"
             return self._family_task(title.strip(), d, tm, notes.strip(), for_person)
         line = f"- [ ] {title.strip()}"
         if d:
@@ -248,44 +251,23 @@ class Notes:
 
     def get_join_instructions(self, for_person: str = "", language: str = "he") -> str:
         """Facts for a "how to install / join Jar" message: download link, the person's own pairing link."""
+        from . import join
         who = self.family.resolve(for_person) if (self.family is not None and for_person) else None
-        info = self.join_info(who) if callable(self.join_info) else {
-            "download": "https://github.com/noless-zz/jar/releases/latest", "pair_link": ""}
-        dl, pair = info.get("download", ""), info.get("pair_link", "")
-        if (language or "he").lower().startswith("en"):
-            steps = [f"1. On your Android phone open {dl} and tap the .apk file under Assets to install Jar "
-                     "(allow installing from the browser if asked).",
-                     "2. Open Jar and allow notifications and the microphone."]
-            if pair:
-                steps.append(f"3. Copy this personal link, then in Jar tap ⋮ → Settings & pairing → Paste link:\n{pair}")
-                steps.append("4. At home it works over the Wi-Fi. To use it outside, install Tailscale and I'll sign it in.")
-            else:
-                steps.append("3. Then ask me for your personal pairing code.")
-            steps.append("In Jar you see your tasks, tick them off, and record a voice memo with the mic button.")
-        else:
-            steps = [f"1. בטלפון (אנדרואיד) פתחו את הקישור {dl} ולחצו על קובץ ה-apk שתחת Assets כדי להתקין את Jar "
-                     "(אם שואלים – לאשר התקנה מהדפדפן).",
-                     "2. פותחים את Jar ומאשרים התראות ומיקרופון."]
-            if pair:
-                steps.append(f"3. מעתיקים את הקישור האישי הזה, ובאפליקציה: ⋮ ← הגדרות וצימוד ← הדבקת קישור:\n{pair}")
-                steps.append("4. בבית זה עובד דרך ה-WiFi. כדי שיעבוד גם בחוץ צריך להתקין Tailscale – אני אחבר.")
-            else:
-                steps.append("3. אחר כך תבקשו ממני את קוד הצימוד האישי.")
-            steps.append("ב-Jar רואים את המשימות, מסמנים מה בוצע, ומקליטים הודעה קולית בכפתור המיקרופון.")
-        note = "" if pair else " (no personal pairing link: not a family member in config.toml)"
+        info = self.join_info(who) if callable(self.join_info) else {"download": join.DOWNLOAD, "pair_link": ""}
+        steps = join.steps(info.get("download", join.DOWNLOAD), info.get("pair_link", ""),
+                           info.get("join_url", ""), language)
+        note = "" if info.get("pair_link") else " (no personal pairing link: not a family member in config.toml)"
         return "Put these steps in the message (you may add a friendly opening line):" + note + "\n" + "\n".join(steps)
 
     def draft_join_instructions(self, for_person: str, greeting: str = "", language: str = "he") -> str:
         """The whole "how to install and join Jar" WhatsApp message in one step: greeting + real steps
         + the person's own pairing link, prepared on the speaker's phone."""
-        facts = self.get_join_instructions(for_person, language)
-        steps = facts.split("\n", 1)[1] if "\n" in facts else facts
+        from . import join
         who = self.family.resolve(for_person) if self.family is not None else None
-        hello = (greeting or "").strip() or (
-            (f"היי {who.name}! " if who else "היי! ") + "ככה מתקינים את Jar ומתחברים:"
-            if not (language or "he").lower().startswith("en") else
-            (f"Hi {who.name}! " if who else "Hi! ") + "Here's how to install Jar and join:")
-        return self.draft_whatsapp(hello + "\n\n" + steps, to=who.name if who else for_person)
+        info = self.join_info(who) if callable(self.join_info) else {"download": join.DOWNLOAD, "pair_link": ""}
+        text = join.message(who.name if who else "", info.get("download", join.DOWNLOAD), info.get("pair_link", ""),
+                            info.get("join_url", ""), language, greeting)
+        return self.draft_whatsapp(text, to=who.name if who else for_person)
 
     def search_notes(self, query: str) -> str:
         """Find things the speaker saved before (notes, ideas, lesson ideas) to use in a message or task."""
@@ -485,7 +467,8 @@ class Notes:
                                  f" · {r.summary}{' ([open](' + r.link + '))' if r.link else ''} ({self._link()})\n",
                                  "# Email drafts")
                 who = f" to {', '.join(recipients)}" if recipients else " (add the recipient)"
-                return self._record("draft_email", f"email draft “{subject.strip()}”{who} in {r.summary}", p, r.link)
+                out = self._record("draft_email", f"email draft “{subject.strip()}”{who} in {r.summary}", p, r.link)
+                return out + self._send_reminder(subject.strip(), recipients, r.summary, r.link)
             except NotConnected as e:
                 why_local = str(e)
             except Exception as e:  # noqa: BLE001
@@ -495,7 +478,24 @@ class Notes:
         p.write_text(f"---\nto: {', '.join(recipients)}\naccount: {account}\nmemo: {self.ctx.memo_id}\n---\n\n"
                      f"# {subject.strip()}\n\n{body.strip()}\n\nSource: {self._link()}\n",
                      encoding="utf-8", newline="\n")
-        return self._record("draft_email", f"email draft “{subject.strip()}” saved as a note ({why_local})", p)
+        out = self._record("draft_email", f"email draft “{subject.strip()}” saved as a note ({why_local})", p)
+        return out + self._send_reminder(subject.strip(), recipients, "Jar's notes", "")
+
+    def _send_reminder(self, subject: str, recipients: list[str], where: str, link: str) -> str:
+        """Drafts are never sent by Jar, so every draft also gets a task "send it", ticked off once sent."""
+        if self.store is None or self._email_reminded:
+            return ""
+        hebrew = bool(re.search(r"[\u0590-\u05FF]", subject + " " + (self.transcript or "")))
+        to = ", ".join(recipients)
+        title = (f"לשלוח את המייל: {subject}" + (f" ({to})" if to else "")) if hebrew else \
+                (f"Send the email: {subject}" + (f" ({to})" if to else ""))
+        notes = (f"הטיוטה מחכה ב-{where}" if hebrew else f"The draft is waiting in {where}") + (f": {link}" if link else "")
+        try:
+            self._family_task(title, None, None, notes, "")
+        except ToolError:
+            return ""
+        self._email_reminded = True
+        return " — also added a task to send it (don't add another)"
 
     def log_memo(self, duration_ms: int, device: str, transcript: str, language: str, summary: str) -> None:
         """The daily memo log: always written, so nothing said is ever lost."""

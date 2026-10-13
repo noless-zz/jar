@@ -201,4 +201,8 @@
     <string name="message_copied">הועתק</string>
     <string name="whatsapp_missing">וואטסאפ לא מותקן. אפשר להשתמש ב„העתקת הטקסט”.</string>
     <string name="notif_message_ready">%1$s · מוכן לשליחה</string>
+    <string name="menu_invite">הזמנה ל-Jar…</string>
+    <string name="invite_nobody">אין עוד בני משפחה: מוסיפים אותם ב-config.toml במחשב.</string>
+    <string name="invite_preparing">מכין את ההזמנה…</string>
+    <string name="invite_failed">לא הצלחתי להכין את ההזמנה: %1$s</string>
 </resources>

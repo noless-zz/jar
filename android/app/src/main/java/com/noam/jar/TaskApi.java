@@ -85,6 +85,18 @@ public final class TaskApi {
     }
 
     /** My recent memos: transcript and what Jar did with each. */
+    /** Admin only: the personal "install Jar and join" message for one family member. */
+    public static JSONObject invite(Prefs prefs, String personId) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("person", personId);
+            body.put("language", java.util.Locale.getDefault().getLanguage().matches("iw|he") ? "he" : "en");
+        } catch (org.json.JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/invite", body);
+    }
+
     public static JSONObject memos(Prefs prefs) throws IOException {
         return call(prefs, "GET", "/v1/memos?limit=40", null);
     }

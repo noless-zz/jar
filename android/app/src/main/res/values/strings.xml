@@ -195,4 +195,8 @@
     <string name="message_copied">Copied</string>
     <string name="whatsapp_missing">WhatsApp isn\'t installed. Use “Copy the text” instead.</string>
     <string name="notif_message_ready">%1$s · ready to send</string>
+    <string name="menu_invite">Invite someone to Jar…</string>
+    <string name="invite_nobody">No other family members yet: add them in config.toml on the PC.</string>
+    <string name="invite_preparing">Preparing the invitation…</string>
+    <string name="invite_failed">Couldn\'t prepare the invitation: %1$s</string>
 </resources>

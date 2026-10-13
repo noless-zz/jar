@@ -137,6 +137,8 @@ public final class TasksActivity extends AppCompatActivity {
                 checkForUpdate(true);
             } else if (id == R.id.menu_memos) {
                 startActivity(new Intent(this, MemosActivity.class));
+            } else if (id == R.id.menu_invite) {
+                chooseInvite();
             } else if (id == R.id.menu_share_app) {
                 shareAppLink();
             } else if (id == R.id.menu_settings) {
@@ -301,6 +303,59 @@ public final class TasksActivity extends AppCompatActivity {
         startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(downloadPage())));
     }
 
+    /** The admin picks a family member; the PC writes their personal "install and join" message. */
+    private void chooseInvite() {
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, String> e : cache.names().entrySet()) {
+            if (e.getKey().equals(cache.myId())) continue;
+            ids.add(e.getKey());
+            labels.add(e.getValue());
+        }
+        if (ids.isEmpty()) {
+            Toast.makeText(this, R.string.invite_nobody, Toast.LENGTH_LONG).show();
+            return;
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.menu_invite)
+                .setItems(labels.toArray(new String[0]), (d, which) -> invite(ids.get(which)))
+                .show();
+    }
+
+    private void invite(String personId) {
+        Toast.makeText(this, R.string.invite_preparing, Toast.LENGTH_SHORT).show();
+        io.execute(() -> {
+            try {
+                org.json.JSONObject r = TaskApi.invite(prefs, personId);
+                Task t = new Task();
+                t.message = r.optString("text");
+                t.phone = r.optString("phone");
+                main.post(() -> {
+                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(t.whatsappUrl()));
+                    for (String pkg : new String[] {"com.whatsapp", "com.whatsapp.w4b"}) {
+                        try {
+                            getPackageManager().getPackageInfo(pkg, 0);
+                            i.setPackage(pkg);
+                            break;
+                        } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+                            // next one
+                        }
+                    }
+                    try {
+                        startActivity(i);
+                    } catch (android.content.ActivityNotFoundException e) {
+                        Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                                .putExtra(Intent.EXTRA_TEXT, t.message);
+                        startActivity(Intent.createChooser(send, getString(R.string.menu_invite)));
+                    }
+                });
+            } catch (IOException e) {
+                main.post(() -> Toast.makeText(this, getString(R.string.invite_failed, e.getMessage()),
+                        Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
     /** WhatsApp & co.: "Get Jar: <link>" so the family can install it themselves. */
     private void shareAppLink() {
         Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
@@ -344,6 +399,7 @@ public final class TasksActivity extends AppCompatActivity {
         String name = cache.myName();
         toolbar.setTitle(name.isEmpty() ? getString(R.string.tasks_title) : getString(R.string.tasks_title_for, name));
         toolbar.getMenu().findItem(R.id.menu_dashboard).setVisible(cache.iAmAdmin());
+        toolbar.getMenu().findItem(R.id.menu_invite).setVisible(cache.iAmAdmin());
         toolbar.getMenu().findItem(R.id.menu_update).setTitle(getString(R.string.menu_update_version,
                 BuildConfig.VERSION_NAME));
         TabLayout.Tab familyTab = tabs.getTabAt(TAB_FAMILY);

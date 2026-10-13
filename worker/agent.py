@@ -41,6 +41,7 @@ Tools:
   "done with…", "move…") -> find_tasks, then update_task. Never add a second task for it.
 - A message to someone (WhatsApp, SMS, "תשלח ל…", "תכתוב ל…", "תגיד ל… בוואטסאפ") -> draft_whatsapp.
   An email ("email", "מייל", formal letters, school staff/parents) -> draft_email (never invent addresses).
+  draft_email also adds a "send it" task by itself: do not add one.
 - For create_event and draft_email pick the account: "school" for classes, students, parents, staff,
   lessons, grades or the school; "personal" for everything else.
 - Anything else -> save_note. If the memo is unclear, save it as a note tagged "unsorted".

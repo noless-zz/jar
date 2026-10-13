@@ -20,6 +20,11 @@
         android:title="@string/menu_update"
         app:showAsAction="never" />
     <item
+        android:id="@+id/menu_invite"
+        android:title="@string/menu_invite"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/menu_share_app"
         android:title="@string/share_app"
         app:showAsAction="never" />

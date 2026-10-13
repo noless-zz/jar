@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Body, FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from worker.family import Family, Person
 from worker.taskstore import TaskError, TaskStore
@@ -237,6 +237,36 @@ def me(request: Request, authorization: str | None = Header(None), x_device_id: 
     return {"person": p.public(), "family": [x.public() for x in FAMILY.people.values()],
             "timezone": TIMEZONE, "server_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "urls": current_urls()}
+
+
+@app.post("/v1/invite")
+def invite(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+           x_device_id: str = Header("")):
+    """The admin's phone: a ready "install Jar and join" WhatsApp message for one family member,
+    with their own link. Works from anywhere, so nobody has to stand at the PC."""
+    from worker import join
+    from . import pairing
+    p = check_auth(authorization, request, x_device_id)
+    if not p.admin:
+        raise HTTPException(403, "only " + FAMILY.admin.name + " can invite")
+    who = FAMILY.get(str(body.get("person", ""))) or FAMILY.resolve(str(body.get("person", "")))
+    if who is None:
+        raise HTTPException(400, "no such family member")
+    urls = current_urls()
+    link = pairing.pairing_link(FAMILY.token_for(who.id), urls)
+    page = join.join_url(urls, link)
+    lang = str(body.get("language", "he"))
+    _, phone = FAMILY.phone_for(who.name)
+    log.info("invite for %s prepared on %s's phone", who.id, p.id)
+    return {"to": who.name, "phone": phone, "public": bool(page),
+            "text": join.message(who.name, join.DOWNLOAD, link, page, lang)}
+
+
+@app.get("/v1/join", response_class=HTMLResponse)
+def join_page():
+    """Opened from the WhatsApp invite; the pairing is in the #fragment, which browsers never send."""
+    from worker import join
+    return HTMLResponse(join.page(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/v1/tasks")

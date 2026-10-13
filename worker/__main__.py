@@ -157,13 +157,15 @@ class Worker:
 
     def join_info(self, person) -> dict:
         """What someone needs to start using Jar: the download page and, for family members, their own
-        pairing link (token + this PC's addresses at home and over Tailscale)."""
-        info = {"download": "https://github.com/noless-zz/jar/releases/latest", "pair_link": ""}
+        pairing link (token + this PC's addresses), and the tappable join page when the PC is public."""
+        from . import join
+        info = {"download": join.DOWNLOAD, "pair_link": "", "join_url": ""}
         if person is not None:
             try:
                 from server import pairing
                 urls = pairing.pairing_urls(pairing.discover(), self.cfg.port)
                 info["pair_link"] = pairing.pairing_link(self.family.token_for(person.id), urls)
+                info["join_url"] = join.join_url(urls, info["pair_link"])
             except Exception as e:  # noqa: BLE001
                 log.warning("  pairing link unavailable: %s", e)
         return info
