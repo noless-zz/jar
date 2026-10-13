@@ -159,6 +159,13 @@ class Git:
                 return "this PC has commits GitHub doesn't: not pulling (push or reset them)"
             dirty = [ln for ln in self.run("status", "--porcelain", "--untracked-files=no").stdout.splitlines()
                      if ln.strip()]
+            # Files changed here that already match GitHub (copied over by hand or by a zip update)
+            # lose nothing when reset: put them back to HEAD so the fast-forward can go ahead.
+            same = [ln[3:] for ln in dirty
+                    if self.run("diff", "--quiet", "origin/main", "--", ln[3:]).returncode == 0]
+            if same and len(same) == len(dirty):
+                self.run("checkout", "--", *same)
+                dirty = []
             if dirty:
                 files = ", ".join(ln[3:] for ln in dirty[:3])
                 return f"local edits ({files}): not pulling until they're committed or reverted"

@@ -54,8 +54,12 @@ class Pull(unittest.TestCase):
         self.push("2\n")
         self.assertTrue(git.pull().startswith("updated"))
         self.assertEqual((self.pc / "a.txt").read_text(), "2\n")
-        (self.pc / "a.txt").write_text("my edit\n")              # local edit: never overwritten
+        (self.pc / "a.txt").write_text("3\n")                    # copied by hand, same as GitHub's next commit
         self.push("3\n")
+        self.assertTrue(git.pull().startswith("updated"))
+        self.assertEqual((self.pc / "a.txt").read_text(), "3\n")
+        (self.pc / "a.txt").write_text("my edit\n")              # local edit: never overwritten
+        self.push("4\n")
         status = git.pull()
         self.assertIn("local edits (a.txt)", status)
         self.assertEqual((self.pc / "a.txt").read_text(), "my edit\n")
