@@ -438,8 +438,9 @@ public final class MainActivity extends AppCompatActivity {
     // ---------------------------------------------------------------- app
 
     private void setUpApp() {
-        appVersion.setText(getString(R.string.app_version, BuildConfig.VERSION_NAME,
-                BuildConfig.DEBUG ? "dev" : "release"));
+        String ver = getString(R.string.app_version, BuildConfig.VERSION_NAME, BuildConfig.DEBUG ? "dev" : "release");
+        String news = Updater.availableTag(this) == null ? "" : Updater.whatsNew(this);
+        appVersion.setText(news.isEmpty() ? ver : ver + "\n" + getString(R.string.update_whats_new, news));
         findViewById(R.id.app_check_update).setOnClickListener(v -> checkForUpdate());
         findViewById(R.id.app_share).setOnClickListener(v -> {
             Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")

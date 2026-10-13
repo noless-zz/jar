@@ -378,7 +378,11 @@ public final class TasksActivity extends AppCompatActivity {
     private void refreshUpdate() {
         String tag = Updater.availableTag(this);
         updateBar.setVisibility(tag == null ? View.GONE : View.VISIBLE);
-        if (tag != null) updateText.setText(getString(R.string.update_available, tag, BuildConfig.VERSION_NAME));
+        if (tag != null) {
+            String news = Updater.whatsNew(this);
+            String text = getString(R.string.update_available, tag, BuildConfig.VERSION_NAME);
+            updateText.setText(news.isEmpty() ? text : text + "\n" + getString(R.string.update_whats_new, news));
+        }
     }
 
     private void installUpdate() {

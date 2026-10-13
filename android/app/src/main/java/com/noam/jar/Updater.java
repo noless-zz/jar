@@ -55,6 +55,13 @@ public final class Updater {
         return sp(c).getString("notes", "");
     }
 
+    /** "What's new" since the installed version, one line, in the phone's language ("" if unknown). */
+    public static String whatsNew(Context c) {
+        String lang = java.util.Locale.getDefault().getLanguage();
+        return com.noam.jar.core.Changes.oneLine(releaseNotes(c), BuildConfig.VERSION_CODE,
+                "iw".equals(lang) || "he".equals(lang), 4);
+    }
+
     /**
      * Asks GitHub for the latest release (at most every 6 hours unless forced).
      * Returns true when a newer version is available. Background threads only.
@@ -79,7 +86,7 @@ public final class Updater {
         }
         String notes = rel.optString("body", "");
         sp.edit().putLong("checked_at", System.currentTimeMillis()).putString("tag", tag)
-                .putString("apk", apk).putString("notes", notes.length() > 600 ? notes.substring(0, 600) : notes)
+                .putString("apk", apk).putString("notes", notes.length() > 6000 ? notes.substring(0, 6000) : notes)
                 .apply();
         return availableTag(c) != null;
     }

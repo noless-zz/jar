@@ -253,4 +253,5 @@
     <string name="widget_asks">%1$s asks: %2$s</string>
     <string name="widget_marked_done">Done ✓</string>
     <string name="widget_accepted">Added ✓</string>
+    <string name="update_whats_new">New: %1$s</string>
 </resources>

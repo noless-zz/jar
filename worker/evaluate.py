@@ -132,6 +132,13 @@ def cases(admin: str, fam: Family) -> list[Case]:
              lambda r: (_one_task(r, admin, "מחברת") or
                         (None if r.new()[0]["status"] == "requested" else "not a request")),
              speaker=son),
+        Case("an action without 'remind me' is a task",
+             "לקנות סוללות לשלט של המזגן",
+             lambda r: _one_task(r, admin, "סוללות")),
+        Case("a child's to-do is a task they can see",
+             "להכין לוח שנה לסבתא",
+             lambda r: _one_task(r, son, "לוח שנה"),
+             speaker=son),
         Case("lesson idea",
              "רעיון לשיעור: להשתמש בבינגו כדי לתרגל פונקציות רציונליות בכיתה י'",
              lambda r: None if "save_lesson_idea" in r.tools() else f"not a lesson idea (tools: {r.tools()})"),

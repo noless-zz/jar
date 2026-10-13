@@ -222,8 +222,9 @@ public final class TaskNotify {
         android.content.SharedPreferences sp = c.getSharedPreferences("jar_update", Context.MODE_PRIVATE);
         if (tag.equals(sp.getString("notified_tag", null))) return;
         sp.edit().putString("notified_tag", tag).apply();
+        String news = Updater.whatsNew(c);
         post(c, 7001, base(c, CH_NEW, c.getString(R.string.update_notif_title, tag),
-                c.getString(R.string.update_notif_text)));
+                news.isEmpty() ? c.getString(R.string.update_notif_text) : news));
     }
 
     static int id(String taskId) {

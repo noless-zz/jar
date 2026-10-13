@@ -80,5 +80,6 @@ jobs:
         with:
           tag_name: ${{ steps.v.outputs.tag }}
           name: Jar ${{ steps.v.outputs.version }}
+          body_path: android/CHANGES.md
           generate_release_notes: true
           files: dist/jar-${{ steps.v.outputs.version }}.apk
