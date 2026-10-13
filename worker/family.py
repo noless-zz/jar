@@ -4,8 +4,8 @@ config.toml:
     [family]
     avi  = { name = "אבי",  role = "parent", admin = true, aliases = ["Avi"] }
     dana = { name = "דנה",  role = "parent", aliases = ["Dana"] }
-    yoni = { name = "יוני", role = "child",  aliases = ["Yoni"] }
-    maya = { name = "מאיה", role = "child",  aliases = ["Maya"] }
+    yoni = { name = "יוני", role = "child",  aliases = ["Yoni"], age = 12 }   # age is optional
+    maya = { name = "מאיה", role = "child",  aliases = ["Maya"], age = 8 }
 
 The admin (whoever owns the PC) keeps using [server] token, so existing phones/pendants keep
 working. Everyone else gets their own token, generated once into data/secrets/family_tokens.json.
@@ -30,6 +30,7 @@ class Person:
     admin: bool = False
     aliases: list[str] = field(default_factory=list)
     phone: str = ""               # optional, for "send a WhatsApp to …" (international format, +972…)
+    age: int = 0                  # optional: the points game rates a chore harder for a younger child
 
     @property
     def is_parent(self) -> bool:
@@ -37,6 +38,13 @@ class Person:
 
     def public(self) -> dict:
         return {"id": self.id, "name": self.name, "role": self.role, "admin": self.admin}
+
+
+def _age(value) -> int:
+    try:
+        return max(0, min(120, int(value)))
+    except (TypeError, ValueError):
+        return 0
 
 
 class Family:
@@ -59,7 +67,8 @@ class Family:
                                  role="child" if str(v.get("role", "parent")).lower() == "child" else "parent",
                                  admin=bool(v.get("admin", False)),
                                  aliases=[str(a) for a in v.get("aliases", [])],
-                                 phone=str(v.get("phone", "")).strip()))
+                                 phone=str(v.get("phone", "")).strip(),
+                                 age=_age(v.get("age"))))
         if not people:
             people = [Person("me", "me", "parent", True)]
         fam = cls(people, admin_token, data_dir / "secrets")

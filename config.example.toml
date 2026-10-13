@@ -77,7 +77,17 @@ calendar_id = "primary"
 # yoni = { name = "יוני", role = "child",  aliases = ["Yoni"] }
 # maya = { name = "מאיה", role = "child",  aliases = ["Maya"] }
 # Add phone = "+972501234567" to anyone above so "send Dana a WhatsApp…" opens her chat directly.
+# Add age = 9 to a child so the points game rates chores for their age (optional).
 
 # Other people for WhatsApp drafts (optional). Without a number, WhatsApp asks which chat.
 # [contacts]
 # "סבתא" = "+972501234567"
+
+# ---- Points game (docs/POINTS.md): coins for tasks done, a family leaderboard.
+[points]
+work_day_coins = 30        # a parent's work day (a task called "work day", or the Leaderboard button), once a day
+week_start = "sunday"      # the leaderboard week: Sunday to Saturday
+announce = "sat 20:00"     # the phones announce the week's winner and most improved then
+# Read now, enforced from phase 2: coins per person per day, and a parent's OK before big payments (0 = off).
+daily_cap = 150
+parent_ok_over = 0

@@ -13,13 +13,14 @@ import json
 import re
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
 
 from . import config as config_mod
+from . import effort
 from .agent import Agent
 from .family import Family
 from .taskstore import TaskStore
@@ -152,6 +153,74 @@ def cases(admin: str, fam: Family) -> list[Case]:
     ][:]
 
 
+@dataclass
+class RatingCase:
+    """A task title and the effort the points game should give it (within ±tol), or "no coins"."""
+    name: str
+    title: str
+    who: str                         # "adult" or "child" (a 9-year-old)
+    expect: int | None = None        # None with no_coins=True
+    tol: int = 1
+    no_coins: bool = False
+    kind: str = "task"
+    notes: str = ""
+
+
+def rating_cases() -> list[RatingCase]:
+    """The calibration list from docs/POINTS.md. The prompt never mentions these chores, so a pass means
+    the model can judge, not copy."""
+    return [
+        RatingCase("toilets", "לנקות את השירותים", "adult", 8),
+        RatingCase("a whole room", "לנקות את החדר: לאסוף, לשאוב ולנגב", "adult", 7),
+        RatingCase("hang laundry", "לתלות כביסה", "adult", 4),
+        RatingCase("walk the dog", "לטייל עם הכלב", "adult", 3),
+        RatingCase("dishwasher", "לפרוק את המדיח", "adult", 3),
+        RatingCase("make the bed", "לסדר את המיטה", "adult", 1),
+        RatingCase("help grandma with her calendar", "לעזור לסבתא עם לוח השנה בטלפון", "adult", 5),
+        RatingCase("harder for a 9-year-old", "לתלות כביסה", "child", 5),
+        RatingCase("a WhatsApp draft earns nothing", "WhatsApp → סבתא", "adult", no_coins=True, kind="message"),
+        RatingCase("a 'send the email' reminder earns nothing", "לשלוח את המייל: חידוש ביטוח (חברת הביטוח)",
+                   "adult", no_coins=True),
+    ]
+
+
+def check_rating(rc: RatingCase, rating: dict) -> str | None:
+    if rc.no_coins:
+        return None if rating.get("no_coins") else f"should earn no coins, got effort {rating.get('effort')}"
+    if rating.get("no_coins"):
+        return "got no coins, should earn some"
+    e = int(rating.get("effort", 0))
+    if abs(e - (rc.expect or 0)) > rc.tol:
+        return f"effort {e}, expected {rc.expect} ± {rc.tol} ({rating.get('minutes')} min, {rating.get('reason')})"
+    if rating.get("category") not in effort.CATEGORIES:
+        return f"category {rating.get('category')!r} is not one of the list"
+    return None
+
+
+def run_ratings(cfg: config_mod.Config, real: Family) -> list[dict]:
+    """The effort-rating cases against the real model, in the same shape as the memo results."""
+    adult = real.admin
+    child = next((p for p in real.people.values() if not p.is_parent), None)
+    child = replace(child, age=9) if child else replace(adult, role="child", age=9)
+    out = []
+    for rc in rating_cases():
+        who = child if rc.who == "child" else adult
+        t0 = time.monotonic()
+        try:
+            rating = effort.rule_rating(rc.title, rc.kind, who) or effort.rate(
+                cfg.ollama_url, cfg.llm_model, rc.title, rc.notes, who, [], None, cfg.num_ctx, cfg.keep_alive)
+            problem = check_rating(rc, rating)
+            detail = ("no coins: " + rating.get("reason", "")) if rating.get("no_coins") else (
+                f"effort {rating.get('effort')} (expected {rc.expect}) · {rating.get('minutes')} min · "
+                f"{rating.get('category')} · {rating.get('chore_key')} — {rating.get('reason')}")
+        except Exception as e:  # noqa: BLE001
+            problem, detail = f"{type(e).__name__}: {e}", ""
+        out.append({"case": "rating: " + rc.name, "memo": f"{rc.title} ({'a 9-year-old' if rc.who == 'child' else 'an adult'})",
+                    "ok": problem is None, "problem": problem, "seconds": round(time.monotonic() - t0, 1),
+                    "actions": [detail] if detail else [], "messages": [], "reply": ""})
+    return out
+
+
 def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repeats: int = 1) -> dict:
     cfg = cfg or config_mod.load()
     tz = ZoneInfo(cfg.timezone)
@@ -193,6 +262,9 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
                 "actions": [a["summary"] for a in res.actions],
                 "messages": [m["message"] for m in res.new("message")],
                 "reply": summary})
+    # Effort ratings for the points game (repeats count like the memo cases: the model varies a little).
+    for _ in range(max(1, repeats)):
+        results += run_ratings(cfg, real)
     # Quick replies (the app's ✨ button): one sample, shown in the report for a human to judge.
     from . import replies
     sample = {"title": "לסדר את החדר", "assignee": "son", "created_by": "dad", "waiting_on": "son",

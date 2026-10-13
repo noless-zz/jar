@@ -5,6 +5,8 @@ each other. notes/Tasks.md is rewritten from it after every change, so Obsidian 
 A task:
     id, title, notes, assignee, created_by, status, due, snoozed_until,
     created_at, updated_at, done_at, done_by, memo_id
+    points   {effort 1-10, minutes, category, chore_key, reason, rated_by, no_coins}: what it is worth
+             (worker/effort.py rates it once; a parent can change it; coins are paid by worker/points.py)
 status:  open | done | requested (a child asked someone; waits for a parent) | declined
 due / snoozed_until:  local time, "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (the family's time zone)
 
@@ -17,17 +19,30 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
-import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from . import effort as effort_mod
 from .family import Family, Person
+from .filelock import locked
 
 WHEN_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$")
 ACTIONS = ("done", "reopen", "snooze", "accept", "decline", "delete", "edit")
+
+
+def done_time(epoch) -> str:
+    """When a task was ticked: the phone's own time for a tick made offline (within the last 14 days,
+    never in the future), otherwise now."""
+    try:
+        at = float(epoch)
+    except (TypeError, ValueError):
+        return _now()
+    now = datetime.now(timezone.utc).timestamp()
+    if not (now - 14 * 86400 <= at <= now + 60):
+        return _now()
+    return datetime.fromtimestamp(min(at, now), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class TaskError(Exception):
@@ -54,40 +69,16 @@ def clean_when(value: str | None) -> str | None:
 
 
 class TaskStore:
-    def __init__(self, path: Path, family: Family, markdown: Path | None = None):
+    def __init__(self, path: Path, family: Family, markdown: Path | None = None, points=None):
         self.path, self.family, self.markdown = path, family, markdown
+        self.points = points              # PointsStore, or None (no coins)
         self.lock_path = path.with_suffix(".lock")
 
     # ---- storage ----
     @contextmanager
     def _locked(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        f = open(self.lock_path, "a+")
-        try:
-            for _ in range(200):                     # up to ~10 s
-                try:
-                    if sys.platform == "win32":
-                        import msvcrt
-                        f.seek(0)
-                        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-                    else:
-                        import fcntl
-                        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except OSError:
-                    time.sleep(0.05)
-            else:
-                raise TaskError(503, "task list is busy, try again")
+        with locked(self.lock_path, lambda: TaskError(503, "task list is busy, try again")):
             yield
-        finally:
-            try:
-                if sys.platform == "win32":
-                    import msvcrt
-                    f.seek(0)
-                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-            except OSError:
-                pass
-            f.close()                                # also releases flock
 
     def _read(self) -> dict:
         try:
@@ -118,7 +109,24 @@ class TaskStore:
     def snapshot(self, p: Person) -> dict:
         data = self._read()
         tasks = [t for t in data["tasks"] if self.visible(t, p) and t.get("status") != "deleted"]
+        tasks = self._decorate(tasks)
         return {"rev": data.get("rev", 0), "tasks": tasks}
+
+    def _decorate(self, tasks: list[dict]) -> list[dict]:
+        """Copies of the tasks with "coins": what a done task paid, or what an open one will pay
+        (0 = nothing, or not rated yet), and "paid": true for the first."""
+        if self.points is None:
+            return tasks
+        paid = self.points.paid_map()
+        out = []
+        for t in tasks:
+            t = dict(t)
+            if t["id"] in paid:
+                t.update(coins=paid[t["id"]], paid=True)
+            elif t.get("status") in ("open", "requested"):
+                t["coins"] = self.points.preview(t)
+            out.append(t)
+        return out
 
     def add(self, creator: Person, title: str, assignee: Person | None = None, due: str | None = None,
             notes: str = "", memo_id: str | None = None, kind: str = "task", message: str = "",
@@ -136,6 +144,9 @@ class TaskStore:
             # A prepared WhatsApp message: the phone shows "Send in WhatsApp"; the person presses Send.
             t.update(kind="message", message=(message or "").strip()[:4000], to=(to or "").strip()[:100],
                      phone="".join(ch for ch in (phone or "") if ch.isdigit())[:20])
+        ruled = effort_mod.rule_rating(t["title"], kind, assignee)
+        if ruled is not None:
+            t["points"] = ruled                      # no model needed: no coins, or a parent's work day
         with self._locked():
             data = self._read()
             data["tasks"].append(t)
@@ -146,6 +157,7 @@ class TaskStore:
             fields: dict | None = None) -> dict:
         if action not in ACTIONS:
             raise TaskError(400, f"unknown action {action}")
+        award = None
         with self._locked():
             data = self._read()
             t = next((x for x in data["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
@@ -160,15 +172,21 @@ class TaskStore:
             elif action == "done":
                 if t["status"] == "requested" and not actor.is_parent:
                     raise TaskError(409, "still waiting for a parent to approve it")
-                t.update(status="done", done_at=_now(), done_by=actor.id, snoozed_until=None)
+                # An offline tick carries the time it was made ("at", epoch seconds): paid at that time.
+                t.update(status="done", done_at=done_time((fields or {}).get("at")), done_by=actor.id,
+                         snoozed_until=None)
+                if self.points is not None:
+                    award = self.points.pay(t, t["done_at"])
             elif action == "reopen":
                 t.update(status="open", done_at=None, done_by=None)
+                self._take_back(t, "reopened")
             elif action == "snooze":
                 t["snoozed_until"] = clean_when(until)
             elif action == "delete":
                 if actor.id != t["created_by"] and not actor.admin:
                     raise TaskError(403, "only whoever created it can delete it")
                 t["status"] = "deleted"
+                self._take_back(t, "deleted")
             elif action == "edit":
                 f = fields or {}
                 if "title" in f and str(f["title"]).strip():
@@ -187,9 +205,108 @@ class TaskStore:
                     t["assignee"] = who.id
                     if not actor.is_parent and who.id != actor.id:
                         t["status"] = "requested"     # a child handing it to someone else: a parent OKs it
+                    if t.get("status") == "done":
+                        self._take_back(t, "reassigned")          # the new person didn't do it
+                    elif (t.get("points") or {}).get("rated_by") in ("ai", "default"):
+                        t.pop("points")                           # rated for someone else: rate again
+                        ruled = effort_mod.rule_rating(t["title"], t.get("kind", "task"), who)
+                        if ruled is not None:
+                            t["points"] = ruled
             t["updated_at"] = _now()
             self._write(data)
-            return t
+            return dict(t, award=award) if award else t
+
+    # ---- coins ----
+    def _take_back(self, t: dict, why: str) -> None:
+        if self.points is not None:
+            self.points.reverse(t["id"], why)
+
+    def set_points(self, actor: Person, task_id: str, effort=None, no_coins=None) -> dict:
+        """A parent's say on what a task is worth: its effort (1-10, remembered for that chore) and/or
+        "no coins". A task that is already done is paid again at the new rate."""
+        if not actor.is_parent:
+            raise TaskError(403, "a parent sets what a task is worth")
+        if effort is not None:
+            try:
+                effort = int(effort)
+            except (TypeError, ValueError):
+                raise TaskError(400, "effort must be a number from 1 to 10") from None
+            if not 1 <= effort <= 10:
+                raise TaskError(400, "effort must be from 1 to 10")
+        with self._locked():
+            data = self._read()
+            t = next((x for x in data["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
+            if t is None or not self.visible(t, actor):
+                raise TaskError(404, "no such task")
+            if t.get("kind") == "message":
+                raise TaskError(409, "a WhatsApp message earns no coins")
+            pts = dict(t.get("points") or effort_mod.default_rating(t["title"]))
+            if effort is not None:
+                pts.pop("work_day", None)
+                pts.update(effort=effort, rated_by="parent", rated_by_id=actor.id)
+                if no_coins is None:
+                    pts["no_coins"] = False
+            if no_coins is not None:
+                pts["no_coins"] = bool(no_coins)
+            t["points"] = pts
+            self._write(data)
+        if self.points is not None:
+            if effort is not None:
+                self.points.remember(pts.get("chore_key", ""), effort, actor.id)
+            if t.get("status") == "done":
+                self.points.repay(t)
+        return self._decorate([t])[0]
+
+    def unrated(self, limit: int = 4) -> list[dict]:
+        """Open tasks nobody has rated yet, newest first (the worker rates them)."""
+        found = [dict(t) for t in self._read()["tasks"]
+                 if t.get("status") in ("open", "requested") and "points" not in t and t.get("kind", "task") == "task"]
+        found.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+        return found[:limit]
+
+    def rate(self, task_id: str, rating: dict) -> bool:
+        """Store the model's rating, but never over one a parent or a rule already put there."""
+        with self._locked():
+            data = self._read()
+            t = next((x for x in data["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
+            if t is None or t.get("points") is not None:
+                return False
+            t["points"] = rating
+            self._write(data)
+            return True
+
+    def add_lesson(self, actor: Person, title: str, note: str, effort: int, rated_by: str = "ai") -> dict:
+        """A lesson a child attended: a finished task whose "what I learned" note earns the coins
+        (effort 1-5). Parents see it with the children's other tasks."""
+        note = (note or "").strip()[:2000]
+        today = self._local_day(_now())
+        if sum(1 for x in self._read()["tasks"] if x.get("kind") == "lesson" and x.get("created_by") == actor.id
+               and self._local_day(x.get("created_at", "")) == today) >= 3:
+            raise TaskError(429, "three lesson notes a day is the limit")
+        t = {"id": uuid.uuid4().hex[:10], "title": ((title or "").strip() or "Lesson")[:300], "notes": note,
+             "assignee": actor.id, "created_by": actor.id, "status": "done", "due": None, "snoozed_until": None,
+             "created_at": _now(), "updated_at": _now(), "done_at": _now(), "done_by": actor.id, "memo_id": None,
+             "kind": "lesson",
+             "points": {"effort": max(1, min(5, int(effort))), "minutes": 0, "category": "lesson",
+                        "chore_key": "lesson", "reason": "what I learned", "rated_by": rated_by,
+                        "no_coins": False, "note": note}}
+        award = None
+        with self._locked():
+            data = self._read()
+            data["tasks"].append(t)
+            if self.points is not None:
+                award = self.points.pay(t, t["done_at"])
+            self._write(data)
+        out = self._decorate([t])[0]
+        return dict(out, award=award) if award else out
+
+    def _local_day(self, iso: str):
+        try:
+            dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        tz = getattr(self.points, "tz", None)
+        return (dt.astimezone(tz) if tz else dt).date()
 
     # ---- notes and questions on a task ----
     @staticmethod

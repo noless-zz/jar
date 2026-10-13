@@ -85,7 +85,11 @@ class Worker:
         from .family import Family
         from .taskstore import TaskStore
         self.family = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
-        self.tasks = TaskStore(cfg.data_dir / "tasks.json", self.family, cfg.notes_dir / "Tasks.md")
+        from .points import PointsConfig, PointsStore
+        self.points = PointsStore(cfg.data_dir / "points.json", self.family, cfg.timezone,
+                                  PointsConfig.from_raw(cfg.points))
+        self.tasks = TaskStore(cfg.data_dir / "tasks.json", self.family, cfg.notes_dir / "Tasks.md", self.points)
+        self._rate_retry_at = 0.0
         try:
             n = self.tasks.import_markdown(self.family.admin)
             if n:
@@ -197,6 +201,30 @@ class Worker:
         log.info("re-queued %d failed memo(s)", n)
         return n
 
+    def rate_pending(self, limit: int = 4) -> int:
+        """Give every new task its effort rating (what it is worth in coins), newest first. Needs Ollama;
+        when it is away the tasks wait and are tried again in two minutes."""
+        if time.time() < self._rate_retry_at:
+            return 0
+        from . import effort
+        n = 0
+        for t in self.tasks.unrated(limit):
+            who = self.family.get(t.get("assignee")) or self.family.admin
+            self.heartbeat("rating tasks")
+            try:
+                rating = effort.rate(self.cfg.ollama_url, self.cfg.llm_model, t.get("title", ""), t.get("notes", ""),
+                                     who, self.points.known_keys(), self.points.parent_effort,
+                                     self.cfg.num_ctx, self.cfg.keep_alive)
+            except effort.RateError as e:
+                log.warning("  can't rate tasks right now: %s", e)
+                self._rate_retry_at = time.time() + 120
+                break
+            if self.tasks.rate(t["id"], rating):
+                n += 1
+                log.info("  rated “%s” for %s: effort %s (%s, %s min) — %s", t.get("title", "")[:40], who.id,
+                         rating.get("effort"), rating.get("chore_key"), rating.get("minutes"), rating.get("reason"))
+        return n
+
     def maybe_eval(self) -> None:
         """data/eval/run exists (VS Code task, or remotely): run the sample memos while idle."""
         flag = self.cfg.data_dir / "eval" / "run"
@@ -227,6 +255,10 @@ class Worker:
             except OllamaUnavailable:
                 break  # every later memo needs Ollama too
             n += 1
+        try:
+            self.rate_pending()
+        except Exception:  # noqa: BLE001 — a rating problem must never stop memos
+            log.exception("rating tasks failed")
         if n == 0:
             self.maybe_eval()
         self.heartbeat()

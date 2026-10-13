@@ -38,6 +38,7 @@ class Config:
     token: str = ""          # [server] token = the admin's phone/pendant token
     family: dict | None = None   # [family] table (see worker/family.py)
     contacts: dict | None = None  # [contacts] name = "+972…" for WhatsApp drafts
+    points: dict | None = None    # [points] table (see worker/points.py)
 
 
 def _path(root: Path, value: str) -> Path:
@@ -82,4 +83,5 @@ def load(path: Path | None = None, root: Path = ROOT) -> Config:
         token=str(s.get("token", "")),
         family=raw.get("family", {}),
         contacts=raw.get("contacts", {}),
+        points=raw.get("points", {}),
     )

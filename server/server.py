@@ -20,7 +20,9 @@ from pathlib import Path
 from fastapi import Body, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from worker import effort
 from worker.family import Family, Person
+from worker.points import PointsConfig, PointsStore
 from worker.taskstore import TaskError, TaskStore
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -51,7 +53,8 @@ _notes = Path(_raw.get("notes", {}).get("dir", "notes")).expanduser()
 NOTES_DIR = _notes if _notes.is_absolute() else ROOT / _notes
 TIMEZONE = _raw.get("notes", {}).get("timezone", "Asia/Jerusalem")
 FAMILY = Family.from_config(_raw.get("family", {}), TOKEN, DATA_ROOT, _raw.get("contacts", {}))
-TASKS = TaskStore(DATA_ROOT / "tasks.json", FAMILY, NOTES_DIR / "Tasks.md")
+POINTS = PointsStore(DATA_ROOT / "points.json", FAMILY, TIMEZONE, PointsConfig.from_raw(_raw.get("points")))
+TASKS = TaskStore(DATA_ROOT / "tasks.json", FAMILY, NOTES_DIR / "Tasks.md", POINTS)
 
 app = FastAPI(title="Jar server", version="0.3")
 
@@ -464,6 +467,18 @@ def task_suggest(task_id: str, request: Request, authorization: str | None = Hea
         raise HTTPException(503, str(e)) from e
 
 
+@app.post("/v1/tasks/{task_id}/points")
+def task_points(task_id: str, request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+                x_device_id: str = Header("")):
+    """A parent sets what a task is worth: {"effort": 1-10} and/or {"no_coins": true}. The effort is
+    remembered for that chore; a task that is already done is paid again at the new rate."""
+    p = check_auth(authorization, request, x_device_id)
+    try:
+        return TASKS.set_points(p, task_id, body.get("effort"), body.get("no_coins"))
+    except TaskError as e:
+        _task_error(e)
+
+
 @app.post("/v1/tasks/{task_id}/{action}")
 def task_action(task_id: str, action: str, request: Request, body: dict | None = Body(None),
                 authorization: str | None = Header(None), x_device_id: str = Header("")):
@@ -473,6 +488,48 @@ def task_action(task_id: str, action: str, request: Request, body: dict | None =
         return TASKS.act(p, task_id, action, body.get("until"), body)
     except TaskError as e:
         _task_error(e)
+
+
+# ---------------------------------------------------------------- points (docs/POINTS.md)
+
+@app.get("/v1/points")
+def points_board(request: Request, authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """The leaderboard: this week (Sunday to Saturday) and all time, streaks, everyone's ledger as this
+    person may see it, recent lesson notes, and the week's winner and most improved."""
+    p = check_auth(authorization, request, x_device_id)
+    return POINTS.board(p)
+
+
+@app.post("/v1/lessons", status_code=201)
+def new_lesson(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+               x_device_id: str = Header("")):
+    """A child's lesson: {"title": "…", "learned": "what I learned"}. The note earns the coins; the local
+    AI rates the effort in it from 1 to 5 (by length when the AI is away). Parents see it on the family list."""
+    p = check_auth(authorization, request, x_device_id)
+    if p.is_parent:
+        raise HTTPException(403, "lesson notes are for the kids")
+    note = str(body.get("learned", "")).strip()
+    if len(note) < 12:
+        raise HTTPException(400, "write a sentence about what you learned")
+    llm = _raw.get("llm", {})
+    rated, by = effort.rate_lesson(_ollama_url(), llm.get("model", "qwen3.5:9b"), str(body.get("title", "")), note,
+                                   int(llm.get("num_ctx", 8192)), str(llm.get("keep_alive", "10m")))
+    try:
+        return TASKS.add_lesson(p, str(body.get("title", "")), note, rated, by)
+    except TaskError as e:
+        _task_error(e)
+
+
+@app.post("/v1/points/work-day")
+def log_work_day(request: Request, authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """A parent logs today's work day: the fixed base from [points] work_day_coins, once a day."""
+    p = check_auth(authorization, request, x_device_id)
+    if not p.is_parent:
+        raise HTTPException(403, "work days are for the grown-ups")
+    award = POINTS.pay_work_day(p.id)
+    if award is None:
+        raise HTTPException(409, "today's work day is already logged")
+    return {"award": award}
 
 
 # ---------------------------------------------------------------- dashboard
