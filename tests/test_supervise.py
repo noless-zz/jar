@@ -139,3 +139,61 @@ class ZipPull(unittest.TestCase):
         s.take_command()
         self.assertIn("update: updated", s.last_command)
         self.assertFalse((self.pc / "data" / "supervisor-cmd.json").exists())
+
+
+class Watchdog(unittest.TestCase):
+    def test_stale_only_when_every_sign_is_old(self):
+        import os
+        import time
+
+        from server.server import supervisor_stale
+        d = Path(tempfile.mkdtemp())
+        self.assertFalse(supervisor_stale(d, time.time()))          # never ran here: not our business
+        (d / "supervisor.json").write_text("{}")
+        (d / "supervisor.alive").write_text("x")
+        old = time.time() - 600
+        os.utime(d / "supervisor.json", (old, old))
+        self.assertFalse(supervisor_stale(d, time.time()))          # alive file is fresh
+        os.utime(d / "supervisor.alive", (old, old))
+        self.assertTrue(supervisor_stale(d, time.time()))
+
+    def test_heartbeat_does_not_block_and_records_children(self):
+        import json
+        import time
+        tmp = Path(tempfile.mkdtemp())
+        old_root = supervise.ROOT
+        supervise.ROOT = tmp
+        try:
+            (tmp / "data").mkdir()
+            s = supervise.Supervisor()
+            s.heartbeat()
+            for _ in range(50):
+                if (tmp / "data" / "supervisor.json").exists() and not s._writing.is_set():
+                    break
+                time.sleep(0.02)
+            hb = json.loads((tmp / "data" / "supervisor.json").read_text())
+            self.assertIn("children", hb)
+            self.assertTrue((tmp / "data" / "supervisor.alive").exists())
+        finally:
+            supervise.ROOT = old_root
+
+    def test_command_runs_once_even_if_the_file_stays(self):
+        tmp = Path(tempfile.mkdtemp())
+        old_root = supervise.ROOT
+        supervise.ROOT = tmp
+        try:
+            (tmp / "data").mkdir()
+            s = supervise.Supervisor()
+            calls = []
+            s.restart = lambda reason: calls.append(reason)
+            (tmp / "data" / "supervisor-cmd.json").write_text('{"cmd": "restart", "at": 100}')
+            orig = Path.unlink
+            Path.unlink = lambda self, *a, **k: (_ for _ in ()).throw(PermissionError("held"))
+            try:
+                s.take_command()
+                s.take_command()
+            finally:
+                Path.unlink = orig
+            self.assertEqual(len(calls), 1)
+        finally:
+            supervise.ROOT = old_root

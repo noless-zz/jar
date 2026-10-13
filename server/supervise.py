@@ -93,6 +93,53 @@ def kill_tree(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
+def start_detached(py: str) -> None:
+    """A new supervisor that outlives the caller; its crashes land in data/logs/supervisor.err.log."""
+    logs = ROOT / "data" / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    flags = (0x00000008 | NO_WINDOW) if WIN else 0            # DETACHED_PROCESS
+    with open(logs / "supervisor.err.log", "ab") as err:
+        subprocess.Popen([py, "-m", "server.supervise"], cwd=ROOT, creationflags=flags, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=err, start_new_session=not WIN)
+
+
+def take_over(data: Path) -> None:
+    """A supervisor starting while an old one (frozen, or from before a restart) still runs: stop the old
+    supervisor and the server and worker it started, so nothing runs twice."""
+    try:
+        old = json.loads((data / "supervisor.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    pids = [old.get("pid")] + list((old.get("children") or {}).values())
+    for pid in pids:
+        if not isinstance(pid, int) or pid == os.getpid() or not _is_python(pid):
+            continue
+        log.info("taking over: stopping old process %s", pid)
+        if WIN:
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
+        else:
+            try:
+                os.kill(pid, 15)
+            except OSError:
+                pass
+
+
+def _is_python(pid: int) -> bool:
+    """True only for one of Jar's own processes (a PID can be reused by anything after a restart)."""
+    mine = ("server.supervise", "server.server:app", "-m worker")
+    if WIN:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                            f"(Get-CimInstance Win32_Process -Filter 'ProcessId={int(pid)}').CommandLine"],
+                           capture_output=True, text=True, creationflags=NO_WINDOW, timeout=30)
+        cl = r.stdout
+    else:
+        try:
+            cl = Path(f"/proc/{pid}/cmdline").read_text(errors="replace").replace("\0", " ")
+        except OSError:
+            return False
+    return any(m in cl for m in mine)
+
+
 class Child:
     def __init__(self, name: str, args: list[str], out: Path, err: Path):
         self.name, self.args, self.out, self.err = name, args, out, err
@@ -123,7 +170,7 @@ class Git:
 
     def __init__(self):
         self.exe = shutil.which("git")
-        self.env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+        self.env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
 
     def available(self) -> str | None:
         if not (ROOT / ".git").exists():
@@ -133,8 +180,21 @@ class Git:
         return None
 
     def run(self, *args: str, timeout: int = 90) -> subprocess.CompletedProcess:
-        return subprocess.run([self.exe, *args], cwd=ROOT, capture_output=True, text=True, timeout=timeout,
-                              env=self.env, creationflags=NO_WINDOW)
+        # Output goes through temp files, not pipes: a credential helper left behind by git can keep a
+        # pipe open forever, which would freeze the supervisor. No prompts: the repo is public.
+        import tempfile
+        with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+            p = subprocess.Popen([self.exe, "-c", "credential.helper=", *args], cwd=ROOT, stdout=out, stderr=err,
+                                 stdin=subprocess.DEVNULL, env=self.env, creationflags=NO_WINDOW)
+            try:
+                code = p.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                kill_tree(p)
+                raise
+            out.seek(0)
+            err.seek(0)
+            dec = lambda b: b.decode("utf-8", "replace")  # noqa: E731
+            return subprocess.CompletedProcess(p.args, code, dec(out.read()), dec(err.read()))
 
     def head(self) -> str:
         if self.available():
@@ -280,6 +340,10 @@ class ZipUpdate:
         return msg
 
 
+class _Handover(Exception):
+    """Raised out of a round when a new supervisor has taken over."""
+
+
 class Supervisor:
     def __init__(self):
         self.data = ROOT / "data"
@@ -300,6 +364,9 @@ class Supervisor:
         self.code = self.code_version()
         self.last_reason = ""
         self.started = time.time()
+        import threading
+        self._writing = threading.Event()
+        self._done_cmd = 0.0
 
     def updater(self):
         """git when this folder is a clone and git is installed, else the zip download."""
@@ -319,13 +386,17 @@ class Supervisor:
         if not p.exists():
             return
         try:
-            cmd = json.loads(p.read_text(encoding="utf-8")).get("cmd", "")
-        except (OSError, ValueError):
-            cmd = ""
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            cmd, at = raw.get("cmd", ""), float(raw.get("at") or p.stat().st_mtime)
+        except (OSError, ValueError, TypeError):
+            return
         try:
             p.unlink()
         except OSError:
+            pass                                     # held open elsewhere: the time stamp stops a repeat
+        if at <= self._done_cmd:
             return
+        self._done_cmd = at
         log.info("command from the phone: %s", cmd)
         if cmd == "update":
             self.pull()
@@ -378,13 +449,11 @@ class Supervisor:
     def replace_myself(self) -> None:
         """The supervisor's own code changed: start a fresh supervisor and step aside."""
         log.info("supervisor code changed: handing over to a new supervisor")
-        while self.worker_busy():
+        deadline = time.time() + 600
+        while self.worker_busy() and time.time() < deadline:
             time.sleep(2)
         self.stop_all()
-        flags = (0x00000008 | NO_WINDOW) if WIN else 0        # DETACHED_PROCESS: outlives this one
-        subprocess.Popen([self.py, "-m", "server.supervise"], cwd=ROOT, creationflags=flags,
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=not WIN)
+        start_detached(self.py)
 
     def keep_alive(self, child: Child) -> None:
         if child.alive():
@@ -406,51 +475,80 @@ class Supervisor:
               "auto_restart": bool(self.opt("auto_restart", True)),
               "github_pull": bool(self.opt("github_pull", True)),
               "restarts": self.restarts, "last_reason": self.last_reason}
-        tmp = self.data / "supervisor.json.tmp"
-        try:
-            tmp.write_text(json.dumps(hb), encoding="utf-8")
-            os.replace(tmp, self.data / "supervisor.json")
-        except OSError:
-            pass
+        hb["children"] = {c.name: c.proc.pid for c in (self.server, self.worker) if c.proc is not None}
+        data = json.dumps(hb)
+        if self._writing.is_set():
+            return                                   # the last write hasn't finished: skip, never wait
+        self._writing.set()
+
+        def write():
+            try:
+                (self.data / "supervisor.alive").write_text(str(time.time()), encoding="utf-8")
+                tmp = self.data / "supervisor.json.tmp"
+                try:
+                    tmp.write_text(data, encoding="utf-8")
+                    os.replace(tmp, self.data / "supervisor.json")
+                except OSError:
+                    (self.data / "supervisor.json").write_text(data, encoding="utf-8")   # file held open elsewhere
+            except OSError:
+                pass
+            finally:
+                self._writing.clear()
+        import threading
+        threading.Thread(target=write, daemon=True).start()
 
     def run(self) -> None:
         log.info("Jar supervisor started in %s", ROOT)
+        take_over(self.data)
         files = watched_files()
         sig = signature(files)
         self.start_all()
         try:
             while True:
                 time.sleep(2)
-                self.keep_alive(self.server)
-                self.keep_alive(self.worker)
-
-                self.take_command()
-                if self.opt("github_pull", True):
-                    every = max(2, int(self.opt("pull_minutes", 10))) * 60
-                    if time.time() - self.checked_at > every:
-                        self.pull()
-
-                if self.opt("auto_restart", True):
-                    files = watched_files()
-                    new = signature(files)
-                    diff = changed(sig, new)
-                    if diff:
-                        time.sleep(2)               # an editor or git may still be writing
-                        new = signature(watched_files())
-                        diff = changed(sig, new)
-                        sig = new
-                        if "requirements.txt" in diff:
-                            self.install_requirements()
-                        if any(f.replace("\\", "/") == "server/supervise.py" for f in diff):
-                            self.replace_myself()
-                            return
-                        self.restart("changed: " + ", ".join(diff[:5]) + (" …" if len(diff) > 5 else ""))
-                self.heartbeat()
+                try:
+                    sig = self.tick(sig)
+                except KeyboardInterrupt:
+                    raise
+                except _Handover:
+                    return
+                except Exception:  # noqa: BLE001
+                    log.exception("supervisor loop error (carrying on)")
+                    time.sleep(5)
         except KeyboardInterrupt:
             pass
         finally:
             self.stop_all()
             log.info("supervisor stopped")
+
+    def tick(self, sig: dict) -> dict:
+        """One round: keep children alive, take orders, pull, restart on changes, heartbeat."""
+        self.keep_alive(self.server)
+        self.keep_alive(self.worker)
+
+        self.take_command()
+        if self.opt("github_pull", True):
+            every = max(2, int(self.opt("pull_minutes", 10))) * 60
+            if time.time() - self.checked_at > every:
+                self.pull()
+
+        if self.opt("auto_restart", True):
+            files = watched_files()
+            new = signature(files)
+            diff = changed(sig, new)
+            if diff:
+                time.sleep(2)               # an editor or git may still be writing
+                new = signature(watched_files())
+                diff = changed(sig, new)
+                sig = new
+                if "requirements.txt" in diff:
+                    self.install_requirements()
+                if any(f.replace("\\", "/") == "server/supervise.py" for f in diff):
+                    self.replace_myself()
+                    raise _Handover()
+                self.restart("changed: " + ", ".join(diff[:5]) + (" …" if len(diff) > 5 else ""))
+        self.heartbeat()
+        return sig
 
 
 def main() -> None:

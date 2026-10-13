@@ -263,6 +263,49 @@ def invite(request: Request, body: dict = Body(...), authorization: str | None =
             "text": join.message(who.name, join.DOWNLOAD, link, page, lang)}
 
 
+# ---- watchdog: if the supervisor stops (frozen or crashed), start a new one. It takes over: stops the old
+# supervisor and its server and worker (this process included) and starts everything fresh.
+
+def supervisor_stale(data: Path, now: float, limit: float = 180) -> bool:
+    ages = []
+    for f in ("supervisor.alive", "supervisor.json"):
+        try:
+            ages.append(now - (data / f).stat().st_mtime)
+        except OSError:
+            pass
+    return bool(ages) and min(ages) > limit
+
+
+def _watchdog() -> None:
+    import sys
+    import threading
+
+    from . import supervise
+    started = time.time()
+
+    def loop():
+        launched = 0.0
+        while True:
+            time.sleep(60)
+            now = time.time()
+            if now - started < 300 or now - launched < 900:
+                continue                      # give a fresh start time; never relaunch in a loop
+            if supervisor_stale(DATA_ROOT, now):
+                log.warning("supervisor silent for over 3 minutes: starting a new one")
+                launched = now
+                try:
+                    supervise.start_detached(sys.executable)
+                except OSError as e:
+                    log.error("couldn't start a supervisor: %s", e)
+    threading.Thread(target=loop, daemon=True, name="watchdog").start()
+
+
+@app.on_event("startup")
+def _start_watchdog() -> None:
+    if os.name == "nt" and not os.environ.get("JAR_NO_WATCHDOG") and _raw.get("supervisor", {}).get("watchdog", True):
+        _watchdog()
+
+
 # ---- the admin's phone looks after the PC: status, logs, update from GitHub, restart, AI test
 
 LOGS = {"worker": "worker.log", "server": "server.log", "supervisor": "supervisor.log"}
