@@ -100,4 +100,19 @@ public class TaskListsTest {
         for (int i = 0; i < out.length; i++) out[i] = ts.get(i).id;
         return Arrays.asList(out);
     }
+
+    @Test
+    public void widgetShowsRequestsThenMyOpenTasks() {
+        java.util.List<Task> all = java.util.Arrays.asList(
+                t("later", "dana", "dana", "open", null),
+                t("soon", "dana", "dana", "open", "2026-10-12T09:00"),
+                t("done", "dana", "dana", "done", "2026-10-11"),
+                t("ask", "dana", "yoni", "requested", null),
+                t("kids", "yoni", "dana", "open", "2026-10-11"));
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        for (Task x : TaskLists.forWidget(all, "dana", true, 10)) ids.add(x.id);
+        org.junit.Assert.assertEquals(java.util.Arrays.asList("ask", "soon", "later"), ids);
+        org.junit.Assert.assertEquals(1, TaskLists.forWidget(all, "dana", true, 1).size());
+        org.junit.Assert.assertEquals(2, TaskLists.forWidget(all, "dana", false, 10).size());   // a child approves nothing
+    }
 }

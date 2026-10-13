@@ -107,6 +107,19 @@ public final class TaskCache {
         return null;
     }
 
+    /** The newest memo as the PC filed it (for the widget's "last memo" line), or {} . */
+    public JSONObject lastMemo() {
+        try {
+            return new JSONObject(sp.getString("last_memo", "{}"));
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
+    }
+
+    public void setLastMemo(JSONObject m) {
+        sp.edit().putString("last_memo", m == null ? "{}" : m.toString()).apply();
+    }
+
     public long syncedAt() {
         return sp.getLong("synced_at", 0);
     }

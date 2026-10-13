@@ -357,6 +357,28 @@ class Api(Base):
         finally:
             self.server._URLS.update(at=0.0, urls=[])
 
+    def test_admin_looks_after_the_pc_from_the_phone(self):
+        root = self.server.DATA_ROOT
+        (root / "logs").mkdir(parents=True, exist_ok=True)
+        (root / "logs" / "worker.log").write_text("\n".join(f"line {i}" for i in range(300)), encoding="utf-8")
+        r = self.c.get("/v1/admin/status", headers=self.h("avi"))
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("supervisor", r.json())
+        self.assertEqual(self.c.get("/v1/admin/status", headers=self.h("dana")).status_code, 403)
+        r = self.c.get("/v1/admin/log?name=worker&lines=20", headers=self.h("avi"))
+        self.assertEqual(r.json()["text"].splitlines()[-1], "line 299")
+        self.assertEqual(len(r.json()["text"].splitlines()), 20)
+        self.assertEqual(self.c.get("/v1/admin/log?name=../config", headers=self.h("avi")).status_code, 400)
+        r = self.c.post("/v1/admin/command", headers=self.h("avi"), json={"cmd": "update"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(__import__("json").loads((root / "supervisor-cmd.json").read_text())["cmd"], "update")
+        (root / "supervisor-cmd.json").unlink()
+        self.c.post("/v1/admin/command", headers=self.h("avi"), json={"cmd": "eval"})
+        self.assertTrue((root / "eval" / "run").exists())
+        (root / "eval" / "run").unlink()
+        self.assertEqual(self.c.post("/v1/admin/command", headers=self.h("yoni"), json={"cmd": "restart"}).status_code, 403)
+        self.assertEqual(self.c.post("/v1/admin/command", headers=self.h("avi"), json={"cmd": "rm"}).status_code, 400)
+
     def test_internet_requests_only_reach_the_phone_api(self):
         funnel = {"Tailscale-Funnel-Request": "?1"}
         self.assertEqual(self.c.get("/", headers=funnel).status_code, 404)

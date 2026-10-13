@@ -6,11 +6,12 @@ import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.view.View;
 import android.widget.RemoteViews;
 
 /**
- * Home-screen widget: one tap starts a memo, another tap stops it — the
- * phone's version of the pendant button. It also shows how many memos wait.
+ * Mic widget: one tap starts a memo, the next tap stops it (the phone's pendant button).
+ * A small badge counts memos still waiting to upload; no badge means everything was sent.
  */
 public final class JarWidget extends AppWidgetProvider {
 
@@ -33,11 +34,13 @@ public final class JarWidget extends AppWidgetProvider {
         v.setImageViewResource(R.id.widget_icon, rec ? R.drawable.ic_widget_stop : R.drawable.ic_widget_mic);
         v.setInt(R.id.widget_button, "setBackgroundResource",
                 rec ? R.drawable.widget_button_recording : R.drawable.widget_button);
-        v.setTextViewText(R.id.widget_title,
-                c.getString(rec ? R.string.widget_recording : R.string.widget_tap_to_record));
-        v.setTextViewText(R.id.widget_subtitle, queued == 0
-                ? c.getString(R.string.widget_all_sent)
-                : c.getResources().getQuantityString(R.plurals.queued_count, queued, queued));
+        v.setViewVisibility(R.id.widget_badge, queued > 0 ? View.VISIBLE : View.GONE);
+        v.setTextViewText(R.id.widget_badge, queued > 9 ? "9+" : String.valueOf(queued));
+        String desc = rec ? c.getString(R.string.widget_recording)
+                : queued == 0 ? c.getString(R.string.widget_tap_to_record)
+                : c.getString(R.string.widget_tap_to_record) + " · "
+                        + c.getResources().getQuantityString(R.plurals.queued_count, queued, queued);
+        v.setContentDescription(R.id.widget_root, desc);
 
         Intent tap = new Intent(c, RecordActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);

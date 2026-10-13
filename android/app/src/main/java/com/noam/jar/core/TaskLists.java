@@ -62,6 +62,19 @@ public final class TaskLists {
         return out;
     }
 
+    /**
+     * The tasks widget: requests waiting for my OK, then my open tasks and messages to send
+     * (earliest due first, undated last), at most {@code max}.
+     */
+    public static List<Task> forWidget(List<Task> all, String me, boolean iAmParent, int max) {
+        List<Task> out = new ArrayList<>(needMyOk(all, me, iAmParent));
+        List<Task> mine = new ArrayList<>();
+        for (Task t : all) if (me.equals(t.assignee) && t.isOpen()) mine.add(t);
+        Collections.sort(mine, ORDER);
+        out.addAll(mine);
+        return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
+    }
+
     public static int openCount(List<Task> all, String me) {
         int n = 0;
         for (Task t : all) if (me.equals(t.assignee) && t.isOpen()) n++;

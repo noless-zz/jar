@@ -87,6 +87,12 @@ public final class TaskSync extends Worker {
             Jar.notifyState(c);
             return Result.retry();
         }
+        try {
+            JSONArray last = TaskApi.lastMemo(prefs).optJSONArray("memos");
+            cache.setLastMemo(last != null && last.length() > 0 ? last.optJSONObject(0) : null);
+        } catch (IOException ignored) {
+            // the widget keeps the previous line
+        }
         prefs.setTaskProblem("");
         TaskNotify.afterSync(c);
         try {

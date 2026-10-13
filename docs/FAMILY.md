@@ -38,6 +38,15 @@ plus private notes in `notes/Family/<name>/`.
 opens with their message: the download link and their own join link. Once the public address is on, they tap the link,
 then **Open in Jar**, and they're paired. Saying "send Livne how to join Jar" in a memo makes the same message.
 
+**Widgets:** long-press the home screen → Widgets → Jar, or in the app Settings → App → Widgets.
+*Jar mic* is one button: tap to record, tap to stop; an orange badge counts memos still waiting to upload.
+*Jar tasks* lists requests waiting for your OK, your open tasks and WhatsApp messages to send, plus what Jar did
+with your last memo. Tap the box to tick a task done, ✓ to accept a request, the arrow to send a message.
+
+**Settings** has pages: *Connection* (pair, test, the PC's addresses), *Memos* (upload queue, log), *App*
+(version, a check that notifications, microphone, exact reminders and background running are allowed; tap a ⚠ to fix)
+and, for the admin, *PC*: status, **Update the PC's code from GitHub**, restart, the AI test and the logs, from anywhere.
+
 **Emails:** Jar only drafts emails. Each draft also makes a task "send the email: …", so tick it once you've sent it.
 
 The admin's phone keeps using `[server] token`, so it stays paired. Updating the app keeps the pairing.

@@ -59,6 +59,8 @@ public final class TasksActivity extends AppCompatActivity {
     private static final int TAB_MINE = 0, TAB_ASKED = 1, TAB_FAMILY = 2;
     /** From a notification: open this WhatsApp draft right away. */
     static final String EXTRA_SEND = "send_message";
+    static final String EXTRA_INVITE = "invite";
+    static final String EXTRA_OPEN = "open_task";       // from the tasks widget: show that task's actions
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -188,6 +190,16 @@ public final class TasksActivity extends AppCompatActivity {
     }
 
     private void handleSend(Intent intent) {
+        if (intent != null && intent.getBooleanExtra(EXTRA_INVITE, false)) {
+            intent.removeExtra(EXTRA_INVITE);
+            chooseInvite();
+        }
+        String open = intent == null ? null : intent.getStringExtra(EXTRA_OPEN);
+        if (open != null) {
+            intent.removeExtra(EXTRA_OPEN);
+            Task ot = cache.find(open);
+            if (ot != null) showTaskMenu(ot);
+        }
         String id = intent == null ? null : intent.getStringExtra(EXTRA_SEND);
         if (id == null) return;
         intent.removeExtra(EXTRA_SEND);

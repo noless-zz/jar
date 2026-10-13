@@ -3,6 +3,7 @@
     <color name="accent">#2E6F57</color>
     <color name="recording">#C2402E</color>
     <color name="icon_background">#F3EEE3</color>
+    <color name="widget_badge">#D9822B</color>
     <color name="widget_surface">#F2F5F3</color>
     <color name="widget_text">#1B2420</color>
     <color name="widget_text_secondary">#55615B</color>

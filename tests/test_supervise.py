@@ -63,3 +63,61 @@ class Pull(unittest.TestCase):
     def test_not_linked(self):
         supervise.ROOT = self.tmp
         self.assertIn("isn't linked", supervise.Git().pull())
+
+
+class ZipPull(unittest.TestCase):
+    """Updates without git: zip from GitHub, never over a file edited on this PC."""
+
+    def setUp(self):
+        self.pc = Path(tempfile.mkdtemp())
+        self.old_root = supervise.ROOT
+        supervise.ROOT = self.pc
+        self.up = supervise.ZipUpdate()
+        self.sha = "a" * 40
+
+    def tearDown(self):
+        supervise.ROOT = self.old_root
+
+    def zipped(self, files: dict) -> bytes:
+        import io
+        import zipfile
+        b = io.BytesIO()
+        with zipfile.ZipFile(b, "w") as z:
+            for k, v in files.items():
+                z.writestr(f"jar-{self.sha}/{k}", v)
+        return b.getvalue()
+
+    def test_update_and_local_edit_guard(self):
+        self.up.latest = lambda: self.sha
+        self.up.download = lambda sha: self.zipped({"worker/a.py": "1\n", "android/x.java": "x", "README.md": "r"})
+        self.assertIn("updated first time", self.up.pull())
+        self.assertEqual((self.pc / "worker/a.py").read_text(), "1\n")
+        self.assertFalse((self.pc / "android").exists())
+        self.assertTrue(self.up.pull().startswith("up to date"))
+        (self.pc / "worker/a.py").write_text("my edit\n")               # edited on the PC
+        self.sha = "b" * 40
+        self.up.download = lambda sha: self.zipped({"worker/a.py": "2\n", "README.md": "r2"})
+        msg = self.up.pull()
+        self.assertIn("kept 1 file(s) edited on this PC: worker/a.py", msg)
+        self.assertEqual((self.pc / "worker/a.py").read_text(), "my edit\n")
+        self.assertEqual((self.pc / "README.md").read_text(), "r2")
+        self.sha = "c" * 40
+        self.up.download = lambda sha: self.zipped({"worker/a.py": "3\n", "README.md": "r2"})
+        self.assertIn("kept 1 file", self.up.pull())                    # still guarded
+
+    def test_network_error_is_a_status(self):
+        def boom():
+            raise OSError("offline")
+        self.up.latest = boom
+        self.assertIn("can't update from GitHub", self.up.pull())
+
+    def test_command_file_from_the_phone(self):
+        (self.pc / "data").mkdir()
+        s = supervise.Supervisor()
+        s.updater = lambda: self.up
+        self.up.latest = lambda: self.sha
+        self.up.download = lambda sha: self.zipped({"README.md": "r"})
+        (self.pc / "data" / "supervisor-cmd.json").write_text('{"cmd": "update"}')
+        s.take_command()
+        self.assertIn("update: updated", s.last_command)
+        self.assertFalse((self.pc / "data" / "supervisor-cmd.json").exists())

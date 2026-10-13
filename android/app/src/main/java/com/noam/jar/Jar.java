@@ -30,6 +30,7 @@ public final class Jar {
     public static void notifyState(Context c) {
         c.sendBroadcast(new Intent(ACTION_STATE).setPackage(c.getPackageName()));
         JarWidget.updateAll(c);
+        TasksWidget.updateAll(c);
     }
 
     public static String isoUtcNow() {

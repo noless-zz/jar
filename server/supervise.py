@@ -5,8 +5,11 @@
 - Restarts both when code (server/, worker/), config.toml or requirements.txt changes.
   It waits for a memo in progress to finish first, and installs new packages when needed.
 - Restarts either one if it crashes, with back-off.
-- When this folder is a git clone of the GitHub repo, it pulls new commits every few minutes
-  (fast-forward only, never over local edits), so a push to GitHub reaches this PC by itself.
+- Pulls new code from GitHub every few minutes, so a push reaches this PC by itself:
+  with git when this folder is a clone (fast-forward only, never over local edits), otherwise by
+  downloading the repo's zip and copying changed files (a file edited here since is left alone).
+- Takes orders from the admin's phone (data/supervisor-cmd.json, written by the server):
+  "update" checks GitHub now, "restart" restarts the server and the worker.
 - Writes data/supervisor.json for the dashboard: code version, update status, restarts.
 
 config.toml (all optional):
@@ -14,10 +17,13 @@ config.toml (all optional):
     auto_restart = true      # restart on code/config changes
     github_pull = true       # pull from GitHub when this folder is a git clone
     pull_minutes = 10
+    repo = "noless-zz/jar"   # where the zip updates come from
 """
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import logging
 import os
@@ -26,6 +32,8 @@ import subprocess
 import sys
 import time
 import tomllib
+import urllib.request
+import zipfile
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -163,6 +171,102 @@ class Git:
             return f"git error: {e}"
 
 
+class ZipUpdate:
+    """Updates without git: GitHub's zip of main, copied over the files that changed.
+    data/update-state.json remembers the commit and each file's hash as written, so a file
+    edited on this PC afterwards is never overwritten (it is reported instead)."""
+
+    SKIP = (".github/", "android/")
+
+    def __init__(self, repo: str = "noless-zz/jar"):
+        self.repo = repo
+        self.state_path = ROOT / "data" / "update-state.json"
+
+    def state(self) -> dict:
+        try:
+            return json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def head(self) -> str:
+        return self.state().get("sha", "")[:7]
+
+    def _get(self, url: str, accept: str = "") -> bytes:
+        req = urllib.request.Request(url, headers={"User-Agent": "jar-supervisor", **({"Accept": accept} if accept else {})})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read()
+
+    def latest(self) -> str:
+        return self._get(f"https://api.github.com/repos/{self.repo}/commits/main",
+                         "application/vnd.github.sha").decode().strip()
+
+    def download(self, sha: str) -> bytes:
+        return self._get(f"https://codeload.github.com/{self.repo}/zip/{sha}")
+
+    @staticmethod
+    def _hash(data: bytes) -> str:
+        return hashlib.sha256(data).hexdigest()
+
+    def apply(self, sha: str, blob: bytes) -> tuple[int, list[str]]:
+        """Write the changed files; returns (files written, files kept because they were edited here)."""
+        known = self.state().get("files", {})
+        files, written, kept, later = {}, 0, [], []
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            for info in z.infolist():
+                rel = info.filename.split("/", 1)[1] if "/" in info.filename else ""
+                if not rel or info.is_dir() or rel.startswith(self.SKIP) or ".." in rel.split("/"):
+                    continue
+                new = z.read(info)
+                h = self._hash(new)
+                path = ROOT / rel
+                try:
+                    cur = self._hash(path.read_bytes())
+                except OSError:
+                    cur = None
+                if cur == h:
+                    files[rel] = h
+                    continue
+                if cur is not None and rel in known and cur != known[rel]:
+                    kept.append(rel)                     # changed on this PC since the last update
+                    files[rel] = known[rel]              # still guarded next time
+                    continue
+                files[rel] = h
+                if rel == "server/supervise.py":
+                    later.append((path, new))
+                else:
+                    self._write(path, new)
+                    written += 1
+        for path, new in later:                          # last: writing it hands over to a new supervisor
+            self._write(path, new)
+            written += 1
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(json.dumps({"sha": sha, "at": time.time(), "files": files}), encoding="utf-8")
+        return written, kept
+
+    @staticmethod
+    def _write(path: Path, data: bytes) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".jar-new")
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+
+    def pull(self) -> str:
+        try:
+            sha = self.latest()
+            old = self.state().get("sha", "")
+            if sha == old:
+                return f"up to date ({sha[:7]})"
+            written, kept = self.apply(sha, self.download(sha))
+        except Exception as e:  # noqa: BLE001
+            return f"can't update from GitHub: {type(e).__name__}: {str(e)[:150]}"
+        msg = (f"updated {old[:7] or 'first time'} -> {sha[:7]} ({written} file{'s' * (written != 1)})"
+               if written else f"up to date ({sha[:7]})")
+        if kept:
+            msg += f"; kept {len(kept)} file(s) edited on this PC: {', '.join(kept[:3])}"
+        log.info("zip update: %s", msg)
+        return msg
+
+
 class Supervisor:
     def __init__(self):
         self.data = ROOT / "data"
@@ -175,12 +279,47 @@ class Supervisor:
         self.worker = Child("worker", [self.py, "-m", "worker"], self.logs / "worker.out.log",
                             self.logs / "worker.err.log")
         self.git = Git()
+        self.zip = ZipUpdate(self.opt("repo", "noless-zz/jar"))
         self.update = "not checked yet"
+        self.last_command = ""
         self.checked_at = 0.0
         self.restarts = 0
-        self.code = self.git.head()
+        self.code = self.code_version()
         self.last_reason = ""
         self.started = time.time()
+
+    def updater(self):
+        """git when this folder is a clone and git is installed, else the zip download."""
+        return self.git if self.git.available() is None else self.zip
+
+    def code_version(self) -> str:
+        return self.updater().head()
+
+    def pull(self) -> None:
+        self.update = self.updater().pull()
+        self.checked_at = time.time()
+        self.code = self.code_version()
+
+    def take_command(self) -> None:
+        """An order from the admin's phone, left by the server in data/supervisor-cmd.json."""
+        p = self.data / "supervisor-cmd.json"
+        if not p.exists():
+            return
+        try:
+            cmd = json.loads(p.read_text(encoding="utf-8")).get("cmd", "")
+        except (OSError, ValueError):
+            cmd = ""
+        try:
+            p.unlink()
+        except OSError:
+            return
+        log.info("command from the phone: %s", cmd)
+        if cmd == "update":
+            self.pull()
+            self.last_command = f"update: {self.update}"
+        elif cmd == "restart":
+            self.last_command = "restart"
+            self.restart("asked from the phone")
 
     def opt(self, key: str, default):
         return self.cfg.get("supervisor", {}).get(key, default)
@@ -249,6 +388,8 @@ class Supervisor:
     def heartbeat(self) -> None:
         hb = {"pid": os.getpid(), "epoch": time.time(), "started": self.started, "code": self.code,
               "update": self.update, "checked_epoch": self.checked_at,
+              "update_mode": "git" if self.updater() is self.git else "zip",
+              "last_command": self.last_command,
               "auto_restart": bool(self.opt("auto_restart", True)),
               "github_pull": bool(self.opt("github_pull", True)),
               "restarts": self.restarts, "last_reason": self.last_reason}
@@ -270,12 +411,11 @@ class Supervisor:
                 self.keep_alive(self.server)
                 self.keep_alive(self.worker)
 
+                self.take_command()
                 if self.opt("github_pull", True):
                     every = max(2, int(self.opt("pull_minutes", 10))) * 60
                     if time.time() - self.checked_at > every:
-                        self.update = self.git.pull()
-                        self.checked_at = time.time()
-                        self.code = self.git.head()
+                        self.pull()
 
                 if self.opt("auto_restart", True):
                     files = watched_files()

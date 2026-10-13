@@ -101,6 +101,32 @@ public final class TaskApi {
         return call(prefs, "GET", "/v1/memos?limit=40", null);
     }
 
+    /** The newest memo only: for the tasks widget's "last memo" line. */
+    public static JSONObject lastMemo(Prefs prefs) throws IOException {
+        return call(prefs, "GET", "/v1/memos?limit=1", null);
+    }
+
+    // ---- admin: look after the PC from the phone
+
+    public static JSONObject adminStatus(Prefs prefs) throws IOException {
+        return call(prefs, "GET", "/v1/admin/status", null);
+    }
+
+    /** "update" (pull from GitHub now), "restart" or "eval" (run the AI test). */
+    public static JSONObject adminCommand(Prefs prefs, String cmd) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("cmd", cmd);
+        } catch (org.json.JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/admin/command", body);
+    }
+
+    public static JSONObject adminLog(Prefs prefs, String name) throws IOException {
+        return call(prefs, "GET", "/v1/admin/log?lines=200&name=" + name, null);
+    }
+
     /** File a memo again; with transcript != null, that corrected text is filed. */
     public static JSONObject refile(Prefs prefs, String memoId, String transcript) throws IOException {
         JSONObject body = new JSONObject();

@@ -262,6 +262,88 @@ def invite(request: Request, body: dict = Body(...), authorization: str | None =
             "text": join.message(who.name, join.DOWNLOAD, link, page, lang)}
 
 
+# ---- the admin's phone looks after the PC: status, logs, update from GitHub, restart, AI test
+
+LOGS = {"worker": "worker.log", "server": "server.log", "supervisor": "supervisor.log"}
+
+
+def _admin(authorization: str | None, request: Request, device: str) -> Person:
+    p = check_auth(authorization, request, device)
+    if not p.admin:
+        raise HTTPException(403, "only " + FAMILY.admin.name + " can do this")
+    return p
+
+
+def _json_file(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+@app.get("/v1/admin/status")
+def admin_status(request: Request, authorization: str | None = Header(None), x_device_id: str = Header("")):
+    _admin(authorization, request, x_device_id)
+    now = time.time()
+    sup, work = _json_file(DATA_ROOT / "supervisor.json"), _json_file(DATA_ROOT / "worker.json")
+    counts: dict[str, int] = {}
+    for meta in sorted(DATA_DIR.glob("*/*.json"))[-200:]:
+        st = _json_file(meta).get("status", "?")
+        counts[st] = counts.get(st, 0) + 1
+    ev = _json_file(DATA_ROOT / "eval" / "report.json")
+    return {
+        "supervisor": {**{k: sup.get(k) for k in ("code", "update", "update_mode", "restarts", "last_reason",
+                                                    "last_command", "auto_restart", "github_pull")},
+                       "alive": bool(sup) and now - sup.get("epoch", 0) < 30,
+                       "checked_ago": int(now - sup["checked_epoch"]) if sup.get("checked_epoch") else None},
+        "worker": {"doing": work.get("doing"), "llm": work.get("llm"), "whisper": work.get("whisper"),
+                   "alive": bool(work) and now - work.get("epoch", 0) < 120},
+        "memos": counts,
+        "eval": {k: ev.get(k) for k in ("passed", "total", "at", "model")} if ev else None,
+        "eval_running": (DATA_ROOT / "eval" / "run").exists(),
+        "urls": current_urls(),
+        "rejected": list(REJECTED)[-5:],
+    }
+
+
+@app.post("/v1/admin/command")
+def admin_command(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+                  x_device_id: str = Header("")):
+    p = _admin(authorization, request, x_device_id)
+    cmd = str(body.get("cmd", ""))
+    if cmd in ("update", "restart"):
+        (DATA_ROOT / "supervisor-cmd.json").write_text(json.dumps({"cmd": cmd, "by": p.id, "at": time.time()}),
+                                                       encoding="utf-8")
+        return {"ok": True, "message": "update requested: the PC checks GitHub within a few seconds"
+                if cmd == "update" else "restart requested: back in about 20 seconds"}
+    if cmd == "eval":
+        (DATA_ROOT / "eval").mkdir(parents=True, exist_ok=True)
+        (DATA_ROOT / "eval" / "run").write_text(str(max(1, min(3, int(body.get("repeats", 1))))), encoding="utf-8")
+        return {"ok": True, "message": "AI test queued: runs when no memo is waiting (a few minutes)"}
+    raise HTTPException(400, "cmd must be update, restart or eval")
+
+
+@app.get("/v1/admin/log")
+def admin_log(request: Request, name: str = "worker", lines: int = 120, authorization: str | None = Header(None),
+              x_device_id: str = Header("")):
+    _admin(authorization, request, x_device_id)
+    if name == "eval":
+        path = DATA_ROOT / "eval" / "report.md"
+    elif name in LOGS:
+        path = DATA_ROOT / "logs" / LOGS[name]
+    else:
+        raise HTTPException(400, "name must be one of " + ", ".join([*LOGS, "eval"]))
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 200_000))
+            text = f.read().decode("utf-8", "replace")
+    except OSError:
+        return {"name": name, "text": "(nothing yet)"}
+    keep = text.splitlines()[-max(10, min(lines, 1000)):] if name != "eval" else text.splitlines()
+    return {"name": name, "text": "\n".join(keep)}
+
+
 @app.get("/v1/join", response_class=HTMLResponse)
 def join_page():
     """Opened from the WhatsApp invite; the pairing is in the #fragment, which browsers never send."""

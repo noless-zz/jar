@@ -62,6 +62,21 @@ final class TaskFormat {
         return String.join(" · ", parts);
     }
 
+    /** "12:40" for today, else "Mon 12:40", from the PC's UTC "2026-10-12T09:40:00Z". */
+    static String memoTime(String isoUtc) {
+        try {
+            SimpleDateFormat in = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
+            in.setTimeZone(TimeZone.getTimeZone("UTC"));
+            Date d = in.parse(isoUtc.replace("Z", ""));
+            if (d == null) return "";
+            boolean today = TaskLists.day(d.getTime(), TimeZone.getDefault())
+                    .equals(TaskLists.day(System.currentTimeMillis(), TimeZone.getDefault()));
+            return new SimpleDateFormat(today ? "HH:mm" : "EEE HH:mm", Locale.getDefault()).format(d);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     static String syncedAgo(Context c, long syncedAt) {
         if (syncedAt <= 0) return c.getString(R.string.synced_never);
         return c.getString(R.string.synced_at,

@@ -13,6 +13,8 @@
     <!-- Install updates downloaded from the project's GitHub Releases -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Settings → App → "Let Jar run in the background": reminders and uploads on time -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
@@ -91,6 +93,32 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/jar_widget_info" />
         </receiver>
+
+        <receiver
+            android:name=".TasksWidget"
+            android:exported="false"
+            android:label="@string/tasks_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/tasks_widget_info" />
+        </receiver>
+
+        <service
+            android:name=".TasksWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- See-through screen behind the tasks widget's Done / OK / Send buttons -->
+        <activity
+            android:name=".WidgetActionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Jar.Invisible" />
 
         <!-- Hands downloaded updates to Android's installer -->
         <provider

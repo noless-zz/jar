@@ -41,6 +41,10 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1     # once: venv, packages,
 server and the worker and restarts them when code or `config.toml` changes, or when one of them crashes.
 Once this folder is linked to GitHub (VS Code: **More → Link this folder to GitHub**, needs `git`),
 it also pulls new commits every 10 minutes. It only fast-forwards and never overwrites local edits.
+Without git (no clone yet) the supervisor updates from GitHub's zip of `main` instead, copying only changed files
+and never overwriting a file edited on the PC since the last update (`data/update-state.json`). The admin's phone
+can trigger it at once (Settings → PC → Update the PC's code from GitHub), restart Jar, run the AI test and read the logs:
+`/v1/admin/*`, admin token only. So code pushed to GitHub from anywhere reaches the PC without being at it.
 The dashboard's **code** pill shows the version and the update status. Settings live under `[supervisor]` in `config.toml`.
 
 **Phone app:** start Jar, open the dashboard → **Pair a phone**, and scan the QR code with
