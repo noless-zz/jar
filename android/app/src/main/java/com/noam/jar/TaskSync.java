@@ -68,7 +68,7 @@ public final class TaskSync extends Worker {
         TaskCache cache = new TaskCache(c);
         if (prefs.token().isEmpty() || prefs.offlineSim()) return Result.success();
         try {
-            flush(prefs, cache);
+            flush(c, prefs, cache);
             JSONObject me = TaskApi.me(prefs);
             cache.setMe(me);
             JSONArray urls = me.optJSONArray("urls");
@@ -78,6 +78,12 @@ public final class TaskSync extends Worker {
                 prefs.mergeServerUrls(got);
             }
             cache.setTasks(TaskApi.tasks(prefs));
+            try {
+                cache.setPoints(TaskApi.points(prefs));
+            } catch (TaskApi.HttpError e) {
+                if (e.code == 401) throw e;
+                // an older PC without the points game: the rest of the list still works
+            }
         } catch (TaskApi.HttpError e) {
             prefs.setTaskProblem(e.code == 401 ? c.getString(R.string.tasks_bad_token) : e.getMessage());
             Jar.notifyState(c);
@@ -95,6 +101,7 @@ public final class TaskSync extends Worker {
         }
         prefs.setTaskProblem("");
         TaskNotify.afterSync(c);
+        TaskNotify.scheduleWeekly(c);
         try {
             if (Updater.check(c, false)) TaskNotify.updateAvailable(c, Updater.availableTag(c));
         } catch (IOException ignored) {
@@ -105,7 +112,7 @@ public final class TaskSync extends Worker {
     }
 
     /** Send the queued changes in order. One the PC refuses for good (gone, not allowed) is dropped. */
-    private static void flush(Prefs prefs, TaskCache cache) throws IOException {
+    private static void flush(Context c, Prefs prefs, TaskCache cache) throws IOException {
         JSONArray pending = cache.pending();
         int done = 0;
         try {
@@ -113,8 +120,9 @@ public final class TaskSync extends Worker {
                 JSONObject a = pending.optJSONObject(done);
                 if (a == null) continue;
                 try {
-                    TaskApi.act(prefs, a.optString("id"), a.optString("action"),
-                            a.isNull("until") ? null : a.optString("until", null));
+                    JSONObject r = TaskApi.act(prefs, a.optString("id"), a.optString("action"),
+                            a.isNull("until") ? null : a.optString("until", null), a.optLong("at", 0));
+                    if ("done".equals(a.optString("action"))) PointsUi.toast(c, TaskApi.parseAward(r));
                 } catch (TaskApi.HttpError e) {
                     if (e.code == 401 || e.code >= 500) throw e;   // keep it for later
                     // 400/403/404/409: this change can never apply; drop it and carry on

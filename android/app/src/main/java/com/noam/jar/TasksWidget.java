@@ -74,6 +74,18 @@ public final class TasksWidget extends AppWidgetProvider {
         v.setTextViewText(R.id.tw_last_memo, lastMemoLine(c, cache.lastMemo()));
         v.setViewVisibility(R.id.tw_last_memo, cache.lastMemo().length() == 0 ? View.GONE : View.VISIBLE);
 
+        // Footer: who leads the week (hidden until someone has coins).
+        com.noam.jar.core.Board board = cache.board();
+        com.noam.jar.core.Board.Person lead = board.leader();
+        if (lead == null) {
+            v.setViewVisibility(R.id.tw_board, View.GONE);
+        } else {
+            boolean mine = lead.id.equals(me) || board.tied() && board.myWeek() == lead.week;
+            v.setTextViewText(R.id.tw_board, mine ? c.getString(R.string.widget_board_you, lead.week)
+                    : c.getString(R.string.widget_board_leads, lead.name, lead.week, board.myWeek()));
+            v.setViewVisibility(R.id.tw_board, View.VISIBLE);
+        }
+
         // The list's rows come from TasksWidgetService; a different data URI per widget keeps them apart.
         Intent svc = new Intent(c, TasksWidgetService.class)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);

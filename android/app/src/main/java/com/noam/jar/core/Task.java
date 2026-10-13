@@ -26,6 +26,14 @@ public final class Task {
     public java.util.List<Note> thread = new java.util.ArrayList<>();
     /** Who a question is waiting on ("" = nobody). */
     public String waitingOn = "";
+    /** Coins: what a done task paid, or what an open one will pay (0 = none, or not rated yet). */
+    public int coins;
+    public boolean paid;
+    /** The effort rating 1-10 (0 = not rated) and whether the task is excluded from the game. */
+    public int effort;
+    public boolean noCoins;
+    /** "ai", "parent", "rule" or "default": who rated it. */
+    public String ratedBy = "";
 
     public static final class Note {
         public int id;
@@ -52,6 +60,16 @@ public final class Task {
 
     public boolean isMessage() {
         return "message".equals(kind);
+    }
+
+    /** A lesson a child logged: finished already, its note is what earned the coins. */
+    public boolean isLesson() {
+        return "lesson".equals(kind);
+    }
+
+    /** Can a parent change what this is worth? (WhatsApp drafts never earn.) */
+    public boolean canRate() {
+        return !isMessage() && (isOpen() || isDone() || isRequested()) && !isLesson();
     }
 
     /** Opens WhatsApp with the text filled in (and the chat, when the number is known). */

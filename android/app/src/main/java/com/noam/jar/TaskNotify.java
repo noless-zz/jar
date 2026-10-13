@@ -14,6 +14,8 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
+import com.noam.jar.core.Announce;
+import com.noam.jar.core.Board;
 import com.noam.jar.core.Task;
 import com.noam.jar.core.TaskLists;
 
@@ -28,8 +30,10 @@ public final class TaskNotify {
     static final String CH_REMIND = "task_reminders";
     static final String CH_NEW = "task_new";
     static final String CH_MORNING = "task_morning";
+    static final String CH_WEEKLY = "task_weekly";
     static final int MORNING_HOUR = 8;
     private static final int MORNING_ID = 7000;
+    private static final int WEEKLY_ID = 7002;
 
     private TaskNotify() {}
 
@@ -42,6 +46,8 @@ public final class TaskNotify {
                 c.getString(R.string.channel_task_new), NotificationManager.IMPORTANCE_DEFAULT));
         nm.createNotificationChannel(new NotificationChannel(CH_MORNING,
                 c.getString(R.string.channel_task_morning), NotificationManager.IMPORTANCE_LOW));
+        nm.createNotificationChannel(new NotificationChannel(CH_WEEKLY,
+                c.getString(R.string.channel_task_weekly), NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     // ---------------------------------------------------------------- after every sync
@@ -111,6 +117,20 @@ public final class TaskNotify {
         if (am == null) return;
         long at = TaskLists.nextMorning(System.currentTimeMillis(), TimeZone.getDefault(), MORNING_HOUR);
         am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, morningIntent(c));
+    }
+
+    /** The next "who won the week" alarm: the PC's announce setting (Saturday 20:00 unless changed). */
+    static void scheduleWeekly(Context c) {
+        AlarmManager am = c.getSystemService(AlarmManager.class);
+        if (am == null) return;
+        Announce when = Announce.parse(new TaskCache(c).board().announce);
+        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when.next(System.currentTimeMillis(), TimeZone.getDefault()),
+                weeklyIntent(c));
+    }
+
+    private static PendingIntent weeklyIntent(Context c) {
+        Intent i = new Intent(c, TaskReceiver.class).setAction(TaskReceiver.WEEKLY);
+        return PendingIntent.getBroadcast(c, 5, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     private static void set(AlarmManager am, long at, PendingIntent pi) {
@@ -214,6 +234,39 @@ public final class TaskNotify {
         String title = c.getResources().getQuantityString(R.plurals.morning_title, today.size(), today.size());
         NotificationCompat.Builder b = base(c, CH_MORNING, title, today.get(0).title).setStyle(inbox);
         post(c, MORNING_ID, b);
+    }
+
+    /** The weekly result: the winner (or a tie) and the most improved. Network: call off the main thread. */
+    static void weekly(Context c) {
+        scheduleWeekly(c);
+        Prefs prefs = new Prefs(c);
+        TaskCache cache = new TaskCache(c);
+        if (prefs.token().isEmpty() || cache.myId().isEmpty()) return;
+        try {
+            cache.setPoints(TaskApi.points(prefs));
+        } catch (java.io.IOException ignored) {
+            // announce from the last copy; better a little behind than silent
+        }
+        Board b = cache.board();
+        Announce when = Announce.parse(b.announce);
+        TimeZone tz = TimeZone.getDefault();
+        long now = System.currentTimeMillis();
+        java.util.Calendar today = java.util.Calendar.getInstance(tz);
+        today.setTimeInMillis(now);
+        if (today.get(java.util.Calendar.DAY_OF_WEEK) != when.dayOfWeek) return;       // a late wake-up on another day
+        String week = b.summary.weekStart;
+        if (week.isEmpty() || week.equals(cache.announcedWeek())) return;
+        cache.setAnnouncedWeek(week);
+        List<String> names = b.winnerNames();
+        String text;
+        if (names.isEmpty()) text = c.getString(R.string.weekly_nobody);
+        else if (names.size() == 1) text = c.getString(R.string.weekly_winner, names.get(0), b.summary.top);
+        else text = c.getString(R.string.weekly_tie, String.join(", ", names), b.summary.top);
+        if (!b.summary.improvedId.isEmpty()) {
+            text += "\n" + c.getString(R.string.weekly_improved, b.summary.improvedName, b.summary.improvedPct);
+        }
+        post(c, WEEKLY_ID, base(c, CH_WEEKLY, c.getString(R.string.weekly_title), text)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(text)));
     }
 
     private static NotificationCompat.Builder base(Context c, String channel, String title, String text) {

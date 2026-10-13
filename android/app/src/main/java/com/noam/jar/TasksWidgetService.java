@@ -69,6 +69,7 @@ public final class TasksWidgetService extends RemoteViewsService {
             v.setTextViewText(R.id.twi_title, title);
             String meta = TaskFormat.meta(c, t, me, names);
             if (TaskFormat.overdue(t)) meta = "⚠ " + meta;
+            if (t.coins > 0 && !t.isMessage()) meta = meta.isEmpty() ? "🪙 " + t.coins : "🪙 " + t.coins + " · " + meta;
             v.setTextViewText(R.id.twi_meta, meta);
             v.setImageViewResource(R.id.twi_action, icon);
             v.setContentDescription(R.id.twi_action, c.getString("accept".equals(action) ? R.string.action_accept

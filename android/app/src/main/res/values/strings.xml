@@ -282,4 +282,58 @@
     <string name="thread_failed">Couldn\'t reach the PC: %1$s</string>
     <string name="thread_edit_title">Change your note</string>
     <string name="thread_gone">This task is gone</string>
+
+    <!-- Points game: leaderboard, coins, weekly result -->
+    <string name="tab_board">🏆 Board</string>
+    <string name="board_week">This week · %1$s – %2$s</string>
+    <string name="board_all_time">All time</string>
+    <string name="board_lessons">Learned lately</string>
+    <string name="board_empty">Nobody has earned coins yet. Finish a task to start!</string>
+    <string name="board_streak">🔥 %d days</string>
+    <plurals name="board_tasks">
+        <item quantity="one">%d task</item>
+        <item quantity="other">%d tasks</item>
+    </plurals>
+    <string name="board_best">best: %s</string>
+    <string name="board_work_day">💼 I worked today (+%d 🪙)</string>
+    <string name="board_learned">📚 I learned something</string>
+    <string name="board_tap_hint">Tap a name to see where the coins came from.</string>
+    <string name="coins_label">🪙 %d</string>
+    <string name="award_toast">+%1$d 🪙</string>
+    <string name="award_toast_why">+%1$d 🪙 — %2$s</string>
+    <string name="award_on_time">on time %s</string>
+    <string name="award_late">late %s</string>
+    <string name="award_streak">streak %s</string>
+    <string name="award_repeat">again %s</string>
+    <string name="award_habit">habit %s</string>
+    <string name="effort_menu">🪙 What\'s it worth…</string>
+    <string name="effort_title">What is “%s” worth?</string>
+    <string name="effort_value">Effort %1$d → %2$d 🪙</string>
+    <string name="effort_scale">1 = a minute · 5 = half an hour of real work · 10 = a whole day</string>
+    <string name="effort_no_coins">No coins for this one</string>
+    <string name="effort_saved">Saved</string>
+    <string name="lesson_title">What I learned</string>
+    <string name="lesson_subject_hint">Lesson (optional)</string>
+    <string name="lesson_learned_hint">What I learned today…</string>
+    <string name="lesson_send">Send</string>
+    <string name="lesson_rating">Rating your note…</string>
+    <string name="lesson_failed">Couldn\'t send the note (%1$s)</string>
+    <string name="lesson_too_short">Write a sentence about what you learned</string>
+    <string name="lesson_limit">Three lesson notes a day is the limit</string>
+    <string name="workday_logged">Work day logged: +%d 🪙</string>
+    <string name="workday_already">Today\'s work day is already logged ✓</string>
+    <string name="ledger_title">%s\'s coins</string>
+    <string name="ledger_line">+%1$d 🪙 %2$s · %3$s</string>
+    <string name="ledger_reversed">↩ %1$s · taken back</string>
+    <string name="ledger_private">a private task</string>
+    <string name="ledger_work_day">💼 Work day</string>
+    <string name="ledger_empty">Nothing yet.</string>
+    <string name="channel_task_weekly">Weekly results</string>
+    <string name="weekly_title">🏆 The week in the family</string>
+    <string name="weekly_winner">%1$s won the week with %2$d 🪙</string>
+    <string name="weekly_tie">%1$s share the top with %2$d 🪙 each</string>
+    <string name="weekly_nobody">No coins this week. A new week starts tomorrow!</string>
+    <string name="weekly_improved">⭐ Most improved: %1$s (+%2$d%%)</string>
+    <string name="widget_board_leads">🏆 %1$s leads with %2$d · you %3$d</string>
+    <string name="widget_board_you">🏆 You lead with %1$d</string>
 </resources>

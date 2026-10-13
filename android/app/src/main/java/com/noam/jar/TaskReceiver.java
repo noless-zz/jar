@@ -12,6 +12,7 @@ import java.util.TimeZone;
 public final class TaskReceiver extends BroadcastReceiver {
     static final String REMIND = "com.noam.jar.TASK_REMIND";
     static final String MORNING = "com.noam.jar.TASK_MORNING";
+    static final String WEEKLY = "com.noam.jar.TASK_WEEKLY";
     static final String ACT = "com.noam.jar.TASK_ACT";
     static final String EXTRA_ID = "id";
     static final String EXTRA_ACTION = "action";
@@ -24,6 +25,15 @@ public final class TaskReceiver extends BroadcastReceiver {
             TaskNotify.remind(c, intent.getStringExtra(EXTRA_ID));
         } else if (MORNING.equals(a)) {
             TaskNotify.morning(c);
+        } else if (WEEKLY.equals(a)) {
+            BroadcastReceiver.PendingResult result = goAsync();
+            new Thread(() -> {
+                try {
+                    TaskNotify.weekly(c);
+                } finally {
+                    result.finish();
+                }
+            }, "jar-weekly").start();
         } else if (ACT.equals(a)) {
             String id = intent.getStringExtra(EXTRA_ID);
             String action = intent.getStringExtra(EXTRA_ACTION);

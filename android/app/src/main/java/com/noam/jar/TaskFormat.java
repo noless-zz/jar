@@ -37,6 +37,12 @@ final class TaskFormat {
         return time.isEmpty() ? d : d + " " + time;
     }
 
+    /** "11 Oct" from "2026-10-11" (the board's week header). */
+    static String shortDay(String day) {
+        long ms = TaskLists.toMillis(day == null ? "" : day, TimeZone.getDefault());
+        return ms < 0 ? String.valueOf(day) : new SimpleDateFormat("d MMM", Locale.getDefault()).format(new Date(ms));
+    }
+
     static boolean overdue(Task t) {
         if (!t.isOpen() || t.due == null) return false;
         long at = TaskLists.toMillis(t.dueHasTime() ? t.due : t.due + "T23:59", TimeZone.getDefault());

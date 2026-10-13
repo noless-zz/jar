@@ -3,6 +3,7 @@ package com.noam.jar;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import com.noam.jar.core.Board;
 import com.noam.jar.core.Task;
 
 import org.json.JSONArray;
@@ -129,6 +130,30 @@ public final class TaskCache {
         return null;
     }
 
+    // ---------------------------------------------------------------- points
+
+    public void setPoints(JSONObject board) {
+        sp.edit().putString("points", board.toString()).apply();
+    }
+
+    /** The leaderboard as of the last sync (empty before the first). */
+    public Board board() {
+        try {
+            return TaskApi.parseBoard(new JSONObject(sp.getString("points", "{}")));
+        } catch (JSONException e) {
+            return new Board();
+        }
+    }
+
+    /** The week already announced (its start date), so a re-sync or a second alarm doesn't announce twice. */
+    public String announcedWeek() {
+        return sp.getString("announced_week", "");
+    }
+
+    public void setAnnouncedWeek(String weekStart) {
+        sp.edit().putString("announced_week", weekStart).apply();
+    }
+
     /** The newest memo as the PC filed it (for the widget's "last memo" line), or {} . */
     public JSONObject lastMemo() {
         try {
@@ -177,7 +202,8 @@ public final class TaskCache {
     public synchronized void queue(String taskId, String action, String until) {
         JSONArray arr = pending();
         try {
-            JSONObject a = new JSONObject().put("id", taskId).put("action", action);
+            JSONObject a = new JSONObject().put("id", taskId).put("action", action)
+                    .put("at", System.currentTimeMillis());          // when it was ticked: offline ticks pay at this time
             if (until != null) a.put("until", until);
             arr.put(a);
         } catch (JSONException ignored) {

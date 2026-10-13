@@ -68,6 +68,17 @@
     </FrameLayout>
 
     <TextView
+        android:id="@+id/tw_board"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/tw_last_memo"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

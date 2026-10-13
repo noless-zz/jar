@@ -1,5 +1,7 @@
 package com.noam.jar;
 
+import com.noam.jar.core.Award;
+import com.noam.jar.core.Board;
 import com.noam.jar.core.ServerList;
 import com.noam.jar.core.Task;
 
@@ -171,13 +173,55 @@ public final class TaskApi {
     }
 
     public static JSONObject act(Prefs prefs, String taskId, String action, String until) throws IOException {
+        return act(prefs, taskId, action, until, 0);
+    }
+
+    /** {@code atMillis} > 0: when the change was made on the phone (an offline tick is paid at that time). */
+    public static JSONObject act(Prefs prefs, String taskId, String action, String until, long atMillis)
+            throws IOException {
         JSONObject body = new JSONObject();
         try {
             if (until != null) body.put("until", until);
+            if (atMillis > 0) body.put("at", atMillis / 1000.0);
         } catch (JSONException e) {
             throw new IOException(e);
         }
         return call(prefs, "POST", "/v1/tasks/" + taskId + "/" + action, body);
+    }
+
+    // ---- points
+
+    /** The leaderboard: this week, all time, ledgers, lesson notes, the week's result. */
+    public static JSONObject points(Prefs prefs) throws IOException {
+        return call(prefs, "GET", "/v1/points", null);
+    }
+
+    /** A parent sets what a task is worth: effort 1-10 (0 = leave) and/or no coins (null = leave). */
+    public static JSONObject setPoints(Prefs prefs, String taskId, int effort, Boolean noCoins) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            if (effort > 0) body.put("effort", effort);
+            if (noCoins != null) body.put("no_coins", noCoins);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/tasks/" + taskId + "/points", body);
+    }
+
+    /** A child's lesson note. The PC's AI rates it first, so this can take a while. */
+    public static JSONObject lesson(Prefs prefs, String title, String learned) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("title", title).put("learned", learned);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/lessons", body, 45000);
+    }
+
+    /** A parent logs today's work day. */
+    public static JSONObject workDay(Prefs prefs) throws IOException {
+        return call(prefs, "POST", "/v1/points/work-day", new JSONObject());
     }
 
     /** One-time link that logs this phone's browser into the dashboard (admin only). */
@@ -187,6 +231,11 @@ public final class TaskApi {
     }
 
     private static JSONObject call(Prefs prefs, String method, String path, JSONObject body) throws IOException {
+        return call(prefs, method, path, body, 10000);
+    }
+
+    private static JSONObject call(Prefs prefs, String method, String path, JSONObject body, int readTimeoutMs)
+            throws IOException {
         IOException last = new IOException("no server address");
         for (String url : ServerList.ordered(prefs.serverUrls(), prefs.lastGoodUrl())) {
             HttpURLConnection http = null;
@@ -194,7 +243,7 @@ public final class TaskApi {
                 http = (HttpURLConnection) new URL(url + path).openConnection();
                 http.setRequestMethod(method);
                 http.setConnectTimeout(4000);
-                http.setReadTimeout(10000);
+                http.setReadTimeout(readTimeoutMs);
                 http.setRequestProperty("Authorization", "Bearer " + prefs.token());
                 http.setRequestProperty("X-Device-Id", prefs.deviceId());
                 byte[] out = null;
@@ -272,6 +321,14 @@ public final class TaskApi {
         t.to = o.optString("to", "");
         t.phone = o.optString("phone", "");
         t.waitingOn = o.isNull("waiting_on") ? "" : o.optString("waiting_on", "");
+        t.coins = o.optInt("coins");
+        t.paid = o.optBoolean("paid");
+        JSONObject pts = o.optJSONObject("points");
+        if (pts != null) {
+            t.effort = pts.optInt("effort");
+            t.noCoins = pts.optBoolean("no_coins");
+            t.ratedBy = pts.optString("rated_by", "");
+        }
         JSONArray th = o.optJSONArray("thread");
         for (int i = 0; th != null && i < th.length(); i++) {
             JSONObject n = th.optJSONObject(i);
@@ -286,6 +343,122 @@ public final class TaskApi {
             t.thread.add(note);
         }
         return t;
+    }
+
+    /** What "done" paid: the "award" in the PC's answer, or null when the task earns nothing. */
+    public static Award parseAward(JSONObject task) {
+        JSONObject a = task == null ? null : task.optJSONObject("award");
+        if (a == null) return null;
+        Award out = new Award();
+        out.fresh = a.optBoolean("new");
+        out.coins = a.optInt("coins");
+        out.weekTotal = a.optInt("week_total");
+        JSONObject b = a.optJSONObject("breakdown");
+        if (b != null) {
+            out.effort = b.optDouble("E", 1);
+            out.repeat = b.optDouble("R", 1);
+            out.streak = b.optDouble("S", 1);
+            out.timing = b.optDouble("T", 1);
+            out.habit = b.optDouble("habit", 1);
+            out.fixed = b.optInt("fixed");
+        }
+        return out;
+    }
+
+    public static Board parseBoard(JSONObject o) {
+        Board b = new Board();
+        if (o == null) return b;
+        JSONObject week = o.optJSONObject("week");
+        if (week != null) {
+            b.weekStart = week.optString("start");
+            b.weekEnd = week.optString("end");
+        }
+        b.me = o.optString("me");
+        JSONObject cfg = o.optJSONObject("config");
+        if (cfg != null) {
+            b.workDayCoins = cfg.optInt("work_day_coins", 30);
+            b.announce = cfg.optString("announce", "sat 20:00");
+        }
+        JSONArray people = o.optJSONArray("people");
+        for (int i = 0; people != null && i < people.length(); i++) {
+            JSONObject p = people.optJSONObject(i);
+            if (p == null) continue;
+            Board.Person x = new Board.Person();
+            x.id = p.optString("id");
+            x.name = p.optString("name");
+            x.role = p.optString("role");
+            x.week = p.optInt("week");
+            x.allTime = p.optInt("all_time");
+            x.tasksWeek = p.optInt("tasks_week");
+            x.streak = p.optInt("streak");
+            JSONObject best = p.optJSONObject("best");
+            if (best != null) {
+                x.bestCoins = best.optInt("coins");
+                x.bestCategory = best.optString("category");
+                x.bestTitle = str(best, "title");
+            }
+            b.people.add(x);
+        }
+        JSONObject ledgers = o.optJSONObject("ledgers");
+        for (int i = 0; ledgers != null && i < b.people.size(); i++) {
+            String id = b.people.get(i).id;
+            JSONArray lines = ledgers.optJSONArray(id);
+            List<Board.Line> list = new ArrayList<>();
+            for (int j = 0; lines != null && j < lines.length(); j++) {
+                JSONObject l = lines.optJSONObject(j);
+                if (l == null) continue;
+                Board.Line x = new Board.Line();
+                x.id = l.optInt("id");
+                x.title = str(l, "title");
+                x.kind = l.optString("kind", "task");
+                x.category = l.optString("category");
+                x.at = l.optString("at");
+                x.coins = l.optInt("coins");
+                x.reversed = l.optBoolean("reversed");
+                x.reversedWhy = l.optString("reversed_why", "");
+                x.note = str(l, "note");
+                x.ratedBy = l.optString("rated_by", "");
+                list.add(x);
+            }
+            b.ledgers.put(id, list);
+        }
+        JSONArray lessons = o.optJSONArray("lessons");
+        for (int i = 0; lessons != null && i < lessons.length(); i++) {
+            JSONObject l = lessons.optJSONObject(i);
+            if (l == null) continue;
+            Board.Lesson x = new Board.Lesson();
+            x.person = l.optString("person");
+            x.name = l.optString("name");
+            x.title = l.optString("title");
+            x.note = l.optString("note");
+            x.coins = l.optInt("coins");
+            x.at = l.optString("at");
+            b.lessons.add(x);
+        }
+        JSONObject sum = o.optJSONObject("summary");
+        if (sum != null) {
+            b.summary.weekStart = sum.optString("week_start");
+            b.summary.top = sum.optInt("top");
+            JSONArray w = sum.optJSONArray("winners");
+            for (int i = 0; w != null && i < w.length(); i++) b.summary.winners.add(w.optString(i));
+            JSONArray totals = sum.optJSONArray("totals");
+            for (int i = 0; totals != null && i < totals.length(); i++) {
+                JSONObject t = totals.optJSONObject(i);
+                if (t == null) continue;
+                Board.Person x = new Board.Person();
+                x.id = t.optString("id");
+                x.name = t.optString("name");
+                x.week = t.optInt("coins");
+                b.summary.totals.add(x);
+            }
+            JSONObject imp = sum.optJSONObject("most_improved");
+            if (imp != null) {
+                b.summary.improvedId = imp.optString("id");
+                b.summary.improvedName = imp.optString("name");
+                b.summary.improvedPct = imp.optInt("pct");
+            }
+        }
+        return b;
     }
 
     private static String str(JSONObject o, String key) {

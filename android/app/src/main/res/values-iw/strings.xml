@@ -288,4 +288,59 @@
     <string name="thread_failed">אין חיבור למחשב: %1$s</string>
     <string name="thread_edit_title">עריכת ההערה</string>
     <string name="thread_gone">המשימה כבר לא קיימת</string>
+
+    <!-- Points game: leaderboard, coins, weekly result -->
+    <string name="tab_board">🏆 דירוג</string>
+    <string name="board_week">השבוע · %1$s – %2$s</string>
+    <string name="board_all_time">מאז ההתחלה</string>
+    <string name="board_lessons">מה למדו לאחרונה</string>
+    <string name="board_empty">עוד אף אחד לא צבר מטבעות. מסיימים משימה ומתחילים!</string>
+    <string name="board_streak">🔥 %d ימים</string>
+    <plurals name="board_tasks">
+        <item quantity="one">משימה אחת</item>
+        <item quantity="two">%d משימות</item>
+        <item quantity="other">%d משימות</item>
+    </plurals>
+    <string name="board_best">הכי הרבה: %s</string>
+    <string name="board_work_day">💼 עבדתי היום (+%d 🪙)</string>
+    <string name="board_learned">📚 למדתי משהו</string>
+    <string name="board_tap_hint">לחיצה על שם מראה מאיפה הגיעו המטבעות.</string>
+    <string name="coins_label">🪙 %d</string>
+    <string name="award_toast">+%1$d 🪙</string>
+    <string name="award_toast_why">+%1$d 🪙 — %2$s</string>
+    <string name="award_on_time">בזמן %s</string>
+    <string name="award_late">באיחור %s</string>
+    <string name="award_streak">רצף %s</string>
+    <string name="award_repeat">שוב %s</string>
+    <string name="award_habit">הרגל %s</string>
+    <string name="effort_menu">🪙 כמה זה שווה…</string>
+    <string name="effort_title">כמה שווה „%s”?</string>
+    <string name="effort_value">מאמץ %1$d ← %2$d 🪙</string>
+    <string name="effort_scale">1 = דקה · 5 = חצי שעה של עבודה אמיתית · 10 = יום שלם</string>
+    <string name="effort_no_coins">בלי מטבעות על המשימה הזו</string>
+    <string name="effort_saved">נשמר</string>
+    <string name="lesson_title">מה למדתי</string>
+    <string name="lesson_subject_hint">שיעור (לא חובה)</string>
+    <string name="lesson_learned_hint">מה למדתי היום…</string>
+    <string name="lesson_send">שליחה</string>
+    <string name="lesson_rating">בודק את ההערה שלך…</string>
+    <string name="lesson_failed">לא הצלחתי לשלוח את ההערה (%1$s)</string>
+    <string name="lesson_too_short">כתבו משפט על מה שלמדתם</string>
+    <string name="lesson_limit">אפשר לרשום עד שלוש הערות שיעור ביום</string>
+    <string name="workday_logged">יום עבודה נרשם: +%d 🪙</string>
+    <string name="workday_already">יום העבודה של היום כבר נרשם ✓</string>
+    <string name="ledger_title">המטבעות של %s</string>
+    <string name="ledger_line">+%1$d 🪙 %2$s · %3$s</string>
+    <string name="ledger_reversed">↩ %1$s · נלקח בחזרה</string>
+    <string name="ledger_private">משימה פרטית</string>
+    <string name="ledger_work_day">💼 יום עבודה</string>
+    <string name="ledger_empty">עוד אין כלום.</string>
+    <string name="channel_task_weekly">סיכום שבועי</string>
+    <string name="weekly_title">🏆 השבוע במשפחה</string>
+    <string name="weekly_winner">בראש השבוע: %1$s עם %2$d 🪙</string>
+    <string name="weekly_tie">חולקים את המקום הראשון: %1$s, %2$d 🪙 כל אחד</string>
+    <string name="weekly_nobody">השבוע לא נצברו מטבעות. שבוע חדש מתחיל מחר!</string>
+    <string name="weekly_improved">⭐ השיפור הגדול ביותר: %1$s (+%2$d%%)</string>
+    <string name="widget_board_leads">🏆 בראש: %1$s (%2$d) · אצלך: %3$d</string>
+    <string name="widget_board_you">🏆 אצלך הכי הרבה השבוע: %1$d</string>
 </resources>

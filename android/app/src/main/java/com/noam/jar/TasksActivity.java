@@ -38,6 +38,8 @@ import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.timepicker.MaterialTimePicker;
 import com.google.android.material.timepicker.TimeFormat;
+import com.noam.jar.core.Award;
+import com.noam.jar.core.Board;
 import com.noam.jar.core.Task;
 import com.noam.jar.core.TaskLists;
 
@@ -56,7 +58,7 @@ import java.util.concurrent.Executors;
  * Tick or swipe to finish, tap for snooze and more. The mic button records a memo, like the widget.
  */
 public final class TasksActivity extends AppCompatActivity {
-    private static final int TAB_MINE = 0, TAB_ASKED = 1, TAB_FAMILY = 2;
+    private static final int TAB_MINE = 0, TAB_ASKED = 1, TAB_FAMILY = 2, TAB_BOARD = 3;
     /** From a notification: open this WhatsApp draft right away. */
     static final String EXTRA_SEND = "send_message";
     static final String EXTRA_INVITE = "invite";
@@ -122,6 +124,7 @@ public final class TasksActivity extends AppCompatActivity {
         tabs.addTab(tabs.newTab().setText(R.string.tab_mine));
         tabs.addTab(tabs.newTab().setText(R.string.tab_asked));
         tabs.addTab(tabs.newTab().setText(R.string.tab_family));
+        tabs.addTab(tabs.newTab().setText(R.string.tab_board));
         tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
             @Override public void onTabSelected(TabLayout.Tab tab) { refresh(); }
             @Override public void onTabUnselected(TabLayout.Tab tab) { }
@@ -450,6 +453,8 @@ public final class TasksActivity extends AppCompatActivity {
             for (Task t : TaskLists.mine(all, me)) rows.add(Row.task(t));
         } else if (tab == TAB_ASKED) {
             for (Task t : TaskLists.asked(all, me)) rows.add(Row.task(t));
+        } else if (tab == TAB_BOARD) {
+            rows.addAll(boardRows(parent));
         } else {
             Map<String, String> names = cache.names();
             List<Task> fam = TaskLists.family(all, me);
@@ -579,6 +584,10 @@ public final class TasksActivity extends AppCompatActivity {
         } else if (t.isDone() || "declined".equals(t.status)) {
             labels.add(getString(R.string.action_reopen));
             actions.add(() -> act(t, "reopen", null));
+        }
+        if (cache.iAmParent() && t.canRate()) {
+            labels.add(getString(R.string.effort_menu));
+            actions.add(() -> showEffortDialog(t));
         }
         if (!"declined".equals(t.status) && !t.isMessage()) {
             labels.add(getString(R.string.action_edit));
@@ -740,15 +749,187 @@ public final class TasksActivity extends AppCompatActivity {
         });
     }
 
+    // ---------------------------------------------------------------- points
+
+    /** The Board tab: my action (work day / lesson note), this week, all time, lessons learned lately. */
+    private List<Row> boardRows(boolean parent) {
+        Board b = cache.board();
+        List<Row> rows = new ArrayList<>();
+        if (parent) {
+            rows.add(Row.line(getString(R.string.board_work_day, b.workDayCoins), null, "", this::logWorkDay));
+        } else {
+            rows.add(Row.line(getString(R.string.board_learned), null, "", this::showLessonDialog));
+        }
+        if (b.people.isEmpty()) {
+            rows.add(Row.header(getString(R.string.board_empty)));
+            return rows;
+        }
+        rows.add(Row.header(getString(R.string.board_week, TaskFormat.shortDay(b.weekStart),
+                TaskFormat.shortDay(b.weekEnd))));
+        String[] medals = {"🥇", "🥈", "🥉"};
+        for (int i = 0; i < b.people.size(); i++) {
+            Board.Person p = b.people.get(i);
+            int rank = i;
+            while (rank > 0 && b.people.get(rank - 1).week == p.week) rank--;     // a tie shares the medal
+            String medal = p.week > 0 && rank < medals.length ? medals[rank] + " " : "";
+            List<String> sub = new ArrayList<>();
+            sub.add(getResources().getQuantityString(R.plurals.board_tasks, p.tasksWeek, p.tasksWeek));
+            if (p.streak >= 2) sub.add(getString(R.string.board_streak, p.streak));
+            if (p.bestCoins > 0 && p.bestTitle != null) sub.add(getString(R.string.board_best, p.bestTitle));
+            rows.add(Row.line(medal + p.name, String.join(" · ", sub), String.valueOf(p.week),
+                    () -> showLedger(p)));
+        }
+        rows.add(Row.header(getString(R.string.board_all_time)));
+        List<Board.Person> all = new ArrayList<>(b.people);
+        all.sort((x, y) -> y.allTime != x.allTime ? Integer.compare(y.allTime, x.allTime) : x.name.compareTo(y.name));
+        for (Board.Person p : all) {
+            rows.add(Row.line(p.name, null, getString(R.string.coins_label, p.allTime), () -> showLedger(p)));
+        }
+        rows.add(Row.header(getString(R.string.board_tap_hint)));
+        if (!b.lessons.isEmpty()) {
+            rows.add(Row.header(getString(R.string.board_lessons)));
+            for (Board.Lesson l : b.lessons) {
+                String title = l.title.isEmpty() ? l.name : l.name + " · " + l.title;
+                rows.add(Row.line(title, l.note, "+" + l.coins, null));
+            }
+        }
+        return rows;
+    }
+
+    /** Where a person's coins came from, newest first (private tasks show only as "a private task"). */
+    private void showLedger(Board.Person p) {
+        List<Board.Line> lines = cache.board().ledger(p.id);
+        List<String> items = new ArrayList<>();
+        for (Board.Line l : lines) {
+            String title = l.title == null ? getString(R.string.ledger_private)
+                    : "work_day".equals(l.kind) ? getString(R.string.ledger_work_day) : l.title;
+            String day = l.at.length() >= 10 ? TaskFormat.shortDay(l.at.substring(0, 10)) : "";
+            items.add(l.reversed ? getString(R.string.ledger_reversed, title)
+                    : getString(R.string.ledger_line, l.coins, title, day));
+        }
+        MaterialAlertDialogBuilder d = new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.ledger_title, p.name))
+                .setPositiveButton(android.R.string.ok, null);
+        if (items.isEmpty()) d.setMessage(R.string.ledger_empty);
+        else d.setItems(items.toArray(new String[0]), null);
+        d.show();
+    }
+
+    /** A parent says what a task is worth: a slider 1-10 and "no coins for this one". */
+    private void showEffortDialog(Task t) {
+        View v = LayoutInflater.from(this).inflate(R.layout.dialog_effort, null, false);
+        TextView value = v.findViewById(R.id.effort_value);
+        android.widget.SeekBar bar = v.findViewById(R.id.effort_bar);
+        MaterialCheckBox none = v.findViewById(R.id.effort_none);
+        int start = t.effort > 0 ? t.effort : 3;
+        bar.setProgress(start - 1);
+        none.setChecked(t.noCoins);
+        Runnable show = () -> {
+            int e = bar.getProgress() + 1;
+            value.setText(getString(R.string.effort_value, e, e * 5));
+            bar.setEnabled(!none.isChecked());
+        };
+        bar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar s, int p, boolean user) { show.run(); }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar s) { }
+            @Override public void onStopTrackingTouch(android.widget.SeekBar s) { }
+        });
+        none.setOnCheckedChangeListener((b, on) -> show.run());
+        show.run();
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.effort_title, t.title))
+                .setView(v)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    int effort = bar.getProgress() + 1;
+                    boolean noCoins = none.isChecked();
+                    io.execute(() -> {
+                        try {
+                            TaskApi.setPoints(prefs, t.id, noCoins ? 0 : effort, noCoins == t.noCoins ? null : noCoins);
+                            main.post(() -> {
+                                Toast.makeText(this, R.string.effort_saved, Toast.LENGTH_SHORT).show();
+                                TaskSync.now(this);
+                            });
+                        } catch (IOException e) {
+                            main.post(() -> Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show());
+                        }
+                    });
+                })
+                .show();
+    }
+
+    /** A child writes what they learned; the PC's AI rates the note (can take a few seconds). */
+    private void showLessonDialog() {
+        View v = LayoutInflater.from(this).inflate(R.layout.dialog_lesson, null, false);
+        TextInputEditText subject = v.findViewById(R.id.lesson_subject);
+        TextInputEditText learned = v.findViewById(R.id.lesson_learned);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.lesson_title)
+                .setView(v)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.lesson_send, (d, w) -> {
+                    String note = learned.getText() == null ? "" : learned.getText().toString().trim();
+                    String title = subject.getText() == null ? "" : subject.getText().toString().trim();
+                    if (note.length() < 12) {
+                        Toast.makeText(this, R.string.lesson_too_short, Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    Toast.makeText(this, R.string.lesson_rating, Toast.LENGTH_SHORT).show();
+                    io.execute(() -> {
+                        try {
+                            Award a = TaskApi.parseAward(TaskApi.lesson(prefs, title, note));
+                            main.post(() -> {
+                                PointsUi.toast(this, a);
+                                TaskSync.now(this);
+                            });
+                        } catch (TaskApi.HttpError e) {
+                            String msg = e.code == 429 ? getString(R.string.lesson_limit)
+                                    : getString(R.string.lesson_failed, e.getMessage());
+                            main.post(() -> Toast.makeText(this, msg, Toast.LENGTH_LONG).show());
+                        } catch (IOException e) {
+                            main.post(() -> Toast.makeText(this, getString(R.string.lesson_failed, e.getMessage()),
+                                    Toast.LENGTH_LONG).show());
+                        }
+                    });
+                })
+                .show();
+    }
+
+    /** A parent: "I worked today" pays the fixed work-day base, once a day. */
+    private void logWorkDay() {
+        io.execute(() -> {
+            try {
+                Award a = TaskApi.parseAward(TaskApi.workDay(prefs));
+                main.post(() -> {
+                    Toast.makeText(this, getString(R.string.workday_logged, a == null ? 0 : a.coins),
+                            Toast.LENGTH_LONG).show();
+                    TaskSync.now(this);
+                });
+            } catch (TaskApi.HttpError e) {
+                String msg = e.code == 409 ? getString(R.string.workday_already) : e.getMessage();
+                main.post(() -> Toast.makeText(this, msg, Toast.LENGTH_LONG).show());
+            } catch (IOException e) {
+                main.post(() -> Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
     // ---------------------------------------------------------------- list
 
     static final class Row {
         final String header;
         final Task task;
+        // a line of the Board tab
+        String title, sub, right;
+        Runnable click;
 
         private Row(String header, Task task) {
             this.header = header;
             this.task = task;
+        }
+
+        boolean isLine() {
+            return title != null;
         }
 
         static Row header(String h) {
@@ -757,6 +938,15 @@ public final class TasksActivity extends AppCompatActivity {
 
         static Row task(Task t) {
             return new Row(null, t);
+        }
+
+        static Row line(String title, String sub, String right, Runnable click) {
+            Row r = new Row(null, null);
+            r.title = title;
+            r.sub = sub == null ? "" : sub;
+            r.right = right == null ? "" : right;
+            r.click = click;
+            return r;
         }
     }
 
@@ -774,7 +964,8 @@ public final class TasksActivity extends AppCompatActivity {
 
         @Override
         public int getItemViewType(int position) {
-            return rows.get(position).task == null ? 0 : 1;
+            Row r = rows.get(position);
+            return r.isLine() ? 2 : r.task == null ? 0 : 1;
         }
 
         @Override
@@ -786,13 +977,24 @@ public final class TasksActivity extends AppCompatActivity {
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
             LayoutInflater inf = LayoutInflater.from(parent.getContext());
-            View v = inf.inflate(type == 0 ? R.layout.item_header : R.layout.item_task, parent, false);
+            View v = inf.inflate(type == 0 ? R.layout.item_header : type == 2 ? R.layout.item_board
+                    : R.layout.item_task, parent, false);
             return new RecyclerView.ViewHolder(v) { };
         }
 
         @Override
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
             Row r = rows.get(position);
+            if (r.isLine()) {
+                ((TextView) h.itemView.findViewById(R.id.line_title)).setText(r.title);
+                TextView sub = h.itemView.findViewById(R.id.line_sub);
+                sub.setText(r.sub);
+                sub.setVisibility(r.sub.isEmpty() ? View.GONE : View.VISIBLE);
+                ((TextView) h.itemView.findViewById(R.id.line_right)).setText(r.right);
+                h.itemView.setOnClickListener(r.click == null ? null : v -> r.click.run());
+                h.itemView.setClickable(r.click != null);
+                return;
+            }
             if (r.task == null) {
                 ((TextView) h.itemView).setText(r.header);
                 return;
@@ -816,6 +1018,13 @@ public final class TasksActivity extends AppCompatActivity {
             check.setChecked(t.isDone());
             check.setEnabled(t.isOpen() || t.isDone());
             check.setOnCheckedChangeListener((b, on) -> act(t, on ? "done" : "reopen", null));
+            TextView coins = h.itemView.findViewById(R.id.coins);
+            boolean showCoins = t.coins > 0 && !t.isMessage() && !"declined".equals(t.status);
+            coins.setVisibility(showCoins ? View.VISIBLE : View.GONE);
+            if (showCoins) {
+                coins.setText(getString(R.string.coins_label, t.coins));
+                coins.setAlpha(t.paid ? 1f : 0.6f);        // a preview until it is done
+            }
             h.itemView.setOnClickListener(v -> showTaskMenu(t));
         }
     }
