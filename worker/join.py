@@ -30,6 +30,7 @@ def steps(download: str, pair_link: str, link: str = "", language: str = "he") -
                "2. Open Jar once and allow notifications and the microphone."]
         if link:
             out.append(f"3. Then tap your personal link and press “Open in Jar” (don't share it):\n{link}")
+            out.append("If that doesn't open Jar: copy this whole message, then in Jar tap ⚙ Settings → Paste link.")
             out.append("That's it: it works at home and outside, nothing else to install.")
         elif pair_link:
             out.append(f"3. Copy this personal link, then in Jar tap ⋮ → Settings & pairing → Paste link:\n{pair_link}")
@@ -43,6 +44,7 @@ def steps(download: str, pair_link: str, link: str = "", language: str = "he") -
                "2. פותחים את Jar פעם אחת ומאשרים התראות ומיקרופון."]
         if link:
             out.append(f"3. לוחצים על הקישור האישי שלך ואז על „פתיחה ב-Jar” (לא להעביר לאחרים):\n{link}")
+            out.append("אם Jar לא נפתח: מעתיקים את כל ההודעה הזאת, ובאפליקציה: ⚙ הגדרות ← הדבקת קישור.")
             out.append("וזהו – עובד בבית וגם בחוץ, בלי להתקין שום דבר נוסף.")
         elif pair_link:
             out.append(f"3. מעתיקים את הקישור האישי הזה, ובאפליקציה: ⋮ ← הגדרות וצימוד ← הדבקת קישור:\n{pair_link}")

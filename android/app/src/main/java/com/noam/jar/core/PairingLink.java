@@ -9,7 +9,10 @@ import java.util.List;
 /**
  * The link inside the dashboard's pairing QR code:
  *   jar://pair?v=1&t=<token>&u=http://192.168.1.87:8080&u=http://100.101.102.103:8080
- * Parsed by hand (no Android Uri) so it is unit-tested on the JVM.
+ * or the WhatsApp invite's join page, which carries the same fields after #:
+ *   https://my-pc.tailnet.ts.net/v1/join#v=1&t=<token>&u=...
+ * Either may sit inside a longer pasted text (the whole invite message). Parsed by hand
+ * (no Android Uri) so it is unit-tested on the JVM.
  */
 public final class PairingLink {
     public final String token;
@@ -23,13 +26,21 @@ public final class PairingLink {
     /** Returns null for anything that isn't a valid Jar pairing link. */
     public static PairingLink parse(String text) {
         if (text == null) return null;
-        String s = text.trim();
-        String prefix = "jar://pair?";
-        if (!s.regionMatches(true, 0, prefix, 0, prefix.length())) return null;
+        String query = null;
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        for (String marker : new String[] {"jar://pair?", "/v1/join#"}) {
+            int at = lower.indexOf(marker);
+            if (at < 0) continue;
+            int start = at + marker.length(), end = start;
+            while (end < text.length() && !Character.isWhitespace(text.charAt(end))) end++;
+            query = text.substring(start, end);
+            break;
+        }
+        if (query == null) return null;
         String token = null;
         String version = null;
         List<String> urls = new ArrayList<>();
-        for (String part : s.substring(prefix.length()).split("&")) {
+        for (String part : query.split("&")) {
             int eq = part.indexOf('=');
             if (eq <= 0) continue;
             String key = part.substring(0, eq);

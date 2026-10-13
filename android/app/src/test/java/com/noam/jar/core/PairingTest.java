@@ -38,6 +38,7 @@ public class PairingTest {
         assertNull(PairingLink.parse("jar://pair?v=1&u=http%3A%2F%2Fa"));              // no token
         assertNull(PairingLink.parse("jar://pair?v=1&t=x&u=ftp%3A%2F%2Fa"));           // no usable url
         assertNull(PairingLink.parse(null));
+        assertNull(PairingLink.parse("https://pc.ts.net/v1/join#"));                    // empty
     }
 
     @Test
@@ -78,5 +79,16 @@ public class PairingTest {
         assertEquals(java.util.Arrays.asList("https://pc.ts.net", "http://my-typed:8080"),
                 ServerList.merge(java.util.Collections.singletonList("http://my-typed:8080"),
                         java.util.Collections.singletonList("https://pc.ts.net")));
+    }
+
+    @Test
+    public void parsesJoinPageAndWholeMessage() {
+        String q = "v=1&t=abc&u=http%3A%2F%2F192.168.1.5%3A8080&u=https%3A%2F%2Fpc.ts.net";
+        PairingLink p = PairingLink.parse("https://pc.ts.net/v1/join#" + q);
+        assertEquals("abc", p.token);
+        assertEquals(Arrays.asList("http://192.168.1.5:8080", "https://pc.ts.net"), p.urls);
+        String msg = "היי ליבנה!\n\n3. לוחצים על הקישור האישי שלך:\nhttps://pc.ts.net/v1/join#" + q + "\nוזהו";
+        assertEquals("abc", PairingLink.parse(msg).token);
+        assertEquals("abc", PairingLink.parse("copy: jar://pair?" + q + " thanks").token);
     }
 }
