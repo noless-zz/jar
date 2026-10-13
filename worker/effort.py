@@ -91,7 +91,7 @@ Effort 1-10, by the real time it takes and how unpleasant it is:
 8 unpleasant or heavy, even when it is short: anything with human or animal waste or dirt that disgusts (sanitary cleaning, litter, nappies, smelly bins, vomit)
 9 most of a morning
 10 a whole day of hard work
-Daily routines that need no thought (straightening one small thing, putting an item away) are 1 or 2, not 3.
+Be realistic about time. Judge a person who does this every day: quick routines take 2-5 minutes (effort 1-2), but a task with several separate steps, or a whole room or home, takes 45-90 minutes (effort 6-7), not 25.
 For an adult's errands (insurance, repairs, paperwork, appointments) rate the time and the hassle.
 Also give: minutes (typical time), category (one of {categories}), chore_key (2-3 English words, lowercase, hyphens: the same chore always gets the same key, however it is worded), reason (English, at most 12 words).{keys}
 Reply with JSON only: {{"effort": 1-10, "minutes": 0, "category": "...", "chore_key": "...", "reason": "..."}}"""
