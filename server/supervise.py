@@ -157,19 +157,25 @@ class Git:
                 return f"up to date ({local[:7]})"
             if self.run("merge-base", "--is-ancestor", "HEAD", "origin/main").returncode != 0:
                 return "this PC has commits GitHub doesn't: not pulling (push or reset them)"
-            dirty = [ln for ln in self.run("status", "--porcelain", "--untracked-files=no").stdout.splitlines()
-                     if ln.strip()]
-            # Files changed here that already match GitHub (copied over by hand or by a zip update)
-            # lose nothing when reset: put them back to HEAD so the fast-forward can go ahead.
-            same = [ln[3:] for ln in dirty
-                    if self.run("diff", "--quiet", "origin/main", "--", ln[3:]).returncode == 0]
-            if same and len(same) == len(dirty):
-                self.run("checkout", "--", *same)
-                dirty = []
-            if dirty:
-                files = ", ".join(ln[3:] for ln in dirty[:3])
-                return f"local edits ({files}): not pulling until they're committed or reverted"
-            m = self.run("merge", "--ff-only", "--quiet", "origin/main")
+            dirty = [ln[3:].strip('"') for ln in self.run("status", "--porcelain", "--untracked-files=no")
+                     .stdout.splitlines() if ln.strip()]
+            # A file changed here is fine when it already matches GitHub (copied over by hand or by
+            # a zip update): nothing is lost by taking GitHub's. Anything else is a real local edit.
+            edited = [f for f in dirty if self.run("diff", "--quiet", "origin/main", "--", f).returncode != 0]
+            if edited:
+                return f"local edits ({', '.join(edited[:3])}): not pulling until they're committed or reverted"
+            # Files GitHub adds that already sit here untracked (copied ahead of time): same rule.
+            incoming = self.run("diff", "--name-only", "HEAD", "origin/main").stdout.splitlines()
+            in_way = [f for f in incoming if f and (ROOT / f).exists()
+                      and self.run("cat-file", "-e", f"HEAD:{f}").returncode != 0]
+            differ = [f for f in in_way if self.run("hash-object", "--", f).stdout.strip()
+                      != self.run("rev-parse", f"origin/main:{f}").stdout.strip()]
+            if differ:
+                return f"files here would be replaced ({', '.join(differ[:3])}): not pulling; move them away"
+            if dirty or in_way:
+                m = self.run("reset", "--hard", "--quiet", "origin/main")   # all of it matches GitHub already
+            else:
+                m = self.run("merge", "--ff-only", "--quiet", "origin/main")
             if m.returncode != 0:
                 return "pull failed: " + (m.stderr.strip().splitlines() or ["?"])[-1][:200]
             log.info("pulled %s -> %s from GitHub", local[:7], remote[:7])

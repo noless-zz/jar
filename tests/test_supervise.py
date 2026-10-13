@@ -58,8 +58,22 @@ class Pull(unittest.TestCase):
         self.push("3\n")
         self.assertTrue(git.pull().startswith("updated"))
         self.assertEqual((self.pc / "a.txt").read_text(), "3\n")
-        (self.pc / "a.txt").write_text("my edit\n")              # local edit: never overwritten
+        (self.pc / "a.txt").write_text("4\n")                    # copied ahead, plus a new file copied too
+        (self.pc / "b.txt").write_text("new\n")
+        (self.dev / "b.txt").write_text("new\n")
+        self.g("add", "b.txt", cwd=self.dev)
         self.push("4\n")
+        self.assertTrue(git.pull().startswith("updated"), git.pull())
+        self.assertEqual((self.pc / "b.txt").read_text(), "new\n")
+        (self.pc / "c.txt").write_text("mine\n")                 # untracked, different from GitHub's
+        (self.dev / "c.txt").write_text("theirs\n")
+        self.g("add", "c.txt", cwd=self.dev)
+        self.push("5\n")
+        self.assertIn("would be replaced (c.txt)", git.pull())
+        (self.pc / "c.txt").unlink()
+        self.assertTrue(git.pull().startswith("updated"))
+        (self.pc / "a.txt").write_text("my edit\n")              # local edit: never overwritten
+        self.push("6\n")
         status = git.pull()
         self.assertIn("local edits (a.txt)", status)
         self.assertEqual((self.pc / "a.txt").read_text(), "my edit\n")
