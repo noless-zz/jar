@@ -133,8 +133,8 @@ class WorkerTool(Base):
 
     def test_child_gets_only_tasks_and_notes(self):
         n = self.notes("maya")
-        self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp",
-                                             "draft_join_instructions", "search_notes"})
+        self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task", "note_on_task",
+                                             "draft_whatsapp", "draft_join_instructions", "search_notes"})
         self.assertIn("draft_email", registry(self.notes("avi")))
         out = n.add_task("לקנות מחברת", for_person="avi")
         self.assertIn("waits for a parent", out)
@@ -162,6 +162,14 @@ class Corrections(Base):
         from worker.tools import ToolError
         with self.assertRaises(ToolError):
             n.update_task("nope", status="done")
+
+    def test_question_by_voice(self):
+        t = self.store.add(self.p["dana"], "לסדר את החדר", self.p["yoni"])
+        out = self.notes("dana").note_on_task(t["id"], "סידרת כבר את הארון?", ask=True)
+        self.assertIn("question to", out)
+        self.assertEqual(self.store.snapshot(self.p["yoni"])["tasks"][0]["waiting_on"], "yoni")
+        self.notes("yoni").note_on_task(t["id"], "כן, הכל מסודר")
+        self.assertIsNone(self.store.snapshot(self.p["yoni"])["tasks"][0]["waiting_on"])
 
     def test_reassign_by_child_needs_ok(self):
         t = self.store.add(self.p["yoni"], "לסדר חדר")
@@ -390,6 +398,39 @@ class Api(Base):
             self.assertEqual(self.c.post("/v1/invite", headers=self.h("avi"), json={"person": "yoni"}).status_code, 503)
         finally:
             self.server._URLS.update(at=0.0, urls=[])
+
+    def test_notes_and_questions_on_a_task(self):
+        r = self.c.post("/v1/tasks", headers=self.h("dana"), json={"title": "לסדר את החדר", "assignee": "yoni"})
+        tid = r.json()["id"]
+        r = self.c.post(f"/v1/tasks/{tid}/notes", headers=self.h("yoni"), json={"text": "גם את הארון?", "ask": True})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["waiting_on"], "dana")                  # the question goes to who asked
+        self.assertEqual(self.c.post(f"/v1/tasks/{tid}/notes", headers=self.h("maya"),
+                                     json={"text": "x"}).status_code, 404)  # another child can't see it
+        r = self.c.post(f"/v1/tasks/{tid}/notes", headers=self.h("dana"), json={"text": "כן, גם הארון"})
+        self.assertIsNone(r.json()["waiting_on"])                         # answered
+        self.assertEqual([n["by"] for n in r.json()["thread"]], ["yoni", "dana"])
+        r = self.c.patch(f"/v1/tasks/{tid}/notes/2", headers=self.h("dana"), json={"text": "כן, והמגירות"})
+        self.assertEqual(r.json()["thread"][1]["text"], "כן, והמגירות")
+        self.assertEqual(self.c.patch(f"/v1/tasks/{tid}/notes/2", headers=self.h("yoni"),
+                                      json={"text": "x"}).status_code, 403)  # not your note
+        r = self.c.post(f"/v1/tasks/{tid}/notes", headers=self.h("dana"), json={"text": "עד מתי?", "ask": True})
+        self.assertEqual(r.json()["waiting_on"], "yoni")
+        mine = self.c.post("/v1/tasks", headers=self.h("dana"), json={"title": "שלי"}).json()["id"]
+        self.assertEqual(self.c.post(f"/v1/tasks/{mine}/notes", headers=self.h("dana"),
+                                     json={"text": "?", "ask": True}).status_code, 400)
+
+    def test_quick_replies_prompt_and_parsing(self):
+        from worker import replies
+        t = {"title": "לסדר את החדר", "assignee": "yoni", "created_by": "dana", "waiting_on": "yoni",
+             "thread": [{"id": 1, "by": "dana", "text": "עד מתי?", "ask": True}]}
+        prompt = replies.build_prompt(t, "yoni", {"yoni": "יוני", "dana": "דנה"})
+        self.assertIn("Hebrew", prompt)
+        self.assertIn("answer it", prompt)
+        self.assertIn("דנה (question): עד מתי?", prompt)
+        self.assertEqual(replies.parse('{"replies": ["עד שמונה", "עד מחר", "עד שמונה"]}'), ["עד שמונה", "עד מחר"])
+        self.assertEqual(replies.parse('Sure! {"replies": ["ok"]}'), ["ok"])
+        self.assertEqual(replies.parse("nonsense"), [])
 
     def test_internet_requests_only_reach_the_phone_api(self):
         funnel = {"Tailscale-Funnel-Request": "?1"}

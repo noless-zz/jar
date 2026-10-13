@@ -50,7 +50,12 @@ public final class TasksWidgetService extends RemoteViewsService {
             String title = t.title;
             String action;
             int icon;
-            if (t.isRequested()) {
+            if (t.waitingOn(me)) {
+                action = "open";
+                icon = R.drawable.ic_widget_ok;
+                Task.Note n = t.lastNote();
+                title = "❓ " + t.title + (n == null ? "" : ": " + n.text);
+            } else if (t.isRequested()) {
                 action = "accept";
                 icon = R.drawable.ic_widget_ok;
                 title = c.getString(R.string.widget_asks, com.noam.jar.core.TaskLists.name(names, t.createdBy), t.title);

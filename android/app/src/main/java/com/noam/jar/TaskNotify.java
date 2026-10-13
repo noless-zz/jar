@@ -54,13 +54,20 @@ public final class TaskNotify {
         Set<String> seen = cache.seen();
         if (!cache.firstSyncDone()) {
             // Just paired: don't fire a burst of alerts for everything that already exists.
-            for (Task t : tasks) seen.add(t.id);
+            for (Task t : tasks) {
+                seen.add(t.id);
+                seen.add(TaskLists.noteKey(t));
+            }
             cache.setSeen(seen);
             cache.setFirstSyncDone();
         } else {
             for (Task t : TaskLists.news(tasks, me, cache.iAmParent(), seen)) {
                 showNew(c, cache, t);
                 seen.add(t.id);
+            }
+            for (Task t : TaskLists.newNotes(tasks, me, seen)) {
+                showNote(c, cache, t);
+                seen.add(TaskLists.noteKey(t));
             }
             cache.setSeen(seen);
         }
@@ -175,6 +182,22 @@ public final class TaskNotify {
                     .addAction(0, c.getString(R.string.action_done), action(c, t.id, "done", null));
         }
         post(c, id(t.id), b);
+    }
+
+    /** "Yoni asks about 'tidy the room': also the cupboard?" — opens the task's notes. */
+    static void showNote(Context c, TaskCache cache, Task t) {
+        Task.Note n = t.lastNote();
+        if (n == null) return;
+        String who = TaskLists.name(cache.names(), n.by);
+        String title = c.getString(t.waitingOn(cache.myId()) ? R.string.notif_question : R.string.notif_note, who, t.title);
+        PendingIntent open = PendingIntent.getActivity(c, id(t.id) + 1, new Intent(c, TaskThreadActivity.class)
+                        .putExtra(TaskThreadActivity.EXTRA_ID, t.id)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        post(c, id(t.id) + 1, base(c, CH_NEW, title, n.text)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(n.text))
+                .setContentIntent(open)
+                .addAction(0, c.getString(R.string.thread_reply), open));
     }
 
     /** 08:00: what's open today, so tasks without a time aren't forgotten. */

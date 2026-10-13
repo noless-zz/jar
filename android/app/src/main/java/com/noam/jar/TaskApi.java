@@ -101,6 +101,38 @@ public final class TaskApi {
         return call(prefs, "GET", "/v1/memos?limit=40", null);
     }
 
+    // ---- notes and questions on a task (online only: the reply shows the updated task)
+
+    public static JSONObject addNote(Prefs prefs, String taskId, String text, boolean ask) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("text", text);
+            body.put("ask", ask);
+        } catch (org.json.JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/tasks/" + taskId + "/notes", body);
+    }
+
+    /** Change your own note; empty text removes it. */
+    public static JSONObject editNote(Prefs prefs, String taskId, int noteId, String text) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("text", text);
+        } catch (org.json.JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "PATCH", "/v1/tasks/" + taskId + "/notes/" + noteId, body);
+    }
+
+    /** A few short replies the PC's AI suggests (nothing is sent). */
+    public static List<String> suggest(Prefs prefs, String taskId) throws IOException {
+        JSONArray arr = call(prefs, "POST", "/v1/tasks/" + taskId + "/suggest", new JSONObject()).optJSONArray("replies");
+        List<String> out = new java.util.ArrayList<>();
+        for (int i = 0; arr != null && i < arr.length(); i++) out.add(arr.optString(i));
+        return out;
+    }
+
     /** The newest memo only: for the tasks widget's "last memo" line. */
     public static JSONObject lastMemo(Prefs prefs) throws IOException {
         return call(prefs, "GET", "/v1/memos?limit=1", null);
@@ -239,6 +271,20 @@ public final class TaskApi {
         t.message = o.optString("message", "");
         t.to = o.optString("to", "");
         t.phone = o.optString("phone", "");
+        t.waitingOn = o.isNull("waiting_on") ? "" : o.optString("waiting_on", "");
+        JSONArray th = o.optJSONArray("thread");
+        for (int i = 0; th != null && i < th.length(); i++) {
+            JSONObject n = th.optJSONObject(i);
+            if (n == null) continue;
+            Task.Note note = new Task.Note();
+            note.id = n.optInt("id");
+            note.by = n.optString("by");
+            note.text = n.optString("text");
+            note.at = n.optString("at");
+            note.ask = n.optBoolean("ask");
+            note.edited = n.has("edited") && !n.isNull("edited");
+            t.thread.add(note);
+        }
         return t;
     }
 

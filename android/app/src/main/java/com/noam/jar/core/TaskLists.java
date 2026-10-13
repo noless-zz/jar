@@ -32,9 +32,38 @@ public final class TaskLists {
     /** "Mine": what I have to do. */
     public static List<Task> mine(List<Task> all, String me) {
         List<Task> out = new ArrayList<>();
-        for (Task t : all) if (me.equals(t.assignee) && !"declined".equals(t.status)) out.add(t);
+        for (Task t : all) {
+            if ((me.equals(t.assignee) && !"declined".equals(t.status)) || t.waitingOn(me)) out.add(t);
+        }
         Collections.sort(out, ORDER);
+        return questionsFirst(out, me);
+    }
+
+    /** A question waiting for my answer goes to the top (stable: otherwise the usual order). */
+    static List<Task> questionsFirst(List<Task> list, String me) {
+        List<Task> out = new ArrayList<>();
+        for (Task t : list) if (t.waitingOn(me)) out.add(t);
+        for (Task t : list) if (!t.waitingOn(me)) out.add(t);
         return out;
+    }
+
+    /**
+     * Tasks with a note I haven't been told about: the newest note is someone else's, and I do the task,
+     * asked for it, or am the one a question waits on. Keyed "n:<task>:<note id>" in {@code seen}.
+     */
+    public static List<Task> newNotes(List<Task> all, String me, java.util.Set<String> seen) {
+        List<Task> out = new ArrayList<>();
+        for (Task t : all) {
+            Task.Note n = t.lastNote();
+            if (n == null || me.equals(n.by) || seen.contains(noteKey(t))) continue;
+            if (me.equals(t.assignee) || me.equals(t.createdBy) || t.waitingOn(me)) out.add(t);
+        }
+        return out;
+    }
+
+    public static String noteKey(Task t) {
+        Task.Note n = t.lastNote();
+        return "n:" + t.id + ":" + (n == null ? 0 : n.id);
     }
 
     /** "Asked": what I gave or asked someone else to do. */
@@ -69,10 +98,17 @@ public final class TaskLists {
     public static List<Task> forWidget(List<Task> all, String me, boolean iAmParent, int max) {
         List<Task> out = new ArrayList<>(needMyOk(all, me, iAmParent));
         List<Task> mine = new ArrayList<>();
-        for (Task t : all) if (me.equals(t.assignee) && t.isOpen()) mine.add(t);
+        for (Task t : all) if ((me.equals(t.assignee) && t.isOpen() || t.waitingOn(me)) && !out.contains(t)) mine.add(t);
         Collections.sort(mine, ORDER);
-        out.addAll(mine);
+        out.addAll(0, questionsFirst(mine, me).subList(0, countWaiting(mine, me)));
+        for (Task t : mine) if (!t.waitingOn(me)) out.add(t);
         return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
+    }
+
+    static int countWaiting(List<Task> list, String me) {
+        int n = 0;
+        for (Task t : list) if (t.waitingOn(me)) n++;
+        return n;
     }
 
     public static int openCount(List<Task> all, String me) {

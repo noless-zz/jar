@@ -32,9 +32,15 @@ public final class WidgetActionActivity extends Activity {
                             .putExtra(TasksActivity.EXTRA_SEND, id));
                     break;
                 default:
-                    startActivity(new Intent(this, TasksActivity.class)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                            .putExtra(TasksActivity.EXTRA_OPEN, id));
+                    com.noam.jar.core.Task t = new TaskCache(this).find(id);
+                    if (t != null && (t.waitingOn(new TaskCache(this).myId()) || !t.thread.isEmpty())) {
+                        startActivity(new Intent(this, TaskThreadActivity.class)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(TaskThreadActivity.EXTRA_ID, id));
+                    } else {
+                        startActivity(new Intent(this, TasksActivity.class)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                                .putExtra(TasksActivity.EXTRA_OPEN, id));
+                    }
             }
         }
         finish();

@@ -115,4 +115,40 @@ public class TaskListsTest {
         org.junit.Assert.assertEquals(1, TaskLists.forWidget(all, "dana", true, 1).size());
         org.junit.Assert.assertEquals(2, TaskLists.forWidget(all, "dana", false, 10).size());   // a child approves nothing
     }
+
+    private static Task.Note note(int id, String by, boolean ask) {
+        Task.Note n = new Task.Note();
+        n.id = id;
+        n.by = by;
+        n.text = "?";
+        n.ask = ask;
+        return n;
+    }
+
+    @Test
+    public void questionWaitingOnMeIsMineAndFirst() {
+        Task a = t("a", "dana", "dana", "open", "2026-10-11");
+        Task q = t("q", "yoni", "dana", "open", null);           // Dana gave Yoni a task; Yoni asked back
+        q.thread.add(note(1, "yoni", true));
+        q.waitingOn = "dana";
+        java.util.List<Task> all = java.util.Arrays.asList(a, q);
+        org.junit.Assert.assertEquals("q", TaskLists.mine(all, "dana").get(0).id);
+        org.junit.Assert.assertEquals("q", TaskLists.forWidget(all, "dana", true, 10).get(0).id);
+        org.junit.Assert.assertEquals("dana", q.counterpart("yoni"));
+        org.junit.Assert.assertEquals("yoni", q.counterpart("dana"));
+        org.junit.Assert.assertEquals("", a.counterpart("dana"));
+    }
+
+    @Test
+    public void newNotesFromOthersOnly() {
+        Task q = t("q", "yoni", "dana", "open", null);
+        q.thread.add(note(1, "yoni", true));
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        org.junit.Assert.assertEquals(1, TaskLists.newNotes(java.util.Collections.singletonList(q), "dana", seen).size());
+        org.junit.Assert.assertEquals(0, TaskLists.newNotes(java.util.Collections.singletonList(q), "yoni", seen).size());
+        seen.add(TaskLists.noteKey(q));
+        org.junit.Assert.assertEquals(0, TaskLists.newNotes(java.util.Collections.singletonList(q), "dana", seen).size());
+        q.thread.add(note(2, "yoni", false));                       // another note: news again
+        org.junit.Assert.assertEquals(1, TaskLists.newNotes(java.util.Collections.singletonList(q), "dana", seen).size());
+    }
 }

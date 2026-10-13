@@ -423,6 +423,47 @@ def new_task(request: Request, body: dict = Body(...), authorization: str | None
         _task_error(e)
 
 
+# Notes and questions on a task (before the generic /{action} route, which would catch "notes").
+
+@app.post("/v1/tasks/{task_id}/notes")
+def task_note(task_id: str, request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+              x_device_id: str = Header("")):
+    """{"text": "...", "ask": true} — ask=true sends it as a question to the other side."""
+    p = check_auth(authorization, request, x_device_id)
+    try:
+        return TASKS.comment(p, task_id, str(body.get("text", "")), bool(body.get("ask")))
+    except TaskError as e:
+        _task_error(e)
+
+
+@app.patch("/v1/tasks/{task_id}/notes/{note_id}")
+def task_note_edit(task_id: str, note_id: int, request: Request, body: dict = Body(...),
+                   authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """Change your own note; an empty text removes it."""
+    p = check_auth(authorization, request, x_device_id)
+    try:
+        return TASKS.edit_comment(p, task_id, note_id, str(body.get("text", "")))
+    except TaskError as e:
+        _task_error(e)
+
+
+@app.post("/v1/tasks/{task_id}/suggest")
+def task_suggest(task_id: str, request: Request, authorization: str | None = Header(None),
+                 x_device_id: str = Header("")):
+    """Three short replies the local AI suggests for this person's next note (nothing is sent)."""
+    from worker import replies
+    p = check_auth(authorization, request, x_device_id)
+    t = next((x for x in TASKS.snapshot(p)["tasks"] if x["id"] == task_id), None)
+    if t is None:
+        raise HTTPException(404, "no such task")
+    llm = _raw.get("llm", {})
+    names = {x.id: x.name for x in FAMILY.people.values()}
+    try:
+        return {"replies": replies.suggest(_ollama_url(), llm.get("model", "qwen3.5:9b"), t, p.id, names)}
+    except replies.SuggestError as e:
+        raise HTTPException(503, str(e)) from e
+
+
 @app.post("/v1/tasks/{task_id}/{action}")
 def task_action(task_id: str, action: str, request: Request, body: dict | None = Body(None),
                 authorization: str | None = Header(None), x_device_id: str = Header("")):

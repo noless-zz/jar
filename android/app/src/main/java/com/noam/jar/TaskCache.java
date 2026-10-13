@@ -84,6 +84,28 @@ public final class TaskCache {
                 .putLong("synced_at", System.currentTimeMillis()).apply();
     }
 
+    /** Put one task as the PC returned it into the stored list (after a note, before the next sync). */
+    public synchronized void upsert(JSONObject task) {
+        try {
+            JSONObject snap = new JSONObject(sp.getString("tasks", "{}"));
+            JSONArray arr = snap.optJSONArray("tasks");
+            if (arr == null) arr = new JSONArray();
+            boolean found = false;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject t = arr.optJSONObject(i);
+                if (t != null && task.optString("id").equals(t.optString("id"))) {
+                    arr.put(i, task);
+                    found = true;
+                }
+            }
+            if (!found) arr.put(task);
+            snap.put("tasks", arr);
+            sp.edit().putString("tasks", snap.toString()).apply();
+        } catch (JSONException ignored) {
+            // the next sync brings it anyway
+        }
+    }
+
     public synchronized List<Task> tasks() {
         try {
             List<Task> list = TaskApi.parseTasks(new JSONObject(sp.getString("tasks", "{}")));

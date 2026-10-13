@@ -56,6 +56,9 @@ final class TaskFormat {
         if (t.due != null) parts.add(when(c, t.due));
         if (t.isOpen() && t.snoozedUntil != null) parts.add(c.getString(R.string.meta_snoozed, when(c, t.snoozedUntil)));
         if (t.isRequested()) parts.add(c.getString(R.string.meta_waiting));
+        if (t.waitingOn(me)) parts.add(0, c.getString(R.string.meta_question_for_you));
+        else if (!t.waitingOn.isEmpty()) parts.add(c.getString(R.string.meta_question_to, TaskLists.name(names, t.waitingOn)));
+        else if (!t.thread.isEmpty()) parts.add("💬 " + t.thread.size());
         if ("declined".equals(t.status)) parts.add(c.getString(R.string.meta_declined));
         if (t.isDone() && t.doneBy != null && !me.equals(t.doneBy))
             parts.add(c.getString(R.string.meta_done_by, TaskLists.name(names, t.doneBy)));

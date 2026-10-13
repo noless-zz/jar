@@ -541,6 +541,13 @@ public final class TasksActivity extends AppCompatActivity {
         TimeZone tz = TimeZone.getDefault();
         List<String> labels = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        if (!t.isMessage()) {
+            labels.add(t.waitingOn(me) ? getString(R.string.thread_answer)
+                    : t.thread.isEmpty() ? getString(R.string.thread_open_empty)
+                    : getString(R.string.thread_open, t.thread.size()));
+            actions.add(() -> startActivity(new Intent(this, TaskThreadActivity.class)
+                    .putExtra(TaskThreadActivity.EXTRA_ID, t.id)));
+        }
         if (t.isMessage() && t.isOpen()) {
             labels.add(getString(R.string.send_whatsapp));
             actions.add(() -> sendWhatsApp(t));

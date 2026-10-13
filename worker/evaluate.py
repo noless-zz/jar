@@ -139,6 +139,13 @@ def cases(admin: str, fam: Family) -> list[Case]:
              "להכין לוח שנה לסבתא",
              lambda r: _one_task(r, son, "לוח שנה"),
              speaker=son),
+        Case("a question about a child's task goes on that task",
+             "תשאל את ליבנה אם הוא כבר סידר את החדר",
+             lambda r: (None if (_seeded(r, "לסדר את החדר").get("waiting_on") == son and not r.new()
+                                 and not r.new("message"))
+                        else f"no question on the task (tools: {r.tools()}, waiting_on: "
+                             f"{_seeded(r, 'לסדר את החדר').get('waiting_on')})"),
+             seed=[{"title": "לסדר את החדר", "assignee": son}]),
         Case("lesson idea",
              "רעיון לשיעור: להשתמש בבינגו כדי לתרגל פונקציות רציונליות בכיתה י'",
              lambda r: None if "save_lesson_idea" in r.tools() else f"not a lesson idea (tools: {r.tools()})"),
@@ -159,7 +166,7 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
             store = TaskStore(tmp / "tasks.json", fam)
             speaker = fam.get(c.speaker) or fam.admin
             for sd in c.seed:
-                t = store.add(speaker, sd["title"], speaker, sd.get("due"))
+                t = store.add(speaker, sd["title"], fam.get(sd.get("assignee", "")) or speaker, sd.get("due"))
                 data = json.loads((tmp / "tasks.json").read_text(encoding="utf-8"))
                 for x in data["tasks"]:
                     if x["id"] == t["id"]:
@@ -186,6 +193,16 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
                 "actions": [a["summary"] for a in res.actions],
                 "messages": [m["message"] for m in res.new("message")],
                 "reply": summary})
+    # Quick replies (the app's ✨ button): one sample, shown in the report for a human to judge.
+    from . import replies
+    sample = {"title": "לסדר את החדר", "assignee": "son", "created_by": "dad", "waiting_on": "son",
+              "thread": [{"id": 1, "by": "dad", "text": "סידרת כבר את הארון? עד מתי זה יהיה מוכן?", "ask": True}]}
+    t0 = time.monotonic()
+    try:
+        quick = replies.suggest(cfg.ollama_url, cfg.llm_model, sample, "son", {"son": "ליבנה", "dad": "אבא"})
+    except replies.SuggestError as e:
+        quick = [f"(failed: {e})"]
+    quick_s = round(time.monotonic() - t0, 1)
     by_case: dict[str, list[bool]] = {}
     for r in results:
         by_case.setdefault(r["case"], []).append(r["ok"])
@@ -193,13 +210,15 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
               "repeats": max(1, repeats),
               "per_case": {k: f"{sum(v)}/{len(v)}" for k, v in by_case.items()},
               "passed": sum(r["ok"] for r in results), "total": len(results),
-              "seconds": round(time.monotonic() - t_all, 1), "results": results}
+              "seconds": round(time.monotonic() - t_all, 1), "results": results,
+              "quick_replies": {"seconds": quick_s, "for": sample["thread"][0]["text"], "replies": quick}}
     out = out_dir or (cfg.data_dir / "eval")
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     lines = [f"# AI test: {report['passed']}/{report['total']} passed",
              f"{report['model']}, thinking {'on' if report['think'] else 'off'}, {report['seconds']} s, {report['at']}", "",
              "| case | passed |", "|---|---|"] + [f"| {k} | {v} |" for k, v in report["per_case"].items()] + [""]
+    lines += [f"## ✨ Quick replies ({quick_s} s) to: {sample['thread'][0]['text']}"] + [f"- {q}" for q in quick] + [""]
     for r in results:
         lines.append(f"## {'✅' if r['ok'] else '❌'} {r['case']} ({r['seconds']} s)")
         lines.append(f"> {r['memo']}")

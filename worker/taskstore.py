@@ -191,6 +191,60 @@ class TaskStore:
             self._write(data)
             return t
 
+    # ---- notes and questions on a task ----
+    @staticmethod
+    def counterpart(t: dict, actor: Person) -> str:
+        """Who a question from `actor` goes to: the one doing it, or (from them) whoever asked for it."""
+        if actor.id != t.get("assignee"):
+            return t.get("assignee") or ""
+        return t.get("created_by") if t.get("created_by") != actor.id else ""
+
+    def comment(self, actor: Person, task_id: str, text: str, ask: bool = False) -> dict:
+        """A note on a task. ask=True sends it as a question: the task shows up for the other side
+        until they answer. Any note from the person a question waits on answers it."""
+        text = (text or "").strip()
+        if not text:
+            raise TaskError(400, "the note is empty")
+        with self._locked():
+            data = self._read()
+            t = next((x for x in data["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
+            if t is None or not self.visible(t, actor):
+                raise TaskError(404, "no such task")
+            thread = t.setdefault("thread", [])
+            n = {"id": (max((c["id"] for c in thread), default=0) + 1), "by": actor.id, "text": text[:2000],
+                 "at": _now(), "ask": bool(ask)}
+            thread.append(n)
+            if t.get("waiting_on") == actor.id:
+                t["waiting_on"] = None                       # answered
+            if ask:
+                to = self.counterpart(t, actor)
+                if not to:
+                    raise TaskError(400, "this is your own task: there's nobody to ask")
+                t["waiting_on"] = to
+            t["updated_at"] = _now()
+            self._write(data)
+            return t
+
+    def edit_comment(self, actor: Person, task_id: str, comment_id: int, text: str) -> dict:
+        text = (text or "").strip()
+        with self._locked():
+            data = self._read()
+            t = next((x for x in data["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
+            if t is None or not self.visible(t, actor):
+                raise TaskError(404, "no such task")
+            c = next((c for c in t.get("thread", []) if c["id"] == comment_id), None)
+            if c is None:
+                raise TaskError(404, "no such note")
+            if c["by"] != actor.id:
+                raise TaskError(403, "only who wrote a note can change it")
+            if text:
+                c.update(text=text[:2000], edited=_now())
+            else:
+                t["thread"].remove(c)                          # emptied: removed
+            t["updated_at"] = _now()
+            self._write(data)
+            return t
+
     def find(self, actor: Person, query: str = "", person: Person | None = None, limit: int = 8) -> list[dict]:
         """Open tasks the actor can see, best word match first: for "move the dentist to Thursday"."""
         words = [w for w in re.split(r"\W+", (query or "").casefold()) if len(w) >= 2]

@@ -22,6 +22,33 @@ public final class Task {
     public String message = "";
     public String to = "";
     public String phone = "";       // digits only, "" = let WhatsApp ask which chat
+    /** Notes and questions between whoever asked for it and whoever does it, oldest first. */
+    public java.util.List<Note> thread = new java.util.ArrayList<>();
+    /** Who a question is waiting on ("" = nobody). */
+    public String waitingOn = "";
+
+    public static final class Note {
+        public int id;
+        public String by = "";
+        public String text = "";
+        public String at = "";
+        public boolean ask;
+        public boolean edited;
+    }
+
+    public Note lastNote() {
+        return thread.isEmpty() ? null : thread.get(thread.size() - 1);
+    }
+
+    public boolean waitingOn(String person) {
+        return person != null && !person.isEmpty() && person.equals(waitingOn);
+    }
+
+    /** Who my question would go to: the one doing it, or (if that's me) whoever asked for it. "" = nobody. */
+    public String counterpart(String me) {
+        if (!me.equals(assignee)) return assignee;
+        return createdBy.equals(me) ? "" : createdBy;
+    }
 
     public boolean isMessage() {
         return "message".equals(kind);

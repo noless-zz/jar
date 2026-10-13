@@ -374,6 +374,21 @@ class Notes:
         self.actions.append({"tool": "update_task", "summary": summary, "task_id": t["id"], "file": "Tasks.md"})
         return f"ok: {summary}"
 
+    def note_on_task(self, task_id: str, text: str, ask: bool = False) -> str:
+        """A note or a question on an existing task (id from find_tasks)."""
+        from .taskstore import TaskError
+        if self.store is None:
+            raise ToolError("there is no task list")
+        try:
+            t = self.store.comment(self.speaker, (task_id or "").strip().removeprefix("id="), text, bool(ask))
+        except TaskError as e:
+            raise ToolError(f"{e} (use an id from find_tasks)") from e
+        to = self.family.get(t.get("waiting_on")) if (ask and self.family is not None) else None
+        summary = (f"question to {to.name} on “{t['title']}”: {text.strip()}" if to
+                   else f"note on “{t['title']}”: {text.strip()}")
+        self.actions.append({"tool": "note_on_task", "summary": summary, "task_id": t["id"], "file": "Tasks.md"})
+        return f"ok: {summary}"
+
     def create_event(self, title: str, date: str, start_time: str = "", duration_min: int = 60,
                      location: str = "", notes: str = "", account: str = "personal") -> str:
         """In the account's real calendar when connected; otherwise an .ics file to double-click."""
@@ -512,7 +527,7 @@ def registry(notes: Notes) -> dict[str, Tool]:
     tools = _all_tools(notes)
     if notes.restricted:
         tools = {k: v for k, v in tools.items()
-                 if k in ("save_note", "add_task", "find_tasks", "update_task", "draft_whatsapp",
+                 if k in ("save_note", "add_task", "find_tasks", "update_task", "note_on_task", "draft_whatsapp",
                           "draft_join_instructions", "search_notes")}
     return tools
 
@@ -588,6 +603,14 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                           "description": "done = finished; cancel = no longer needed; empty = no change"}),
               "required": ["task_id"]},
              "internal", notes.update_task),
+        Tool("note_on_task", "Add a note to an existing task (id from find_tasks), or ask a question about it: "
+             "ask=true sends it to the other side (whoever does it, or whoever asked for it) and the task pops up "
+             "for them until they answer. An answer to a question waiting on the speaker is a note (ask=false).",
+             {**s(task_id=string("the id from find_tasks"),
+                  text=string("the note or question, complete, in the memo's language"),
+                  ask={"type": "boolean", "description": "true = a question that needs an answer"}),
+              "required": ["task_id", "text"]},
+             "internal", notes.note_on_task),
         Tool("create_event", "Create a calendar event: a meeting, appointment or anything at a set time.",
              {**s(title=string("event title"), date=string("the day AS SAID ('מחר', 'ביום רביעי', 'Thursday') or YYYY-MM-DD for an explicit calendar date"),
                   start_time=string("HH:MM 24h, empty for all-day"),
