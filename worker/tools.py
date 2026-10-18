@@ -124,6 +124,7 @@ class Notes:
     _email_reminded: bool = False   # one "send the email" task per memo
     join_info: object = None    # callable(person) -> {"download", "pair_link"}: for get_join_instructions
     transcript: str = ""        # what was said: lets day words in the memo correct a miscomputed date
+    family_account: object = None   # FamilyGoogle: the family's own Jar Gmail (sends to family only), or None
 
     def _day(self, value: str | None):
         """A date for a tool call. If the model gave YYYY-MM-DD but the memo names exactly one weekday and the
@@ -410,8 +411,11 @@ class Notes:
         return f"ok: {summary}"
 
     def create_event(self, title: str, date: str, start_time: str = "", duration_min: int = 60,
-                     location: str = "", notes: str = "", account: str = "personal") -> str:
-        """In the account's real calendar when connected; otherwise an .ics file to double-click."""
+                     location: str = "", notes: str = "", account: str = "personal", invite=None) -> str:
+        """In the account's real calendar when connected; otherwise an .ics file to double-click.
+        invite (family members) or a memo from anyone but the admin: the family calendar, with invitations."""
+        if self.family_account is not None and self.family is not None and (invite or self.restricted):
+            return self.family_event(title, date, invite or [], start_time, duration_min, location, notes)
         d, tm = self._day(date), _time(start_time)
         if not title.strip():
             raise ToolError("title is required")
@@ -465,6 +469,82 @@ class Notes:
                      f"{' @ ' + location.strip() if location.strip() else ''}"
                      f" → [[Calendar/{ics.name}]] ({self._link()})\n", "# Calendar drafts")
         return self._record("create_event", f"event “{title.strip()}” {when}", ics)
+
+    # ---- the family's own Jar account: sends by itself, family members only ----
+    def _family_people(self, who) -> list:
+        """Family members from ids/names (empty or "all" = everyone)."""
+        if isinstance(who, str):
+            who = [x for x in re.split(r"[,\s]+", who) if x]
+        names = ", ".join(f"{p.id} ({p.name})" for p in self.family.people.values())
+        if not who or any(str(w).lower() in ("all", "everyone", "כולם") for w in who):
+            return list(self.family.people.values())
+        out = []
+        for w in who:
+            p = self.speaker if str(w).strip().lower() in ("me", "self", "אני") else self.family.resolve(str(w))
+            if p is None:
+                raise ToolError(f"unknown person '{w}'. Use: {names}, or 'all'")
+            if p not in out:
+                out.append(p)
+        return out
+
+    def family_event(self, title: str, date: str, who=None, start_time: str = "", duration_min: int = 60,
+                     location: str = "", notes: str = "") -> str:
+        """A family event on the family calendar, with an invitation to each family member it involves
+        (who empty = just the speaker; "all" = everyone)."""
+        d, tm = self._day(date), _time(start_time)
+        if not title.strip():
+            raise ToolError("title is required")
+        if not d:
+            raise ToolError("date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
+        people = self._family_people(who) if who else []
+        if self.speaker is not None and self.speaker not in people:
+            people.insert(0, self.speaker)               # whoever said it is part of it
+        emails = [p.email for p in people if "@" in getattr(p, "email", "")]
+        try:
+            duration = max(5, min(int(duration_min or 60), 24 * 60))
+        except (TypeError, ValueError):
+            duration = 60
+        why = "the family account isn't set up"
+        if self.family_account is not None:
+            from .connectors import NotConnected, NotFamily
+            try:
+                r = self.family_account.create_family_event(title.strip(), d, tm, duration, emails,
+                                                            location.strip(), notes.strip())
+                when = f"{d.isoformat()} {tm}" if tm else f"{d.isoformat()} (all day)"
+                names = ", ".join(p.name for p in people if "@" in getattr(p, "email", ""))
+                p = self._append("Calendar.md", f"- {when} · {title.strip()} → family calendar, invited {names}"
+                                 f"{' ([open](' + r.link + '))' if r.link else ''} ({self._link()})\n", "# Calendar")
+                return self._record("family_event", f"family event “{title.strip()}” {when}, invited {names}", p, r.link)
+            except (NotConnected, NotFamily) as e:
+                why = str(e)
+            except Exception as e:  # noqa: BLE001 — the memo must not be lost because an API failed
+                why = f"{type(e).__name__}: {e}"
+        return self._ics_event(title, d, tm, duration, location, notes) + f" (saved as .ics: {why})"
+
+    def email_family(self, subject: str, body: str, who=None) -> str:
+        """An email SENT at once from the family Jar account to family members (never anyone else)."""
+        if not subject.strip() or not body.strip():
+            raise ToolError("subject and body are required")
+        people = [p for p in self._family_people(who) if p is not self.speaker] or self._family_people(who)
+        emails = [p.email for p in people if "@" in getattr(p, "email", "")]
+        why = "the family account isn't set up"
+        if self.family_account is not None:
+            from .connectors import NotConnected, NotFamily
+            try:
+                r = self.family_account.send(emails, subject.strip(), body.strip())
+                names = ", ".join(p.name for p in people if "@" in getattr(p, "email", ""))
+                p = self._append("Family email.md", f"- {self.ctx.recorded_local:%Y-%m-%d %H:%M} · {subject.strip()}"
+                                 f" → {names} ({self._link()})\n", "# Sent to the family")
+                return self._record("email_family", f"email “{subject.strip()}” {r.summary} to {names}", p)
+            except (NotConnected, NotFamily) as e:
+                why = str(e)
+            except Exception as e:  # noqa: BLE001
+                why = f"{type(e).__name__}: {e}"
+        p = self.root / f"Email drafts/{self.ctx.recorded_local:%Y-%m-%d %H%M} {slug(subject)}.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"---\nto: {', '.join(emails)}\nmemo: {self.ctx.memo_id}\n---\n\n# {subject.strip()}\n\n"
+                     f"{body.strip()}\n\nSource: {self._link()}\n", encoding="utf-8", newline="\n")
+        return self._record("email_family", f"family email “{subject.strip()}” NOT sent, saved as a note ({why})", p)
 
     def save_lesson_idea(self, idea: str, class_name: str = "", topic: str = "") -> str:
         if not idea.strip():
@@ -545,10 +625,14 @@ class Notes:
 
 def registry(notes: Notes) -> dict[str, Tool]:
     tools = _all_tools(notes)
+    family_on = notes.family_account is not None and notes.family is not None
+    if not family_on:
+        tools.pop("email_family", None)
     if notes.restricted:
         tools = {k: v for k, v in tools.items()
                  if k in ("save_note", "add_task", "find_tasks", "update_task", "note_on_task", "draft_whatsapp",
-                          "draft_join_instructions", "search_notes")}
+                          "draft_join_instructions", "search_notes", "email_family")
+                 or (k == "create_event" and family_on)}      # family members' events: the family calendar
     return tools
 
 
@@ -562,6 +646,7 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
     FOR = {"type": "string", "enum": [""] + [p.id for p in people],  # noqa: N806
            "description": "who should do it: " + ", ".join(f"{p.id} = {p.name}" for p in people)
                           + "; empty = the speaker themself"} if people else string("leave empty")
+    IDS = {"type": "array", "items": {"type": "string", "enum": [p.id for p in people]}}  # noqa: N806
     tools = [
         Tool("save_note", "Save an idea, thought or piece of information as a note. "
              "Default choice when the memo is not a task, event, lesson idea or deep-work request.",
@@ -575,10 +660,9 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
              "also when asking a family member to do something.",
              {**s(title=string("the task, short and imperative, in the memo's language, without the person's name"),
                   for_person=FOR,
-                  also_for={"type": "array", "items": FOR if people else string(""),
-                            "description": "only for a task several people share: the others it is for"},
+                  also_for={**IDS, "description": "shared task only: the others it is for"},
                   together={"type": "string", "enum": ["", "any", "all"],
-                            "description": "shared task: any = one of them is enough, all = each must do it"},
+                            "description": "shared: any = one is enough, all = each one"},
                   due_date=string("the day AS SAID ('מחר', 'יום רביעי', 'Thursday', 'today') or YYYY-MM-DD for an explicit "
                                   "calendar date ('15 באוקטובר'); empty if no day was said"),
                   due_time=string("HH:MM 24h if a time was mentioned, else empty"),
@@ -640,7 +724,9 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   start_time=string("HH:MM 24h, empty for all-day"),
                   duration_min={"type": "integer", "description": "minutes, default 60"},
                   location=string("optional"), notes=string("optional"),
-                  account=ACCOUNT),
+                  account=ACCOUNT,
+                  **({"invite": {**IDS, "description": "family members taking part (invited)"}}
+                     if notes.family_account is not None and people else {})),
               "required": ["title", "date"]},
              "internal", notes.create_event),
         Tool("draft_email", "Write an email DRAFT (it is not sent; the owner reviews and sends it). "
@@ -651,6 +737,11 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   account=ACCOUNT),
               "required": ["subject", "body"]},
              "internal", notes.draft_email),
+        Tool("email_family", "Email family members now (sent). Anyone else: draft_email.",
+             {**s(subject=string("subject"), body=string("the email, in the memo's language"),
+                  who={**IDS, "description": "empty = everyone"}),
+              "required": ["subject", "body"]},
+             "internal", notes.email_family),
         Tool("save_lesson_idea", "Save a teaching idea for a class (math or software engineering).",
              {**s(idea=string("the idea, cleaned up"), class_name=string("e.g. 10th grade math, optional"),
                   topic=string("e.g. rational functions, optional")),

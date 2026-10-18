@@ -85,6 +85,8 @@ class Worker:
         from .family import Family
         from .taskstore import TaskStore
         self.family = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
+        from .accounts import build_family
+        self.family_account = build_family(cfg, self.family)   # the family's own Jar Gmail, or None
         from .points import PointsConfig, PointsStore
         self.points = PointsStore(cfg.data_dir / "points.json", self.family, cfg.timezone,
                                   PointsConfig.from_raw(cfg.points))
@@ -132,13 +134,15 @@ class Worker:
         speaker = self.family.get(m.meta.get("person")) or self.family.admin
         if speaker.admin:
             notes = Notes(self.cfg.notes_dir, self.tz, MemoContext(m.id, when), accounts=self.accounts,
-                          store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info)
+                          store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info,
+                          family_account=self.family_account)
         else:
             # Everyone else's notes and memo log live in their own folder; no access to the admin's
             # calendars or email.
             from .tools import slug
             notes = Notes(self.cfg.notes_dir / "Family" / slug(speaker.name), self.tz, MemoContext(m.id, when),
-                          store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info)
+                          store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info,
+                          family_account=self.family_account)
         if m.meta.get("actions"):
             # Filed before (Re-file / edited transcript): drop the open tasks that filing made.
             n = self.tasks.forget_memo(speaker, m.id)
@@ -291,7 +295,7 @@ class Worker:
                  self.transcriber.compute_type)
         log.info("Data: %s   Notes: %s", self.cfg.data_dir, self.cfg.notes_dir)
         self.account_status = {}
-        for role, conn in self.accounts.items():
+        for role, conn in {**self.accounts, "family": self.family_account}.items():
             try:
                 who = conn.account() if conn else None
             except Exception:  # noqa: BLE001

@@ -39,6 +39,7 @@ class Config:
     family: dict | None = None   # [family] table (see worker/family.py)
     contacts: dict | None = None  # [contacts] name = "+972…" for WhatsApp drafts
     points: dict | None = None    # [points] table (see worker/points.py)
+    family_account: dict | None = None   # [family_account]: the family's own Jar Gmail (docs/CONNECT.md, part C)
 
 
 def _path(root: Path, value: str) -> Path:
@@ -84,4 +85,5 @@ def load(path: Path | None = None, root: Path = ROOT) -> Config:
         family=raw.get("family", {}),
         contacts=raw.get("contacts", {}),
         points=raw.get("points", {}),
+        family_account=raw.get("family_account", {}),
     )

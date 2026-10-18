@@ -27,6 +27,7 @@
         { "label": "$(sparkle) Test the AI on sample memos", "task": "Jar: Test the AI on sample memos", "description": "real model, throwaway copy" },
         { "label": "$(calendar) Connect Outlook (personal)", "task": "Jar: Connect Outlook (personal)", "description": "once, opens the browser" },
         { "label": "$(mortar-board) Connect Google (school)", "task": "Jar: Connect Google (school)", "description": "once, opens the browser" },
+        { "label": "$(home) Connect family account", "task": "Jar: Connect family account", "description": "once, opens the browser" },
         { "label": "$(account) Accounts status", "task": "Jar: Accounts status" },
         { "label": "$(folder-opened) Open notes folder", "task": "Jar: Open notes folder" },
         { "label": "$(shield) Allow phone through firewall", "task": "Jar: Allow phone through firewall (admin)", "description": "once, asks for admin" },

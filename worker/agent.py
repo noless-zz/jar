@@ -130,6 +130,8 @@ def system_prompt(notes: Notes, recorded_local: datetime, tz_name: str, about: s
     base = GUEST if notes.restricted else SYSTEM
     owner = notes.family.admin.name if notes.family is not None else "the owner"
     about = (about or "").strip()
+    if notes.family_account is not None and fam:
+        fam += "\nEvent with family members -> create_event + invite. Email to family -> email_family.\n"
     return base.format(when=f"{recorded_local:%Y-%m-%d %H:%M}", weekday=f"{recorded_local:%A}", tz=tz_name,
                        family=fam, speaker=getattr(notes.speaker, "name", ""), owner=owner,
                        about=(about + " ") if about else "", messages=MESSAGE_RULES, days=day_table(recorded_local))

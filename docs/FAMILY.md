@@ -24,8 +24,12 @@ Each family member gets the **Jar app** on their Android phone, signed in as the
 | The kids' tasks | ✓ | ✓ | only their own |
 | The other parent's own to-dos | – | – | – |
 | Dashboard (transcripts, audio) | ✓ (other parent's memos hidden) | – | – |
-| Calendar events and email drafts | ✓ | – | – |
+| Calendar events and email drafts (own accounts) | ✓ | – | – |
+| Family events (invitations) and emails to family, via the family Jar account | ✓ | ✓ | ✓ |
 
+With the family Jar account set up (docs/CONNECT.md, part C), anyone's memo can put a family event on the family
+calendar with invitations ("Alona's show on Friday at 6, all of us") or email family members; it never writes to
+anyone outside `[family]`. A child's own events also go to the family calendar.
 The worker only uses the admin's Outlook/Google accounts for the admin's own memos. Memos from everyone else only make tasks,
 plus private notes in `notes/Family/<name>/`.
 

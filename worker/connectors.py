@@ -31,6 +31,10 @@ GRAPH_AUTHORITY = "https://login.microsoftonline.com/consumers"   # personal acc
 
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar.events",
                  "https://www.googleapis.com/auth/gmail.compose"]
+# The family's own Jar account (a Gmail made for Jar): it SENDS mail and invites people, but only
+# family members (FamilyGoogle refuses any other address). It can't read anyone's mail.
+FAMILY_SCOPES = ["https://www.googleapis.com/auth/calendar.events",
+                 "https://www.googleapis.com/auth/gmail.send"]
 
 
 class NotConnected(Exception):
@@ -85,6 +89,27 @@ def google_event(title: str, day: date, start_time: str | None, duration_min: in
     if location:
         body["location"] = location
     return body
+
+
+def family_event(title: str, day: date, start_time: str | None, duration_min: int, tz: ZoneInfo,
+                 attendees: list[str], location: str = "", notes: str = "") -> dict:
+    """A Google event on the family calendar that invites family members (they get it in their calendars)."""
+    body = google_event(title, day, start_time, duration_min, tz, location, notes)
+    body["attendees"] = [{"email": a} for a in attendees]
+    body["guestsCanModify"] = True               # it's the family's event: anyone invited may move it
+    body["reminders"] = {"useDefault": True}
+    return body
+
+
+def gmail_message(sender: str, to: list[str], subject: str, body: str) -> dict:
+    """A message for Gmail's users.messages.send (sent at once)."""
+    msg = EmailMessage()
+    if sender:
+        msg["From"] = sender
+    msg["To"] = ", ".join(to)
+    msg["Subject"] = subject
+    msg.set_content(body)
+    return {"raw": base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")}
 
 
 def graph_draft(to: list[str], subject: str, body: str) -> dict:
@@ -280,3 +305,75 @@ class Google:
         msg_id = (r.get("message") or {}).get("id", "")
         return Result("Gmail drafts (school)",
                       f"https://mail.google.com/mail/u/0/#drafts?compose={msg_id}" if msg_id else "")
+
+
+class NotFamily(Exception):
+    """An address that isn't a family member's: the family account never writes to it."""
+
+
+class FamilyGoogle(Google):
+    """The family's own Jar Gmail account. Sends email and puts events (with invitations) on the family
+    calendar by itself, but only to the family addresses it was given; anything else is refused."""
+    name = "Family"
+
+    def __init__(self, client_secrets: Path, secrets_dir: Path, tz: ZoneInfo, allowed: list[str],
+                 calendar_id: str = "primary"):
+        super().__init__(client_secrets, secrets_dir, tz, calendar_id)
+        self.token_path = secrets_dir / "google_family_token.json"
+        self.allowed = {a.strip().lower() for a in allowed if "@" in a}
+
+    def sign_in(self) -> str:
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        if not self.client_secrets.exists():
+            raise RuntimeError(f"missing {self.client_secrets} — see docs/CONNECT.md, part C")
+        flow = InstalledAppFlow.from_client_secrets_file(str(self.client_secrets), FAMILY_SCOPES,
+                                                         autogenerate_code_verifier=True)
+        creds = _google_browser_sign_in(flow)
+        self.token_path.parent.mkdir(parents=True, exist_ok=True)
+        self.token_path.write_text(creds.to_json(), encoding="utf-8")
+        return self.account() or "signed in"
+
+    def _creds(self):
+        if not self.token_path.exists():
+            raise NotConnected("family account: not signed in — run Jar: Connect family account")
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        creds = Credentials.from_authorized_user_file(str(self.token_path), FAMILY_SCOPES)
+        if not creds.valid:
+            if creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+                self.token_path.write_text(creds.to_json(), encoding="utf-8")
+            else:
+                raise NotConnected("family account: sign-in expired — run Jar: Connect family account")
+        return creds
+
+    def account(self) -> str | None:
+        # gmail.send can't read the profile; the calendar's own id is the account's address.
+        try:
+            from google.auth.transport.requests import AuthorizedSession
+            r = AuthorizedSession(self._creds()).get(
+                "https://www.googleapis.com/calendar/v3/calendars/primary", timeout=10)
+            return r.json().get("id") if r.ok else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def check(self, addresses: list[str]) -> list[str]:
+        clean = [a.strip().lower() for a in addresses if a and a.strip()]
+        outside = [a for a in clean if a not in self.allowed]
+        if outside:
+            raise NotFamily("not a family address: " + ", ".join(outside))
+        if not clean:
+            raise NotFamily("nobody to send to (no family member has an email in config.toml)")
+        return list(dict.fromkeys(clean))
+
+    def create_family_event(self, title, day, start_time, duration_min, attendees, location="", notes="") -> Result:
+        who = self.check(attendees)
+        url = (f"https://www.googleapis.com/calendar/v3/calendars/{self.calendar_id}/events"
+               "?sendUpdates=all")
+        r = self._post(url, family_event(title, day, start_time, duration_min, self.tz, who, location, notes))
+        return Result("the family calendar", r.get("htmlLink", ""))
+
+    def send(self, to, subject, body) -> Result:
+        who = self.check(to)
+        self._post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", gmail_message("", who, subject, body))
+        return Result("sent from the family account")

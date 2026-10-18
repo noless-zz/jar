@@ -1,13 +1,16 @@
 # Connecting calendars and email
 
 Jar can put events in your calendar and leave **email drafts** for you to review.
-It never sends email and never invites other people. Until an account is connected,
+With your own accounts it never sends email and never invites other people. The one exception is the
+**family Jar account** (part C): a Gmail made just for Jar that sends email and calendar invitations by itself,
+**only to family members' addresses** listed in `config.toml`. Until an account is connected,
 events are saved as `.ics` files and drafts as notes under `Email drafts/`, so nothing is lost.
 
 | Role | Account | Used for |
 |---|---|---|
 | personal | your Outlook.com / Hotmail / Live account | everything that isn't school |
 | school | your school's Google Workspace account | classes, students, parents, staff, lessons, grades |
+| family | a Gmail made for Jar (part C) | family events with invitations, emails between family members — sent automatically |
 
 The model chooses the role from what you say. To force it, say "school" or "personal" in the memo.
 
@@ -64,6 +67,39 @@ Events appear in the Outlook desktop app and on outlook.live.com. Drafts appear 
 - If the project had to be made with a personal Gmail, the consent screen must be **External** in **Testing** mode.
   Add your school address as a **test user**. Google then expires the sign-in **every 7 days**, so you'd click
   Connect Google again weekly. That works, but asking the school is the better long-term fix.
+
+## Part C: the family Jar account (sends by itself, family only)
+
+A separate Gmail that belongs to Jar, not to a person. Jar uses it to:
+- put **family events** on its calendar and **invite** the family members taking part (each gets the event in their
+  own calendar, and can move it);
+- **send emails** to family members right away ("email Sveta and the kids that dinner is at 8").
+
+It can only write to addresses in `[family]` (`email = "…"` on each person). Any other address is refused in code,
+so mail to anyone outside the family is still a draft in your own account. It can't read any inbox.
+
+1. Create the Gmail account yourself (Google asks for a phone number; Jar can't do this step). Turn on
+   **2-Step Verification** for it.
+2. Signed in **as that new account**, go to <https://console.cloud.google.com> → create a project `Jar family`.
+3. **APIs & Services → Library**: enable **Google Calendar API** and **Gmail API**.
+4. **OAuth consent screen / Google Auth Platform**: User type **External**, app name `Jar family`, support email =
+   the new address. Scopes: `.../auth/calendar.events` and `.../auth/gmail.send`.
+   Then **Audience → Publish app** (status **In production**). Google won't review it — it's only you signing in — and
+   in production the sign-in doesn't expire every 7 days. When you sign in you'll see *"Google hasn't verified this
+   app"*: click **Advanced → Go to Jar family**.
+5. **Clients → Create OAuth client** → **Desktop app** → Download JSON → save as `data\secrets\google_family_client.json`.
+6. In `config.toml`:
+   ```toml
+   [family_account]
+   provider = "google"
+   client_secrets = "data/secrets/google_family_client.json"
+   calendar_id = "primary"
+   ```
+   and give each family member an email in `[family]`, for example `sveta = { …, email = "…" }`.
+7. VS Code → **More** → **Connect family account** → sign in **with the new account** → allow.
+   The token goes to `data/secrets/google_family_token.json`. Restart Jar.
+8. Optional: in each person's Google Calendar, *Other calendars → Subscribe* to the family account's calendar,
+   so they also see family events they weren't invited to.
 
 ---
 

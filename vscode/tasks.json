@@ -216,6 +216,22 @@
       "problemMatcher": []
     },
     {
+      "label": "Jar: Connect family account",
+      "detail": "Sign in to the family's own Jar Gmail once (opens the browser)",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "worker.connect",
+        "family"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Jar: Accounts status",
       "detail": "Which calendar/email accounts are connected",
       "type": "process",

@@ -31,6 +31,7 @@ class Person:
     aliases: list[str] = field(default_factory=list)
     phone: str = ""               # optional, for "send a WhatsApp to …" (international format, +972…)
     age: int = 0                  # optional: the points game rates a chore harder for a younger child
+    email: str = ""               # optional: the family Jar account sends mail / calendar invitations here
 
     @property
     def is_parent(self) -> bool:
@@ -68,7 +69,8 @@ class Family:
                                  admin=bool(v.get("admin", False)),
                                  aliases=[str(a) for a in v.get("aliases", [])],
                                  phone=str(v.get("phone", "")).strip(),
-                                 age=_age(v.get("age"))))
+                                 age=_age(v.get("age")),
+                                 email=str(v.get("email", "")).strip()))
         if not people:
             people = [Person("me", "me", "parent", True)]
         fam = cls(people, admin_token, data_dir / "secrets")
@@ -78,6 +80,10 @@ class Family:
     @property
     def admin(self) -> Person:
         return next(p for p in self.people.values() if p.admin)
+
+    def emails(self) -> list[str]:
+        """Every family member's email (for the family Jar account's allow-list)."""
+        return [p.email for p in self.people.values() if "@" in p.email]
 
     def get(self, pid: str | None) -> Person | None:
         return self.people.get((pid or "").lower())

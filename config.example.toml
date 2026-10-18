@@ -66,6 +66,13 @@ client_id = ""           # from the Microsoft app registration (docs/CONNECT.md,
 client_secrets = "data/secrets/google_client.json"   # downloaded OAuth client (part B)
 calendar_id = "primary"
 
+# The family's own Jar Gmail (docs/CONNECT.md, part C): SENDS email and calendar invitations by itself,
+# but only to the family members' `email` addresses below. Leave it commented out to keep everything as drafts.
+# [family_account]
+# provider = "google"
+# client_secrets = "data/secrets/google_family_client.json"
+# calendar_id = "primary"
+
 
 # ---- Family (docs/FAMILY.md). Each person pairs their own phone on the Pair page (http://localhost:8080/pair).
 # The admin (owner of this PC) keeps using [server] token; everyone else gets a personal token automatically.
@@ -78,6 +85,7 @@ calendar_id = "primary"
 # maya = { name = "מאיה", role = "child",  aliases = ["Maya"] }
 # Add phone = "+972501234567" to anyone above so "send Dana a WhatsApp…" opens her chat directly.
 # Add age = 9 to a child so the points game rates chores for their age (optional).
+# Add email = "…" to anyone who should get family events and emails from the family Jar account (optional).
 
 # Other people for WhatsApp drafts (optional). Without a number, WhatsApp asks which chat.
 # [contacts]
