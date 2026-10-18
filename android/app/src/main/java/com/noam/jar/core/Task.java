@@ -10,6 +10,12 @@ public final class Task {
     public String title = "";
     public String notes = "";
     public String assignee = "";
+    /** Everyone it is for (a shared family task has several; otherwise just {@link #assignee}). */
+    public java.util.List<String> assignees = new java.util.ArrayList<>();
+    /** Shared task: "any" = one of them is enough, "all" = each of them does it. */
+    public String mode = "any";
+    /** "all" mode: who has done their part already. */
+    public java.util.Set<String> doneParts = new java.util.LinkedHashSet<>();
     public String createdBy = "";
     public String status = "open";      // open | done | requested | declined
     public String due;                  // null = no date
@@ -44,6 +50,37 @@ public final class Task {
         public boolean edited;
     }
 
+    /** Everyone it is for, never empty for a real task. */
+    public java.util.List<String> owners() {
+        if (!assignees.isEmpty()) return assignees;
+        java.util.List<String> one = new java.util.ArrayList<>();
+        if (assignee != null && !assignee.isEmpty()) one.add(assignee);
+        return one;
+    }
+
+    public boolean isFor(String person) {
+        return person != null && owners().contains(person);
+    }
+
+    public boolean isShared() {
+        return owners().size() > 1;
+    }
+
+    /** A shared task each of them has to do. */
+    public boolean eachMust() {
+        return isShared() && "all".equals(mode);
+    }
+
+    /** Done as far as {@code person} is concerned: the whole task, or their own part of an "each" task. */
+    public boolean doneFor(String person) {
+        return isDone() || (eachMust() && doneParts.contains(person));
+    }
+
+    /** Still something for {@code person} to do. */
+    public boolean openFor(String person) {
+        return isOpen() && !doneFor(person);
+    }
+
     public Note lastNote() {
         return thread.isEmpty() ? null : thread.get(thread.size() - 1);
     }
@@ -54,8 +91,10 @@ public final class Task {
 
     /** Who my question would go to: the one doing it, or (if that's me) whoever asked for it. "" = nobody. */
     public String counterpart(String me) {
-        if (!me.equals(assignee)) return assignee;
-        return createdBy.equals(me) ? "" : createdBy;
+        if (!isFor(me)) return owners().isEmpty() ? "" : owners().get(0);
+        if (!createdBy.equals(me)) return createdBy;
+        for (String o : owners()) if (!o.equals(me)) return o;
+        return "";
     }
 
     public boolean isMessage() {

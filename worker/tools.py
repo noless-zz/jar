@@ -194,7 +194,7 @@ class Notes:
         return self._record("save_note", f"note “{title.strip()}”", p)
 
     def add_task(self, title: str, due_date: str = "", due_time: str = "", notes: str = "",
-                 for_person: str = "") -> str:
+                 for_person: str = "", also_for=None, together: str = "") -> str:
         if not title.strip():
             raise ToolError("title is required")
         d, tm = self._day(due_date), _time(due_time)
@@ -207,7 +207,7 @@ class Notes:
         if self.store is not None:
             if self._email_reminded and not for_person and re.search(r"(מייל|אימייל|e-?mail|\bmail)", title, re.I):
                 return "ok: the task to send the email already exists"
-            return self._family_task(title.strip(), d, tm, notes.strip(), for_person)
+            return self._family_task(title.strip(), d, tm, notes.strip(), for_person, also_for, together)
         line = f"- [ ] {title.strip()}"
         if d:
             line += f" 📅 {d.isoformat()}"
@@ -219,18 +219,37 @@ class Notes:
         when = f" due {d.isoformat()}{' ' + tm if tm else ''}" if d else ""
         return self._record("add_task", f"task “{title.strip()}”{when}", p)
 
-    def _family_task(self, title: str, d, tm, notes: str, for_person: str) -> str:
+    def _family_task(self, title: str, d, tm, notes: str, for_person: str, also_for=None,
+                     together: str = "") -> str:
         from .taskstore import TaskError
+        names = ", ".join(f"{p.id} ({p.name})" for p in self.family.people.values())
         who = self.family.resolve(for_person) if for_person else None
         if for_person and who is None and for_person.strip().lower() not in ("me", "self", "אני"):
-            names = ", ".join(f"{p.id} ({p.name})" for p in self.family.people.values())
             raise ToolError(f"unknown person '{for_person}'. Use one of: {names}, or leave empty for the speaker")
         who = who or self.speaker
+        people = [who]
+        if isinstance(also_for, str):
+            also_for = [x for x in re.split(r"[,\s]+", also_for) if x]
+        for name in also_for or []:
+            other = self.speaker if str(name).strip().lower() in ("me", "self", "אני") else self.family.resolve(str(name))
+            if other is None:
+                raise ToolError(f"unknown person '{name}' in also_for. Use: {names}")
+            if other not in people:
+                people.append(other)
+        mode = "all" if together == "all" else "any"
         due = f"{d.isoformat()}T{tm}" if d and tm else (d.isoformat() if d else None)
         try:
-            t = self.store.add(self.speaker, title, who, due, notes, self.ctx.memo_id)
+            t = self.store.add(self.speaker, title, people, due, notes, self.ctx.memo_id, mode=mode)
         except TaskError as e:
             raise ToolError(str(e)) from e
+        if len(people) > 1:
+            group = ", ".join(p.name for p in people)
+            how = "each of them" if mode == "all" else "any one of them"
+            when = (f" {d.isoformat()} {tm}" if tm else f" on {d.isoformat()}") if d else ""
+            wait = " (waits for a parent's OK)" if t["status"] == "requested" else ""
+            summary = f"shared task for {group} ({how}): “{title}”{when}{wait}"
+            self.actions.append({"tool": "add_task", "summary": summary, "task_id": t["id"], "file": "Tasks.md"})
+            return f"ok: {summary}"
         when = (f" {d.isoformat()} {tm}" if tm else f" on {d.isoformat()}") if d else ""
         alert = (f"the phone reminds at {d.isoformat()} {tm}" if tm else
                  "in the morning summary that day" if d else "no time given: in the morning summary")
@@ -321,8 +340,9 @@ class Notes:
         found = self.store.find(self.speaker, query, who)
         if not found:
             return "no open task matches. (If the memo is a NEW task, use add_task.)"
+        from .taskstore import owners
         name = lambda pid: self.family.get(pid).name if self.family.get(pid) else pid  # noqa: E731
-        lines = [f"- id={t['id']} | {t['title']} | for {name(t['assignee'])}"
+        lines = [f"- id={t['id']} | {t['title']} | for {', '.join(name(i) for i in owners(t))}"
                  + (f" | due {t['due'].replace('T', ' ')}" if t.get("due") else "") for t in found]
         return "matching open tasks:\n" + "\n".join(lines)
 
@@ -555,6 +575,10 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
              "also when asking a family member to do something.",
              {**s(title=string("the task, short and imperative, in the memo's language, without the person's name"),
                   for_person=FOR,
+                  also_for={"type": "array", "items": FOR if people else string(""),
+                            "description": "only for a task several people share: the others it is for"},
+                  together={"type": "string", "enum": ["", "any", "all"],
+                            "description": "shared task: any = one of them is enough, all = each must do it"},
                   due_date=string("the day AS SAID ('מחר', 'יום רביעי', 'Thursday', 'today') or YYYY-MM-DD for an explicit "
                                   "calendar date ('15 באוקטובר'); empty if no day was said"),
                   due_time=string("HH:MM 24h if a time was mentioned, else empty"),

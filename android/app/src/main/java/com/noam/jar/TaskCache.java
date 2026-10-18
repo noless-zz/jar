@@ -115,7 +115,7 @@ public final class TaskCache {
             for (int i = 0; i < pending.length(); i++) {
                 JSONObject a = pending.optJSONObject(i);
                 if (a == null) continue;
-                for (Task t : list) if (t.id.equals(a.optString("id"))) applyLocally(t, a);
+                for (Task t : list) if (t.id.equals(a.optString("id"))) applyLocally(t, a, myId());
             }
             java.util.Iterator<Task> it = list.iterator();
             while (it.hasNext()) if ("deleted".equals(it.next().status)) it.remove();
@@ -171,14 +171,25 @@ public final class TaskCache {
         return sp.getLong("synced_at", 0);
     }
 
-    private static void applyLocally(Task t, JSONObject a) {
+    static void applyLocally(Task t, JSONObject a, String me) {
         switch (a.optString("action")) {
             case "done":
+                if (t.eachMust()) {
+                    // My part only (a parent who isn't one of them ticks it for everyone).
+                    if (t.isFor(me)) t.doneParts.add(me);
+                    else t.doneParts.addAll(t.owners());
+                    if (!t.doneParts.containsAll(t.owners())) break;
+                }
                 t.status = "done";
                 t.snoozedUntil = null;
                 break;
             case "reopen":
+                if (t.eachMust() && !t.isDone() && t.doneParts.contains(me)) {
+                    t.doneParts.remove(me);
+                    break;
+                }
                 t.status = "open";
+                t.doneParts.clear();
                 break;
             case "snooze":
                 t.snoozedUntil = a.isNull("until") ? null : a.optString("until", null);

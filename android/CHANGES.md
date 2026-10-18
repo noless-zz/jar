@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+1.2.0 | משימות משפחתיות: אפשר לבחור כמה אנשים למשימה, ולקבוע אם מספיק שאחד יעשה או שכל אחד צריך | Family tasks: pick several people for one task, and choose whether one of them is enough or each of them must do it
 1.1.0 | משחק המטבעות: 🪙 על כל משימה, לוח מובילים שבועי, מי ניצח בשבת ב-20:00, יום עבודה לגדולים ו״מה למדתי״ לילדים | The coin game: 🪙 on every task, a weekly leaderboard, Saturday 20:00 winner, work days for grown-ups and "what I learned" notes for kids
 1.0.1 | שאלה ששאלת על משימה של מישהו אחר מופיעה ב״ביקשתי״ עד שעונים | A question you asked on someone else's task shows under "I asked" until they answer
 1.0.0 | הערות ושאלות על משימות: שואלים, מקבלים תשובה, ו-✨ הצעות תשובה | Notes and questions on tasks: ask, get an answer, and ✨ suggested replies

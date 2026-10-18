@@ -56,8 +56,18 @@ final class TaskFormat {
             String m = t.message == null ? "" : t.message.replace('\n', ' ');
             parts.add("“" + (m.length() > 70 ? m.substring(0, 70) + "…" : m) + "”");
         }
-        if (!me.equals(t.assignee)) parts.add(c.getString(R.string.meta_for, TaskLists.name(names, t.assignee)));
-        if (!me.equals(t.createdBy) && !t.createdBy.equals(t.assignee))
+        if (t.isShared()) {
+            List<String> others = new ArrayList<>();
+            for (String o : t.owners()) if (!o.equals(me)) others.add(o);
+            String who = t.isFor(me) ? c.getString(R.string.meta_with, people(names, others))
+                    : c.getString(R.string.meta_for, people(names, t.owners()));
+            parts.add("👥 " + who + " · " + c.getString(t.eachMust() ? R.string.meta_each : R.string.meta_any));
+            if (t.eachMust() && t.isOpen())
+                parts.add(c.getString(R.string.meta_parts, t.doneParts.size(), t.owners().size()));
+        } else if (!t.isFor(me)) {
+            parts.add(c.getString(R.string.meta_for, TaskLists.name(names, t.assignee)));
+        }
+        if (!me.equals(t.createdBy) && !t.isFor(t.createdBy))
             parts.add(c.getString(R.string.meta_from, TaskLists.name(names, t.createdBy)));
         if (t.due != null) parts.add(when(c, t.due));
         if (t.isOpen() && t.snoozedUntil != null) parts.add(c.getString(R.string.meta_snoozed, when(c, t.snoozedUntil)));
@@ -69,6 +79,13 @@ final class TaskFormat {
         if (t.isDone() && t.doneBy != null && !me.equals(t.doneBy))
             parts.add(c.getString(R.string.meta_done_by, TaskLists.name(names, t.doneBy)));
         return String.join(" · ", parts);
+    }
+
+    /** "Yoni, Maya" from ids. */
+    static String people(Map<String, String> names, List<String> ids) {
+        List<String> out = new ArrayList<>();
+        for (String id : ids) out.add(TaskLists.name(names, id));
+        return String.join(", ", out);
     }
 
     /** "12:40" for today, else "Mon 12:40", from the PC's UTC "2026-10-12T09:40:00Z". */

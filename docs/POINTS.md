@@ -66,6 +66,8 @@ Phase 1 ships E only (R = S = T = 1.0); phase 2 turns on R, S, T, the cap and fa
 | `POST /v1/points/work-day` | parent: fixed `work_day_coins`, once per local day (409 when logged) |
 
 Coins are paid when the PC records the task as done (offline ticks pay at sync, at the tick's time).
+Shared tasks: "one of them" pays whoever ticked it; "each of them" pays every person for their own part (one ledger
+line per person per task; undoing your part takes back only yours).
 `[points]` config: daily_cap, work_day_coins, parent_ok_over, week_start = sunday, announce = "sat 20:00".
 
 ## Phase 1 as built

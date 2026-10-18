@@ -8,6 +8,12 @@ Each family member gets the **Jar app** on their Android phone, signed in as the
 - **Tick** a task or **swipe** it sideways to mark it done. Whoever gave you the task sees it ticked in their **I asked** tab.
 - **The kids** can ask anyone for anything. A child's task for someone else arrives as a **request**, and a parent taps **OK, add it** or **Decline**.
 - **Parents** also see a **Family** tab with the kids' lists.
+- **Shared (family) tasks:** tap several people in the task dialog (or say "Livne and Alona tidy the living room, each of
+  you"). Choose **One of them is enough** (the first one to tick it finishes it and gets the coins) or **Each of them**
+  (everyone ticks their own part — "My part is done" — and earns their own coins; the task is done when all have).
+  A parent who isn't on the task can tick it for everyone. Everyone on a shared task sees it in **Mine**; parents
+  see shared kids' tasks under **👥 Shared** in the Family tab. Server fields: `assignees`, `mode` (`any`/`all`),
+  `done_parts`; `assignee` stays the first person so older apps keep working.
 
 ## Who sees what
 

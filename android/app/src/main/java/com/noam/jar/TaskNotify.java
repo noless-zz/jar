@@ -93,7 +93,7 @@ public final class TaskNotify {
         long now = System.currentTimeMillis();
         Map<String, Long> old = cache.alarms(), next = new HashMap<>();
         for (Task t : cache.tasks()) {
-            if (!me.equals(t.assignee)) continue;
+            if (!TaskLists.mineOpen(t, me)) continue;
             long at = TaskLists.toMillis(t.alertAt(), tz);
             if (at < 0) continue;
             String key = t.id + "@" + t.alertAt();
@@ -159,10 +159,10 @@ public final class TaskNotify {
     static void remind(Context c, String taskId) {
         TaskCache cache = new TaskCache(c);
         Task t = cache.find(taskId);
-        if (t == null || t.alertAt() == null || !cache.myId().equals(t.assignee)) return;
+        if (t == null || t.alertAt() == null || !TaskLists.mineOpen(t, cache.myId())) return;
         cache.markRang(t.id + "@" + t.alertAt());
         Map<String, String> names = cache.names();
-        String text = t.createdBy.equals(t.assignee) ? c.getString(R.string.notif_reminder)
+        String text = t.isFor(t.createdBy) ? c.getString(R.string.notif_reminder)
                 : c.getString(R.string.notif_from, TaskLists.name(names, t.createdBy));
         NotificationCompat.Builder b = base(c, CH_REMIND, t.title, text)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -191,7 +191,7 @@ public final class TaskNotify {
         }
         if (t.isRequested()) {
             String text = c.getString(R.string.notif_request, TaskLists.name(names, t.createdBy),
-                    TaskLists.name(names, t.assignee));
+                    TaskFormat.people(names, t.owners()));
             b = base(c, CH_NEW, t.title, text)
                     .addAction(0, c.getString(R.string.action_accept), action(c, t.id, "accept", null))
                     .addAction(0, c.getString(R.string.action_decline), action(c, t.id, "decline", null));

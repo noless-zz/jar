@@ -135,28 +135,34 @@ class PointsStore:
 
     # ---- paying and taking back ----
     @staticmethod
-    def _active(data: dict, task_id: str) -> dict | None:
-        return next((ln for ln in data["lines"] if ln.get("task_id") == task_id and not ln.get("reversed")), None)
+    def _active(data: dict, task_id: str, person: str | None = None) -> dict | None:
+        return next((ln for ln in data["lines"] if ln.get("task_id") == task_id and not ln.get("reversed")
+                     and (person is None or ln.get("person") == person)), None)
 
-    def paid_map(self) -> dict[str, int]:
-        """task id -> coins paid (active lines only), for showing "🪙 40" on done tasks."""
-        return {ln["task_id"]: ln["coins"] for ln in self._read()["lines"]
-                if ln.get("task_id") and not ln.get("reversed")}
+    def paid_map(self) -> dict[str, dict[str, int]]:
+        """task id -> {person: coins paid} (active lines only), for showing "🪙 40" on done tasks.
+        A shared task done by each of several people has a line per person."""
+        out: dict[str, dict[str, int]] = {}
+        for ln in self._read()["lines"]:
+            if ln.get("task_id") and not ln.get("reversed"):
+                out.setdefault(ln["task_id"], {})[ln.get("person", "")] = ln["coins"]
+        return out
 
-    def pay(self, task: dict, at: str | None = None) -> dict | None:
-        """Pay the assignee for a task that was just done. Safe to call twice: the second call finds the line.
-        An unrated task is paid at the default rating and keeps it (a parent can correct it later).
-        Returns {"new", "coins", "breakdown", "week_total", "line"} or None for a no-coin task."""
+    def pay(self, task: dict, at: str | None = None, person: str | None = None) -> dict | None:
+        """Pay `person` (default: the assignee) for a task that was just done. Safe to call twice: the second
+        call finds the line. An unrated task is paid at the default rating and keeps it (a parent can
+        correct it later). Returns {"new", "coins", "breakdown", "week_total", "line"} or None for a
+        no-coin task."""
         points = task.get("points")
         if points is None:
             points = task["points"] = default_rating(task.get("title", ""))
         if points.get("no_coins"):
             return None
-        who = task.get("assignee", "")
+        who = person or task.get("assignee", "")
         at = at or task.get("done_at") or _now_iso()
         with locked(self.lock_path):
             data = self._read()
-            old = self._active(data, task["id"])
+            old = self._active(data, task["id"], who)
             if old is not None:
                 return self._award(data, old, new=False)
             if points.get("work_day") and self._work_day_paid(data, who, at):
@@ -194,13 +200,15 @@ class PointsStore:
         return {"new": new, "line": line["id"], "coins": line["coins"], "breakdown": line.get("breakdown", {}),
                 "week_total": total}
 
-    def reverse(self, task_id: str, why: str = "") -> int:
-        """Take back what a task paid (reopened, deleted, reassigned). Returns the coins taken back."""
+    def reverse(self, task_id: str, why: str = "", person: str | None = None) -> int:
+        """Take back what a task paid (reopened, deleted, reassigned) — from everyone, or from one
+        person of a shared task. Returns the coins taken back."""
         with locked(self.lock_path):
             data = self._read()
             back = 0
             for ln in data["lines"]:
-                if ln.get("task_id") == task_id and not ln.get("reversed"):
+                if ln.get("task_id") == task_id and not ln.get("reversed") \
+                        and (person is None or ln.get("person") == person):
                     ln.update(reversed=True, reversed_at=_now_iso(), reversed_why=why)
                     back += ln["coins"]
             if back or any(ln.get("task_id") == task_id for ln in data["lines"]):
@@ -212,10 +220,14 @@ class PointsStore:
         the time it was done."""
         with locked(self.lock_path):
             data = self._read()
-            old = self._active(data, task["id"])
-            at = old["at"] if old else task.get("done_at")
+            olds = [ln for ln in data["lines"] if ln.get("task_id") == task["id"] and not ln.get("reversed")]
+        if not olds:
+            return self.pay(task, task.get("done_at"))
         self.reverse(task["id"], "rating changed")
-        return self.pay(task, at)
+        award = None
+        for old in olds:
+            award = self.pay(task, old["at"], old["person"]) or award
+        return award
 
     def pay_work_day(self, person_id: str, at: str | None = None) -> dict | None:
         """A parent's work day without a task: the fixed base from [points] work_day_coins, once a day."""

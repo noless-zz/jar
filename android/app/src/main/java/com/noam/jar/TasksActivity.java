@@ -459,12 +459,15 @@ public final class TasksActivity extends AppCompatActivity {
             Map<String, String> names = cache.names();
             List<Task> fam = TaskLists.family(all, me);
             String current = null;
-            fam.sort((a, b) -> a.assignee.equals(b.assignee) ? TaskLists.ORDER.compare(a, b)
-                    : a.assignee.compareTo(b.assignee));
+            // Shared tasks get their own group at the end ("~" sorts after the ids).
+            java.util.function.Function<Task, String> group = x -> x.isShared() ? "~shared" : x.assignee;
+            fam.sort((a, b) -> group.apply(a).equals(group.apply(b)) ? TaskLists.ORDER.compare(a, b)
+                    : group.apply(a).compareTo(group.apply(b)));
             for (Task t : fam) {
-                if (!t.assignee.equals(current)) {
-                    current = t.assignee;
-                    rows.add(Row.header(TaskLists.name(names, current)));
+                if (!group.apply(t).equals(current)) {
+                    current = group.apply(t);
+                    rows.add(Row.header(t.isShared() ? getString(R.string.header_shared)
+                            : TaskLists.name(names, current)));
                 }
                 rows.add(Row.task(t));
             }
@@ -567,8 +570,8 @@ public final class TasksActivity extends AppCompatActivity {
             labels.add(getString(R.string.action_decline));
             actions.add(() -> act(t, "decline", null));
         }
-        if (t.isOpen()) {
-            labels.add(getString(R.string.action_done));
+        if (t.openFor(me)) {
+            labels.add(getString(t.eachMust() && t.isFor(me) ? R.string.action_my_part_done : R.string.action_done));
             actions.add(() -> act(t, "done", null));
             labels.add(getString(R.string.snooze_hour));
             actions.add(() -> act(t, "snooze", TaskLists.inAnHour(now, tz)));
@@ -581,7 +584,7 @@ public final class TasksActivity extends AppCompatActivity {
             actions.add(() -> act(t, "snooze", TaskLists.tomorrowMorning(now, tz)));
             labels.add(getString(R.string.snooze_pick));
             actions.add(() -> pickDateTime(when -> act(t, "snooze", when)));
-        } else if (t.isDone() || "declined".equals(t.status)) {
+        } else if (t.doneFor(me) || "declined".equals(t.status)) {
             labels.add(getString(R.string.action_reopen));
             actions.add(() -> act(t, "reopen", null));
         }
@@ -641,6 +644,9 @@ public final class TasksActivity extends AppCompatActivity {
         ChipGroup people = v.findViewById(R.id.add_people);
         ChipGroup when = v.findViewById(R.id.add_when);
         TextView requestHint = v.findViewById(R.id.add_request_hint);
+        View modeBox = v.findViewById(R.id.add_mode_box);
+        ChipGroup mode = v.findViewById(R.id.add_mode);
+        if (existing != null && existing.eachMust()) mode.check(R.id.add_mode_all);
         String me = cache.myId();
         boolean parent = cache.iAmParent();
 
@@ -650,13 +656,19 @@ public final class TasksActivity extends AppCompatActivity {
             Chip c = chip(e.getKey().equals(me) ? getString(R.string.add_me) : e.getValue());
             c.setTag(e.getKey());
             people.addView(c);
-            if (e.getKey().equals(existing == null ? me : existing.assignee)) people.check(c.getId());
+            if (existing == null ? e.getKey().equals(me) : existing.isFor(e.getKey())) people.check(c.getId());
         }
-        people.setOnCheckedStateChangeListener((g, ids) -> {
-            View sel = ids.isEmpty() ? null : g.findViewById(ids.get(0));
-            boolean other = sel != null && !me.equals(sel.getTag());
+        java.util.function.Consumer<List<Integer>> onPeople = ids -> {
+            boolean other = false;
+            for (int id : ids) {
+                View sel = people.findViewById(id);
+                if (sel != null && !me.equals(sel.getTag())) other = true;
+            }
             requestHint.setVisibility(!parent && other ? View.VISIBLE : View.GONE);
-        });
+            modeBox.setVisibility(ids.size() > 1 ? View.VISIBLE : View.GONE);
+        };
+        onPeople.accept(people.getCheckedChipIds());
+        people.setOnCheckedStateChangeListener((g, ids) -> onPeople.accept(ids));
 
         long now = System.currentTimeMillis();
         TimeZone tz = TimeZone.getDefault();
@@ -699,23 +711,29 @@ public final class TasksActivity extends AppCompatActivity {
                 .setPositiveButton(R.string.add_save, (d, w) -> {
                     String text = title.getText() == null ? "" : title.getText().toString().trim();
                     if (text.isEmpty()) return;
-                    View selPerson = people.findViewById(people.getCheckedChipId());
-                    String who = selPerson == null ? me : (String) selPerson.getTag();
+                    // In the order the family list shows them; the first is the "main" one for older apps.
+                    List<String> who = new ArrayList<>();
+                    for (int i = 0; i < people.getChildCount(); i++) {
+                        View c = people.getChildAt(i);
+                        if (c instanceof Chip && ((Chip) c).isChecked()) who.add((String) c.getTag());
+                    }
+                    if (who.isEmpty()) who.add(me);
+                    boolean each = who.size() > 1 && mode.getCheckedChipId() == R.id.add_mode_all;
                     View selWhen = when.findViewById(when.getCheckedChipId());
                     String tag = selWhen == null ? "" : (String) selWhen.getTag();
                     String due = "pick".equals(tag) ? picked[0] : (tag.isEmpty() ? null : tag);
-                    if (existing == null) create(text, who, due);
-                    else edit(existing, text, who, due);
+                    if (existing == null) create(text, who, each, due);
+                    else edit(existing, text, who, each, due);
                 })
                 .show();
         title.requestFocus();
     }
 
-    private void edit(Task t, String title, String assignee, String due) {
+    private void edit(Task t, String title, List<String> owners, boolean each, String due) {
         syncStatus.setText(R.string.syncing);
         io.execute(() -> {
             try {
-                TaskApi.edit(prefs, t.id, title, assignee, due);
+                TaskApi.edit(prefs, t.id, title, owners, each, due);
                 main.post(() -> TaskSync.now(this));
             } catch (IOException e) {
                 main.post(() -> {
@@ -734,11 +752,11 @@ public final class TasksActivity extends AppCompatActivity {
         return c;
     }
 
-    private void create(String title, String assignee, String due) {
+    private void create(String title, List<String> owners, boolean each, String due) {
         syncStatus.setText(R.string.syncing);
         io.execute(() -> {
             try {
-                TaskApi.create(prefs, title, assignee, due);
+                TaskApi.create(prefs, title, owners, each, due);
                 main.post(() -> TaskSync.now(this));
             } catch (IOException e) {
                 main.post(() -> {
@@ -1004,7 +1022,8 @@ public final class TasksActivity extends AppCompatActivity {
             TextView meta = h.itemView.findViewById(R.id.meta);
             MaterialCheckBox check = h.itemView.findViewById(R.id.check);
             title.setText(t.isMessage() ? "💬 " + t.title : t.title);
-            boolean done = t.isDone() || "declined".equals(t.status);
+            String me = cache.myId();
+            boolean done = t.doneFor(me) || "declined".equals(t.status);
             title.setPaintFlags(done ? title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG
                     : title.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
             title.setAlpha(done ? 0.55f : 1f);
@@ -1015,7 +1034,7 @@ public final class TasksActivity extends AppCompatActivity {
             if (TaskFormat.overdue(t)) meta.setTextColor(ContextCompat.getColor(TasksActivity.this, R.color.recording));
             else meta.setTextColor((android.content.res.ColorStateList) meta.getTag());
             check.setOnCheckedChangeListener(null);
-            check.setChecked(t.isDone());
+            check.setChecked(t.doneFor(me));
             check.setEnabled(t.isOpen() || t.isDone());
             check.setOnCheckedChangeListener((b, on) -> act(t, on ? "done" : "reopen", null));
             TextView coins = h.itemView.findViewById(R.id.coins);
@@ -1038,7 +1057,7 @@ public final class TasksActivity extends AppCompatActivity {
         @Override
         public int getSwipeDirs(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh) {
             Task t = adapter.taskAt(vh.getBindingAdapterPosition());
-            return t != null && t.isOpen() ? super.getSwipeDirs(rv, vh) : 0;
+            return t != null && t.openFor(cache.myId()) ? super.getSwipeDirs(rv, vh) : 0;
         }
 
         @Override

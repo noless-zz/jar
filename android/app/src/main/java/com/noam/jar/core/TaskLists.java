@@ -23,19 +23,38 @@ public final class TaskLists {
         return b.updatedAt.compareTo(a.updatedAt);
     };
 
+    /** Open tasks first, then done ones; on an "each of us" task, as {@code me} sees it. */
+    public static Comparator<Task> orderFor(String me) {
+        return (a, b) -> {
+            int ra = rank(a, me), rb = rank(b, me);
+            if (ra != rb) return Integer.compare(ra, rb);
+            return ORDER.compare(a, b);
+        };
+    }
+
+    private static int rank(Task t, String me) {
+        int r = rank(t);
+        return r == 1 && t.doneFor(me) ? 2 : r;
+    }
+
     private static int rank(Task t) {
         if (t.isRequested()) return 0;
         if (t.isOpen()) return 1;
         return 2;
     }
 
+    /** Mine, and still something for me to do on it. */
+    public static boolean mineOpen(Task t, String me) {
+        return t.isFor(me) && t.openFor(me);
+    }
+
     /** "Mine": what I have to do. */
     public static List<Task> mine(List<Task> all, String me) {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
-            if ((me.equals(t.assignee) && !"declined".equals(t.status)) || t.waitingOn(me)) out.add(t);
+            if ((t.isFor(me) && !"declined".equals(t.status)) || t.waitingOn(me)) out.add(t);
         }
-        Collections.sort(out, ORDER);
+        Collections.sort(out, orderFor(me));
         return questionsFirst(out, me);
     }
 
@@ -56,7 +75,7 @@ public final class TaskLists {
         for (Task t : all) {
             Task.Note n = t.lastNote();
             if (n == null || me.equals(n.by) || seen.contains(noteKey(t))) continue;
-            if (me.equals(t.assignee) || me.equals(t.createdBy) || t.waitingOn(me)) out.add(t);
+            if (t.isFor(me) || me.equals(t.createdBy) || t.waitingOn(me)) out.add(t);
         }
         return out;
     }
@@ -70,7 +89,7 @@ public final class TaskLists {
     public static List<Task> asked(List<Task> all, String me) {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
-            if ((me.equals(t.createdBy) && !me.equals(t.assignee)) || iAskedAndWait(t, me)) out.add(t);
+            if ((me.equals(t.createdBy) && !t.isFor(me)) || iAskedAndWait(t, me)) out.add(t);
         }
         Collections.sort(out, ORDER);
         return out;
@@ -89,7 +108,7 @@ public final class TaskLists {
     /** "Family" (parents): everything else the server let me see — mostly the children's tasks. */
     public static List<Task> family(List<Task> all, String me) {
         List<Task> out = new ArrayList<>();
-        for (Task t : all) if (!me.equals(t.assignee) && !me.equals(t.createdBy)) out.add(t);
+        for (Task t : all) if (!t.isFor(me) && !me.equals(t.createdBy)) out.add(t);
         Collections.sort(out, ORDER);
         return out;
     }
@@ -110,7 +129,7 @@ public final class TaskLists {
     public static List<Task> forWidget(List<Task> all, String me, boolean iAmParent, int max) {
         List<Task> out = new ArrayList<>(needMyOk(all, me, iAmParent));
         List<Task> mine = new ArrayList<>();
-        for (Task t : all) if ((me.equals(t.assignee) && t.isOpen() || t.waitingOn(me)) && !out.contains(t)) mine.add(t);
+        for (Task t : all) if ((mineOpen(t, me) || t.waitingOn(me)) && !out.contains(t)) mine.add(t);
         Collections.sort(mine, ORDER);
         out.addAll(0, questionsFirst(mine, me).subList(0, countWaiting(mine, me)));
         for (Task t : mine) if (!t.waitingOn(me)) out.add(t);
@@ -125,7 +144,7 @@ public final class TaskLists {
 
     public static int openCount(List<Task> all, String me) {
         int n = 0;
-        for (Task t : all) if (me.equals(t.assignee) && t.isOpen()) n++;
+        for (Task t : all) if (mineOpen(t, me)) n++;
         return n;
     }
 
@@ -133,7 +152,7 @@ public final class TaskLists {
     public static List<Task> forMorning(List<Task> all, String me, String today) {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
-            if (!me.equals(t.assignee) || !t.isOpen()) continue;
+            if (!mineOpen(t, me)) continue;
             String day = t.dueDay();
             if (day == null || day.compareTo(today) <= 0) out.add(t);
         }
@@ -212,12 +231,12 @@ public final class TaskLists {
         for (Task t : all) {
             if (seen.contains(t.id)) continue;
             // A WhatsApp draft from my own memo: tell me it's ready to send.
-            if (t.isMessage() && me.equals(t.assignee) && t.isOpen()) {
+            if (t.isMessage() && t.isFor(me) && t.isOpen()) {
                 out.add(t);
                 continue;
             }
             if (me.equals(t.createdBy)) continue;
-            boolean forMe = me.equals(t.assignee) && t.isOpen();
+            boolean forMe = mineOpen(t, me);
             boolean toApprove = iAmParent && t.isRequested();
             if (forMe || toApprove) out.add(t);
         }

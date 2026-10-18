@@ -416,12 +416,13 @@ def list_tasks(request: Request, authorization: str | None = Header(None), x_dev
 @app.post("/v1/tasks", status_code=201)
 def new_task(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
              x_device_id: str = Header("")):
+    """{"title", "due", "notes", "assignee": id} or, for a shared task, {"assignees": [ids], "mode": "any"|"all"}."""
     p = check_auth(authorization, request, x_device_id)
-    who = FAMILY.get(body.get("assignee")) if body.get("assignee") else p
-    if who is None:
-        raise HTTPException(400, "no such family member")
     try:
-        return TASKS.add(p, str(body.get("title", "")), who, body.get("due"), str(body.get("notes", "")))
+        ids = body.get("assignees") or ([body["assignee"]] if body.get("assignee") else [])
+        who = TASKS.resolve_people(ids) or [p]
+        return TASKS.add(p, str(body.get("title", "")), who, body.get("due"), str(body.get("notes", "")),
+                         mode=str(body.get("mode") or "any"))
     except TaskError as e:
         _task_error(e)
 

@@ -8,6 +8,9 @@ A task:
     points   {effort 1-10, minutes, category, chore_key, reason, rated_by, no_coins}: what it is worth
              (worker/effort.py rates it once; a parent can change it; coins are paid by worker/points.py)
 status:  open | done | requested (a child asked someone; waits for a parent) | declined
+Shared (family) tasks: "assignees" lists everyone it is for ("assignee" stays the first of them, so older
+apps still work) and "mode" says who has to do it: "any" = one of them is enough, "all" = each of them.
+In "all" mode "done_parts" {person: when} records who has done their part; the task is done when everyone has.
 due / snoozed_until:  local time, "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (the family's time zone)
 
 Who sees what: your own tasks, tasks you gave someone, and (parents only) the children's tasks.
@@ -68,6 +71,30 @@ def clean_when(value: str | None) -> str | None:
     return v
 
 
+def owners(t: dict) -> list[str]:
+    """Everyone a task is for: the "assignees" of a shared task, else its one assignee."""
+    a = t.get("assignees")
+    if isinstance(a, list) and a:
+        return list(a)
+    return [t["assignee"]] if t.get("assignee") else []
+
+
+def shared_mode(t: dict) -> str:
+    """"any" (one of them is enough; also every single-owner task) or "all" (each of them)."""
+    return "all" if t.get("mode") == "all" and len(owners(t)) > 1 else "any"
+
+
+def _set_owners(t: dict, people: list[Person], mode: str | None = None) -> None:
+    ids = list(dict.fromkeys(p.id for p in people))
+    t["assignee"] = ids[0]
+    if len(ids) > 1:
+        t["assignees"] = ids
+        t["mode"] = "all" if (mode or t.get("mode")) == "all" else "any"
+    else:
+        for k in ("assignees", "mode", "done_parts"):
+            t.pop(k, None)
+
+
 class TaskStore:
     def __init__(self, path: Path, family: Family, markdown: Path | None = None, points=None):
         self.path, self.family, self.markdown = path, family, markdown
@@ -100,46 +127,71 @@ class TaskStore:
 
     # ---- rules ----
     def visible(self, t: dict, p: Person) -> bool:
-        if p.id in (t.get("assignee"), t.get("created_by")):
+        ids = owners(t)
+        if p.id == t.get("created_by") or p.id in ids:
             return True
-        a = self.family.get(t.get("assignee"))
-        return p.is_parent and a is not None and not a.is_parent
+        return p.is_parent and any((a := self.family.get(i)) is not None and not a.is_parent for i in ids)
+
+    def resolve_people(self, ids) -> list[Person]:
+        """Family members from a list of ids (or one id); raises on an unknown one."""
+        if isinstance(ids, str):
+            ids = [ids]
+        out = []
+        for i in ids or []:
+            who = self.family.get(str(i))
+            if who is None:
+                raise TaskError(400, f"no such family member: {i}")
+            if who not in out:
+                out.append(who)
+        return out
 
     # ---- API ----
     def snapshot(self, p: Person) -> dict:
         data = self._read()
         tasks = [t for t in data["tasks"] if self.visible(t, p) and t.get("status") != "deleted"]
-        tasks = self._decorate(tasks)
+        tasks = self._decorate(tasks, p)
         return {"rev": data.get("rev", 0), "tasks": tasks}
 
-    def _decorate(self, tasks: list[dict]) -> list[dict]:
+    def _decorate(self, tasks: list[dict], viewer: Person | None = None) -> list[dict]:
         """Copies of the tasks with "coins": what a done task paid, or what an open one will pay
-        (0 = nothing, or not rated yet), and "paid": true for the first."""
+        (0 = nothing, or not rated yet), and "paid": true for the first. On a shared task the viewer
+        sees their own payment once they have done their part."""
         if self.points is None:
             return tasks
         paid = self.points.paid_map()
         out = []
         for t in tasks:
             t = dict(t)
-            if t["id"] in paid:
-                t.update(coins=paid[t["id"]], paid=True)
+            lines = paid.get(t["id"], {})
+            mine = lines.get(viewer.id) if viewer is not None else None
+            if mine is not None:
+                t.update(coins=mine, paid=True)
+            elif lines and t.get("status") == "done":
+                t.update(coins=max(lines.values()), paid=True)
             elif t.get("status") in ("open", "requested"):
                 t["coins"] = self.points.preview(t)
             out.append(t)
         return out
 
-    def add(self, creator: Person, title: str, assignee: Person | None = None, due: str | None = None,
+    def add(self, creator: Person, title: str, assignee: Person | list[Person] | None = None, due: str | None = None,
             notes: str = "", memo_id: str | None = None, kind: str = "task", message: str = "",
-            to: str = "", phone: str = "") -> dict:
+            to: str = "", phone: str = "", mode: str = "any") -> dict:
+        """assignee: one person, or a list for a shared task (mode "any" = one of them is enough,
+        "all" = each of them does it)."""
         title = (title or "").strip()
         if not title:
             raise TaskError(400, "title is required")
-        assignee = assignee or creator
-        status = "requested" if (not creator.is_parent and assignee.id != creator.id) else "open"
+        people = [p for p in (assignee if isinstance(assignee, list) else [assignee]) if p is not None] or [creator]
+        if kind == "message":
+            people = people[:1]                       # a WhatsApp draft is sent by one person
+        assignee = people[0]
+        others = any(p.id != creator.id for p in people)
+        status = "requested" if (not creator.is_parent and others) else "open"
         t = {"id": uuid.uuid4().hex[:10], "title": title[:300], "notes": (notes or "").strip()[:2000],
              "assignee": assignee.id, "created_by": creator.id, "status": status,
              "due": clean_when(due), "snoozed_until": None, "created_at": _now(), "updated_at": _now(),
              "done_at": None, "done_by": None, "memo_id": memo_id}
+        _set_owners(t, people, mode)
         if kind == "message":
             # A prepared WhatsApp message: the phone shows "Send in WhatsApp"; the person presses Send.
             t.update(kind="message", message=(message or "").strip()[:4000], to=(to or "").strip()[:100],
@@ -173,13 +225,17 @@ class TaskStore:
                 if t["status"] == "requested" and not actor.is_parent:
                     raise TaskError(409, "still waiting for a parent to approve it")
                 # An offline tick carries the time it was made ("at", epoch seconds): paid at that time.
-                t.update(status="done", done_at=done_time((fields or {}).get("at")), done_by=actor.id,
-                         snoozed_until=None)
-                if self.points is not None:
-                    award = self.points.pay(t, t["done_at"])
+                at = done_time((fields or {}).get("at"))
+                award = self._done(t, actor, at)
             elif action == "reopen":
-                t.update(status="open", done_at=None, done_by=None)
-                self._take_back(t, "reopened")
+                parts = t.get("done_parts") or {}
+                if shared_mode(t) == "all" and t["status"] != "done" and actor.id in parts:
+                    parts.pop(actor.id)                       # undo just my part
+                    self._take_back(t, "reopened", actor.id)
+                else:
+                    t.update(status="open", done_at=None, done_by=None)
+                    t.pop("done_parts", None)
+                    self._take_back(t, "reopened")
             elif action == "snooze":
                 t["snoozed_until"] = clean_when(until)
             elif action == "delete":
@@ -198,28 +254,76 @@ class TaskStore:
                     t["notes"] = str(f["notes"] or "").strip()[:2000]
                 if "message" in f and t.get("kind") == "message":
                     t["message"] = str(f["message"] or "").strip()[:4000]
-                if f.get("assignee") and f["assignee"] != t["assignee"]:
-                    who = self.family.get(f["assignee"])
-                    if who is None:
-                        raise TaskError(400, "no such family member")
-                    t["assignee"] = who.id
-                    if not actor.is_parent and who.id != actor.id:
+                new_ids = f.get("assignees") or ([f["assignee"]] if f.get("assignee") else None)
+                if t.get("kind") == "message" and new_ids:
+                    new_ids = new_ids[:1]
+                if new_ids and list(dict.fromkeys(map(str, new_ids))) != owners(t):
+                    people = self.resolve_people(new_ids)
+                    before, parts_before = owners(t), dict(t.get("done_parts") or {})
+                    _set_owners(t, people, f.get("mode"))
+                    who = people[0]
+                    if not actor.is_parent and any(p.id != actor.id for p in people):
                         t["status"] = "requested"     # a child handing it to someone else: a parent OKs it
                     if t.get("status") == "done":
                         self._take_back(t, "reassigned")          # the new person didn't do it
-                    elif (t.get("points") or {}).get("rated_by") in ("ai", "default"):
-                        t.pop("points")                           # rated for someone else: rate again
-                        ruled = effort_mod.rule_rating(t["title"], t.get("kind", "task"), who)
-                        if ruled is not None:
-                            t["points"] = ruled
+                    else:
+                        for gone in set(before) - set(owners(t)):     # a part done by someone taken off
+                            (t.get("done_parts") or {}).pop(gone, None)
+                            if gone in parts_before:
+                                self._take_back(t, "reassigned", gone)
+                        if before[0] != who.id and (t.get("points") or {}).get("rated_by") in ("ai", "default"):
+                            t.pop("points")                       # rated for someone else: rate again
+                            ruled = effort_mod.rule_rating(t["title"], t.get("kind", "task"), who)
+                            if ruled is not None:
+                                t["points"] = ruled
+                elif f.get("mode") in ("any", "all") and len(owners(t)) > 1:
+                    t["mode"] = f["mode"]
+                if t.get("status") == "open" and shared_mode(t) == "all" \
+                        and set(owners(t)) <= set(t.get("done_parts") or {}):
+                    t.update(status="done", done_at=_now(), done_by=actor.id)   # the last one left was taken off
+                if shared_mode(t) != "all":
+                    t.pop("done_parts", None)
             t["updated_at"] = _now()
             self._write(data)
             return dict(t, award=award) if award else t
 
     # ---- coins ----
-    def _take_back(self, t: dict, why: str) -> None:
+    def _take_back(self, t: dict, why: str, person: str | None = None) -> None:
         if self.points is not None:
-            self.points.reverse(t["id"], why)
+            self.points.reverse(t["id"], why, person)
+
+    def _done(self, t: dict, actor: Person, at: str) -> dict | None:
+        """Tick a task. Shared "all" task: the actor's own part (the task is done once everyone's is);
+        a parent who isn't one of them ticks it for all of them. "any": done, paid to whoever did it
+        (to the first of them when someone else ticks it)."""
+        ids = owners(t)
+        pay_to: list[str]
+        if shared_mode(t) == "all":
+            parts = t.setdefault("done_parts", {})
+            if actor.id in ids:
+                if actor.id in parts:                            # my part is done already (a retried tick)
+                    return self.points.pay(t, parts[actor.id], actor.id) if self.points is not None else None
+                parts[actor.id] = at
+                pay_to = [actor.id]
+            else:
+                pay_to = [i for i in ids if i not in parts]
+                for i in pay_to:
+                    parts[i] = at
+            if set(ids) <= set(parts):
+                t.update(status="done", done_at=at, done_by=actor.id, snoozed_until=None)
+        else:
+            if t["status"] == "done":                            # a retried tick: what it paid
+                paid = t.get("done_by") if t.get("done_by") in ids else ids[0]
+                return self.points.pay(t, t.get("done_at"), paid) if self.points is not None else None
+            t.update(status="done", done_at=at, done_by=actor.id, snoozed_until=None)
+            pay_to = [actor.id if actor.id in ids else ids[0]]
+        award = None
+        if self.points is not None:
+            for i in pay_to:
+                a = self.points.pay(t, at, i)
+                if i == actor.id or award is None:
+                    award = a or award
+        return award
 
     def set_points(self, actor: Person, task_id: str, effort=None, no_coins=None) -> dict:
         """A parent's say on what a task is worth: its effort (1-10, remembered for that chore) and/or
@@ -253,9 +357,9 @@ class TaskStore:
         if self.points is not None:
             if effort is not None:
                 self.points.remember(pts.get("chore_key", ""), effort, actor.id)
-            if t.get("status") == "done":
+            if t.get("status") == "done" or t.get("done_parts"):
                 self.points.repay(t)
-        return self._decorate([t])[0]
+        return self._decorate([t], actor)[0]
 
     def unrated(self, limit: int = 4) -> list[dict]:
         """Open tasks nobody has rated yet, newest first (the worker rates them)."""
@@ -297,7 +401,7 @@ class TaskStore:
             if self.points is not None:
                 award = self.points.pay(t, t["done_at"])
             self._write(data)
-        out = self._decorate([t])[0]
+        out = self._decorate([t], actor)[0]
         return dict(out, award=award) if award else out
 
     def _local_day(self, iso: str):
@@ -312,9 +416,12 @@ class TaskStore:
     @staticmethod
     def counterpart(t: dict, actor: Person) -> str:
         """Who a question from `actor` goes to: the one doing it, or (from them) whoever asked for it."""
-        if actor.id != t.get("assignee"):
-            return t.get("assignee") or ""
-        return t.get("created_by") if t.get("created_by") != actor.id else ""
+        ids = owners(t)
+        if actor.id not in ids:
+            return ids[0] if ids else ""
+        if t.get("created_by") != actor.id:
+            return t.get("created_by") or ""
+        return next((i for i in ids if i != actor.id), "")
 
     def comment(self, actor: Person, task_id: str, text: str, ask: bool = False) -> dict:
         """A note on a task. ask=True sends it as a question: the task shows up for the other side
@@ -369,7 +476,7 @@ class TaskStore:
         for t in self.snapshot(actor)["tasks"]:
             if t.get("status") not in ("open", "requested"):
                 continue
-            if person is not None and t["assignee"] != person.id:
+            if person is not None and person.id not in owners(t):
                 continue
             text = (t["title"] + " " + (t.get("notes") or "")).casefold()
             # Hebrew prefixes (ה, ל, ב, ש, ו…) glue onto words, so substring matches count too.
@@ -446,8 +553,8 @@ class TaskStore:
         lines = ["# Tasks", "", "*Written by Jar from the family task list. Tick tasks in the phone app; "
                  "edits made here are overwritten.*", ""]
         people = list(self.family.people)
-        for pid in people + sorted({t["assignee"] for t in tasks} - set(people)):
-            mine = [t for t in tasks if t["assignee"] == pid and t.get("status") in ("open", "requested", "done")]
+        for pid in people + sorted({i for t in tasks for i in owners(t)} - set(people)):
+            mine = [t for t in tasks if pid in owners(t) and t.get("status") in ("open", "requested", "done")]
             if not mine:
                 continue
             lines.append(f"## {name(pid)}")
@@ -456,8 +563,11 @@ class TaskStore:
             for t in mine:
                 if t["status"] == "done" and (t.get("done_at") or "") < recent:
                     continue
-                box = "x" if t["status"] == "done" else " "
+                box = "x" if t["status"] == "done" or pid in (t.get("done_parts") or {}) else " "
                 s = f"- [{box}] {t['title']}"
+                if len(owners(t)) > 1:
+                    s += (" 👥 " + ", ".join(name(i) for i in owners(t) if i != pid)
+                          + (" (each of us)" if shared_mode(t) == "all" else " (one of us)"))
                 if t.get("due"):
                     d, _, tm = t["due"].partition("T")
                     s += f" 📅 {d}" + (f" ⏰ {tm}" if tm else "")

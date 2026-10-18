@@ -18,6 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 
+from .taskstore import owners
 from .tools import Notes, Tool, ToolError, registry
 
 log = logging.getLogger("jar.agent")
@@ -212,7 +213,7 @@ class Agent:
                 name = lambda pid: notes.family.get(pid).name if notes.family and notes.family.get(pid) else pid  # noqa: E731
                 context = ("\n\nOpen tasks that may be what this memo is about (if the memo finishes, moves, changes "
                            "or cancels one of them, use update_task with its id instead of adding a new task):\n"
-                           + "\n".join(f"- id={t['id']} | {t['title']} | for {name(t['assignee'])}"
+                           + "\n".join(f"- id={t['id']} | {t['title']} | for {', '.join(name(i) for i in owners(t))}"
                                        + (f" | due {t['due'].replace('T', ' ')}" if t.get("due") else "")
                                        for t in near))
         system = system_prompt(notes, recorded_local, tz_name, self.about) + context

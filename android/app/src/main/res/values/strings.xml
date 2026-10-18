@@ -336,4 +336,14 @@
     <string name="weekly_improved">⭐ Most improved: %1$s (+%2$d%%)</string>
     <string name="widget_board_leads">🏆 %1$s leads with %2$d · you %3$d</string>
     <string name="widget_board_you">🏆 You lead with %1$d</string>
+    <string name="add_people_hint">Tap several people for a shared task.</string>
+    <string name="add_mode">Who has to do it?</string>
+    <string name="add_mode_any">One of them is enough</string>
+    <string name="add_mode_all">Each of them</string>
+    <string name="meta_with">with %1$s</string>
+    <string name="meta_each">each</string>
+    <string name="meta_any">one of you</string>
+    <string name="meta_parts">%1$d/%2$d done</string>
+    <string name="header_shared">👥 Shared</string>
+    <string name="action_my_part_done">My part is done</string>
 </resources>

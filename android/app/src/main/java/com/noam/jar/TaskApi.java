@@ -52,10 +52,12 @@ public final class TaskApi {
         return call(prefs, "GET", "/v1/tasks", null);
     }
 
-    public static JSONObject create(Prefs prefs, String title, String assignee, String due) throws IOException {
+    public static JSONObject create(Prefs prefs, String title, List<String> owners, boolean each, String due)
+            throws IOException {
         JSONObject body = new JSONObject();
         try {
-            body.put("title", title).put("assignee", assignee);
+            body.put("title", title).put("assignee", owners.get(0))
+                    .put("assignees", new JSONArray(owners)).put("mode", each ? "all" : "any");
             if (due != null) body.put("due", due);
         } catch (JSONException e) {
             throw new IOException(e);
@@ -63,12 +65,13 @@ public final class TaskApi {
         return call(prefs, "POST", "/v1/tasks", body);
     }
 
-    /** Change title / person / time (due null = no time). */
-    public static JSONObject edit(Prefs prefs, String taskId, String title, String assignee, String due)
-            throws IOException {
+    /** Change title / people (and any/each) / time (due null = no time). */
+    public static JSONObject edit(Prefs prefs, String taskId, String title, List<String> owners, boolean each,
+                                  String due) throws IOException {
         JSONObject body = new JSONObject();
         try {
-            body.put("title", title).put("assignee", assignee).put("due", due == null ? JSONObject.NULL : due);
+            body.put("title", title).put("assignee", owners.get(0)).put("assignees", new JSONArray(owners))
+                    .put("mode", each ? "all" : "any").put("due", due == null ? JSONObject.NULL : due);
         } catch (JSONException e) {
             throw new IOException(e);
         }
@@ -309,6 +312,17 @@ public final class TaskApi {
         t.title = o.optString("title");
         t.notes = o.optString("notes");
         t.assignee = o.optString("assignee");
+        JSONArray owners = o.optJSONArray("assignees");
+        for (int i = 0; owners != null && i < owners.length(); i++) {
+            String id = owners.optString(i, "");
+            if (!id.isEmpty() && !t.assignees.contains(id)) t.assignees.add(id);
+        }
+        t.mode = "all".equals(o.optString("mode")) ? "all" : "any";
+        JSONObject parts = o.optJSONObject("done_parts");
+        if (parts != null) {
+            java.util.Iterator<String> keys = parts.keys();
+            while (keys.hasNext()) t.doneParts.add(keys.next());
+        }
         t.createdBy = o.optString("created_by");
         t.status = o.optString("status", "open");
         t.due = str(o, "due");

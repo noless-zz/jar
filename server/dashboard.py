@@ -295,9 +295,11 @@ def make_router(data_dir: Path, ollama_url: str, rejected=(), token: str = "", p
         if tasks is None or family is None:
             raise HTTPException(404, "no task list")
         from worker.taskstore import TaskError
-        who = family.get(body.get("assignee")) or family.admin
         try:
-            return tasks.add(family.admin, str(body.get("title", "")), who, body.get("due") or None)
+            ids = body.get("assignees") or ([body["assignee"]] if body.get("assignee") else [])
+            who = tasks.resolve_people(ids) or [family.admin]
+            return tasks.add(family.admin, str(body.get("title", "")), who, body.get("due") or None,
+                             mode=str(body.get("mode") or "any"))
         except TaskError as e:
             raise HTTPException(e.status, str(e)) from None
 
