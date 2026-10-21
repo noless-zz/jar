@@ -99,3 +99,8 @@ announce = "sat 20:00"     # the phones announce the week's winner and most impr
 # Read now, enforced from phase 2: coins per person per day, and a parent's OK before big payments (0 = off).
 daily_cap = 150
 parent_ok_over = 0
+# Jar ideas (💡): coins to whoever suggested an idea when the admin accepts it, and a bonus when it ships.
+idea_coins = 20
+idea_shipped_bonus = 10
+idea_credits_per_week = 3   # accepted ideas that pay, per person per week
+idea_credit_parents = false # the other parent's ideas earn too?

@@ -11,6 +11,10 @@
         android:title="@string/menu_memos"
         app:showAsAction="never" />
     <item
+        android:id="@+id/menu_recurring"
+        android:title="@string/menu_recurring"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/menu_dashboard"
         android:title="@string/menu_dashboard"
         android:visible="false"

@@ -56,6 +56,14 @@ final class TaskFormat {
             String m = t.message == null ? "" : t.message.replace('\n', ' ');
             parts.add("“" + (m.length() > 70 ? m.substring(0, 70) + "…" : m) + "”");
         }
+        if (t.isIdea()) {
+            parts.add(c.getString(t.isRequested() ? R.string.idea_status_new : t.isOpen() ? R.string.idea_status_accepted
+                    : t.isDone() ? R.string.idea_status_shipped : R.string.idea_status_declined));
+            if (!me.equals(t.createdBy)) parts.add(c.getString(R.string.meta_from, TaskLists.name(names, t.createdBy)));
+            if (!t.duplicateOf.isEmpty()) parts.add(c.getString(R.string.idea_duplicate));
+            if (!t.thread.isEmpty()) parts.add("💬 " + t.thread.size());
+            return String.join(" · ", parts);
+        }
         if (t.isShared()) {
             List<String> others = new ArrayList<>();
             for (String o : t.owners()) if (!o.equals(me)) others.add(o);
@@ -70,6 +78,7 @@ final class TaskFormat {
         if (!me.equals(t.createdBy) && !t.isFor(t.createdBy))
             parts.add(c.getString(R.string.meta_from, TaskLists.name(names, t.createdBy)));
         if (t.due != null) parts.add(when(c, t.due));
+        if (t.isRecurring() && !t.repeat.isEmpty()) parts.add("🔁 " + t.repeat);
         if (t.isOpen() && t.snoozedUntil != null) parts.add(c.getString(R.string.meta_snoozed, when(c, t.snoozedUntil)));
         if (t.isRequested()) parts.add(c.getString(R.string.meta_waiting));
         if (t.waitingOn(me)) parts.add(0, c.getString(R.string.meta_question_for_you));

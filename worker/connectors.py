@@ -16,6 +16,7 @@ import base64
 import json
 import logging
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -45,6 +46,7 @@ class NotConnected(Exception):
 class Result:
     summary: str
     link: str = ""
+    id: str = ""          # the provider's id for what was made (e.g. a calendar event), when known
 
 
 # ---------------------------------------------------------------- payload builders (pure)
@@ -371,7 +373,18 @@ class FamilyGoogle(Google):
         url = (f"https://www.googleapis.com/calendar/v3/calendars/{self.calendar_id}/events"
                "?sendUpdates=all")
         r = self._post(url, family_event(title, day, start_time, duration_min, self.tz, who, location, notes))
-        return Result("the family calendar", r.get("htmlLink", ""))
+        return Result("the family calendar", r.get("htmlLink", ""), r.get("id", ""))
+
+    def delete_family_event(self, event_id: str) -> bool:
+        """Remove an event Jar made on the family calendar (guests get a cancellation).
+        True = gone (also when it was already deleted)."""
+        from google.auth.transport.requests import AuthorizedSession
+        url = (f"https://www.googleapis.com/calendar/v3/calendars/{self.calendar_id}/events/"
+               f"{urllib.parse.quote(event_id, safe='')}?sendUpdates=all")
+        r = AuthorizedSession(self._creds()).delete(url, timeout=20)
+        if r.status_code in (200, 204, 404, 410):
+            return True
+        raise RuntimeError(f"Google {r.status_code}: {r.text[:300]}")
 
     def send(self, to, subject, body) -> Result:
         who = self.check(to)

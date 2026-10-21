@@ -2,6 +2,7 @@ package com.noam.jar;
 
 import com.noam.jar.core.Award;
 import com.noam.jar.core.Board;
+import com.noam.jar.core.Series;
 import com.noam.jar.core.ServerList;
 import com.noam.jar.core.Task;
 
@@ -63,6 +64,51 @@ public final class TaskApi {
             throw new IOException(e);
         }
         return call(prefs, "POST", "/v1/tasks", body);
+    }
+
+    /**
+     * A recurring task: {@code rule} as the PC reads it ("daily", "weekly:sun,wed", "monthly:15"…), {@code time}
+     * "HH:mm" or "". {@code rotate}: the people take turns. The PC returns the first occurrence.
+     */
+    public static JSONObject createRecurring(Prefs prefs, String title, List<String> owners, boolean each, String rule,
+                                             String time, boolean rotate) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("title", title).put("assignee", owners.get(0))
+                    .put("assignees", new JSONArray(owners)).put("mode", each ? "all" : "any")
+                    .put("repeat", new JSONObject().put("rule", rule).put("time", time == null ? "" : time)
+                            .put("rotate", rotate));
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/tasks", body);
+    }
+
+    /** A Jar idea, for the admin to accept or decline. */
+    public static JSONObject createIdea(Prefs prefs, String title, String notes) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("kind", "idea").put("title", title).put("notes", notes == null ? "" : notes);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/tasks", body);
+    }
+
+    /** The admin declines an idea, with a note for whoever suggested it (may be empty). */
+    public static JSONObject declineIdea(Prefs prefs, String taskId, String note) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("note", note == null ? "" : note);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/tasks/" + taskId + "/decline", body);
+    }
+
+    /** A recurring task as a whole: "stop", "pause" or "resume". */
+    public static JSONObject seriesAct(Prefs prefs, String seriesId, String action) throws IOException {
+        return call(prefs, "POST", "/v1/series/" + seriesId + "/" + action, new JSONObject());
     }
 
     /** Change title / people (and any/each) / time (due null = no time). */
@@ -306,6 +352,31 @@ public final class TaskApi {
         return out;
     }
 
+    /** The recurring tasks in a snapshot ("series"), as this person may see them. */
+    public static List<Series> parseSeries(JSONObject snapshot) {
+        List<Series> out = new ArrayList<>();
+        JSONArray arr = snapshot == null ? null : snapshot.optJSONArray("series");
+        for (int i = 0; arr != null && i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) continue;
+            Series s = new Series();
+            s.id = o.optString("id");
+            s.title = o.optString("title");
+            s.createdBy = o.optString("created_by");
+            JSONArray owners = o.optJSONArray("owners");
+            for (int j = 0; owners != null && j < owners.length(); j++) s.owners.add(owners.optString(j));
+            s.rule = o.optString("rule");
+            s.time = o.isNull("time") ? "" : o.optString("time", "");
+            s.label = o.optString("label");
+            s.rotate = o.optBoolean("rotate");
+            s.status = o.optString("status", "active");
+            s.nextDue = o.isNull("next_due") ? "" : o.optString("next_due", "");
+            s.nextTurn = o.optString("next_turn", "");
+            out.add(s);
+        }
+        return out;
+    }
+
     public static Task parseTask(JSONObject o) {
         Task t = new Task();
         t.id = o.optString("id");
@@ -335,6 +406,9 @@ public final class TaskApi {
         t.to = o.optString("to", "");
         t.phone = o.optString("phone", "");
         t.waitingOn = o.isNull("waiting_on") ? "" : o.optString("waiting_on", "");
+        t.seriesId = o.isNull("series_id") ? "" : o.optString("series_id", "");
+        t.repeat = o.isNull("repeat") ? "" : o.optString("repeat", "");
+        t.duplicateOf = o.isNull("duplicate_of") ? "" : o.optString("duplicate_of", "");
         t.coins = o.optInt("coins");
         t.paid = o.optBoolean("paid");
         JSONObject pts = o.optJSONObject("points");

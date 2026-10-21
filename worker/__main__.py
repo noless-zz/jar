@@ -144,7 +144,8 @@ class Worker:
                           store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info,
                           family_account=self.family_account)
         if m.meta.get("actions"):
-            # Filed before (Re-file / edited transcript): drop the open tasks that filing made.
+            # Filed before (Re-file / edited transcript): drop the family events and open tasks that filing made.
+            self.forget_events(m.meta.get("actions") or [])
             n = self.tasks.forget_memo(speaker, m.id)
             if n:
                 log.info("  re-filing: removed %d task(s) from the earlier filing", n)
@@ -162,6 +163,33 @@ class Worker:
         m.update(status="done", actions=r.actions, summary=r.summary, llm=self.cfg.llm_model,
                  llm_seconds=r.seconds, llm_rounds=r.rounds, fallback=r.fallback, processed_at=_now(), error=None)
         log.info("  done in %.1f s: %s", r.seconds, "; ".join(a["summary"] for a in r.actions))
+
+    def forget_events(self, actions: list[dict]) -> None:
+        """Re-filing: take back the family-calendar events the earlier filing made."""
+        for a in actions:
+            if a.get("tool") == "family_event" and a.get("event_id") and self.family_account is not None:
+                try:
+                    self.family_account.delete_family_event(a["event_id"])
+                    log.info("  re-filing: removed family event %s", a.get("summary", a["event_id"]))
+                except Exception as e:  # noqa: BLE001
+                    log.warning("  re-filing: couldn't remove family event %s: %s", a["event_id"], e)
+
+    def sync_event_deletes(self) -> int:
+        """A deleted follow-up task ("add details or delete it") deletes its calendar event too."""
+        if self.family_account is None or self.tasks is None:
+            return 0
+        n = 0
+        for t in self.tasks.events_to_delete():
+            ev = t["event"]
+            try:
+                self.family_account.delete_family_event(ev["id"])
+            except Exception as e:  # noqa: BLE001 — try again next poll
+                log.warning("couldn't delete family event “%s”: %s", ev.get("title", ev["id"]), e)
+                continue
+            self.tasks.event_removed(t["id"])
+            log.info("deleted family event “%s” %s (its task was deleted)", ev.get("title", ""), ev.get("date", ""))
+            n += 1
+        return n
 
     def join_info(self, person) -> dict:
         """What someone needs to start using Jar: the download page and, for family members, their own
@@ -259,6 +287,15 @@ class Worker:
             except OllamaUnavailable:
                 break  # every later memo needs Ollama too
             n += 1
+        try:
+            if self.tasks is not None and self.tasks.roll():
+                log.info("recurring tasks: today's made")
+        except Exception:  # noqa: BLE001 — never stops memos
+            log.exception("rolling recurring tasks failed")
+        try:
+            self.sync_event_deletes()
+        except Exception:  # noqa: BLE001 — never stops memos
+            log.exception("syncing deleted events failed")
         try:
             self.rate_pending()
         except Exception:  # noqa: BLE001 — a rating problem must never stop memos

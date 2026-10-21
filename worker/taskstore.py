@@ -14,7 +14,16 @@ In "all" mode "done_parts" {person: when} records who has done their part; the t
 due / snoozed_until:  local time, "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (the family's time zone)
 
 Who sees what: your own tasks, tasks you gave someone, and (parents only) the children's tasks.
-A task you give yourself is private to you.
+A task you give yourself is private to you. Jar ideas (kind "idea") are seen by everyone.
+
+Recurring tasks (משימות רב פעמיות): data["series"] holds the rules; each occurrence is an ordinary task
+with "series_id" and "repeat" (the rule in words), made on its day by roll(). An occurrence still open
+when the next one is made is quietly marked "missed". See worker/recurring.py for the rules.
+    series: id, title, notes, created_by, owners, mode, rotate, turn, rule, time, after_done, approved,
+            status (active | paused | ended), next_due (YYYY-MM-DD), current (task id), points, memo_id
+
+Jar ideas: kind "idea", for the admin, status requested (new) -> open (accepted: the one who suggested it
+gets idea coins) | declined -> done (shipped: a small bonus). Nobody earns coins for building an idea.
 """
 
 from __future__ import annotations
@@ -24,15 +33,19 @@ import os
 import re
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import effort as effort_mod
+from . import recurring
 from .family import Family, Person
 from .filelock import locked
 
 WHEN_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$")
 ACTIONS = ("done", "reopen", "snooze", "accept", "decline", "delete", "edit")
+SERIES_ACTIONS = ("stop", "pause", "resume", "edit")
+LIVE = ("open", "requested")
 
 
 def done_time(epoch) -> str:
@@ -100,6 +113,7 @@ class TaskStore:
         self.path, self.family, self.markdown = path, family, markdown
         self.points = points              # PointsStore, or None (no coins)
         self.lock_path = path.with_suffix(".lock")
+        self.tz = getattr(points, "tz", None) or ZoneInfo("Asia/Jerusalem")
 
     # ---- storage ----
     @contextmanager
@@ -109,9 +123,11 @@ class TaskStore:
 
     def _read(self) -> dict:
         try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return {"rev": 0, "tasks": []}
+            data = {"rev": 0, "tasks": []}
+        data.setdefault("series", [])
+        return data
 
     def _write(self, data: dict) -> None:
         data["rev"] = int(data.get("rev", 0)) + 1
@@ -127,6 +143,8 @@ class TaskStore:
 
     # ---- rules ----
     def visible(self, t: dict, p: Person) -> bool:
+        if t.get("kind") == "idea":
+            return True                                  # the family sees every idea and what became of it
         ids = owners(t)
         if p.id == t.get("created_by") or p.id in ids:
             return True
@@ -148,9 +166,11 @@ class TaskStore:
     # ---- API ----
     def snapshot(self, p: Person) -> dict:
         data = self._read()
-        tasks = [t for t in data["tasks"] if self.visible(t, p) and t.get("status") != "deleted"]
+        tasks = [t for t in data["tasks"] if self.visible(t, p) and t.get("status") not in ("deleted", "missed")]
         tasks = self._decorate(tasks, p)
-        return {"rev": data.get("rev", 0), "tasks": tasks}
+        series = [self._series_out(x) for x in data["series"]
+                  if x.get("status") != "ended" and self._series_visible(x, p)]
+        return {"rev": data.get("rev", 0), "tasks": tasks, "series": series}
 
     def _decorate(self, tasks: list[dict], viewer: Person | None = None) -> list[dict]:
         """Copies of the tasks with "coins": what a done task paid, or what an open one will pay
@@ -168,6 +188,11 @@ class TaskStore:
                 t.update(coins=mine, paid=True)
             elif lines and t.get("status") == "done":
                 t.update(coins=max(lines.values()), paid=True)
+            elif t.get("kind") == "idea" and t.get("status") == "requested":
+                who = self.family.get(t.get("created_by"))      # what accepting it would pay the one who suggested it
+                cfg = getattr(self.points, "cfg", None)
+                ok = who is not None and not who.admin and (not who.is_parent or getattr(cfg, "idea_credit_parents", False))
+                t["coins"] = getattr(cfg, "idea_coins", 0) if ok else 0
             elif t.get("status") in ("open", "requested"):
                 t["coins"] = self.points.preview(t)
             out.append(t)
@@ -215,18 +240,46 @@ class TaskStore:
             t = next((x for x in data["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
             if t is None or not self.visible(t, actor):
                 raise TaskError(404, "no such task")
+            idea = t.get("kind") == "idea"
+            if idea and action in ("accept", "decline", "done", "reopen") and not actor.admin:
+                raise TaskError(403, f"only {self.family.admin.name} decides about Jar ideas")
             if action in ("accept", "decline"):
                 if t["status"] != "requested":
                     raise TaskError(409, "this task isn't waiting for approval")
                 if not actor.is_parent:
                     raise TaskError(403, "a parent approves requests")
                 t["status"] = "open" if action == "accept" else "declined"
+                f = fields or {}
+                if idea and action == "decline":
+                    if f.get("duplicate_of"):
+                        t["duplicate_of"] = str(f["duplicate_of"])[:20]
+                    if str(f.get("note") or "").strip():
+                        self._add_note(t, actor, str(f["note"]))
+                if idea and action == "accept":
+                    award = self._credit_idea(t, "accepted")
+                s = self._series_of(data, t)
+                if s is not None and not s.get("approved"):
+                    if action == "accept":
+                        s["approved"] = True
+                    else:
+                        s["status"] = "ended"
+                    s["updated_at"] = _now()
             elif action == "done":
                 if t["status"] == "requested" and not actor.is_parent:
                     raise TaskError(409, "still waiting for a parent to approve it")
                 # An offline tick carries the time it was made ("at", epoch seconds): paid at that time.
                 at = done_time((fields or {}).get("at"))
+                was_done = t["status"] == "done"
                 award = self._done(t, actor, at)
+                if idea and not was_done:
+                    award = self._credit_idea(t, "shipped") or award
+                s = self._series_of(data, t)
+                if s is not None and s.get("after_done") and t["status"] == "done" and s.get("current") == t["id"]:
+                    self._schedule_after_done(s, at)
+            elif action == "reopen" and idea:
+                if t["status"] == "done" and self.points is not None:
+                    self.points.reverse(t["id"] + ":shipped", "reopened")     # the "accepted" credit stays
+                t.update(status="open", done_at=None, done_by=None)
             elif action == "reopen":
                 parts = t.get("done_parts") or {}
                 if shared_mode(t) == "all" and t["status"] != "done" and actor.id in parts:
@@ -243,8 +296,12 @@ class TaskStore:
                     raise TaskError(403, "only whoever created it can delete it")
                 t["status"] = "deleted"
                 self._take_back(t, "deleted")
+                if idea and self.points is not None:
+                    self.points.reverse(t["id"] + ":shipped", "deleted")
             elif action == "edit":
                 f = fields or {}
+                if idea and actor.id != t["created_by"] and not actor.admin:
+                    raise TaskError(403, "only whoever suggested it can change an idea")
                 if "title" in f and str(f["title"]).strip():
                     t["title"] = str(f["title"]).strip()[:300]
                 if "due" in f:
@@ -353,6 +410,9 @@ class TaskStore:
             if no_coins is not None:
                 pts["no_coins"] = bool(no_coins)
             t["points"] = pts
+            s = self._series_of(data, t)
+            if s is not None:
+                s["points"] = dict(pts)                   # the next occurrences are worth the same
             self._write(data)
         if self.points is not None:
             if effort is not None:
@@ -376,6 +436,9 @@ class TaskStore:
             if t is None or t.get("points") is not None:
                 return False
             t["points"] = rating
+            s = self._series_of(data, t)
+            if s is not None and not s.get("points"):
+                s["points"] = dict(rating)                # the whole series is worth the same every time
             self._write(data)
             return True
 
@@ -411,6 +474,238 @@ class TaskStore:
             return None
         tz = getattr(self.points, "tz", None)
         return (dt.astimezone(tz) if tz else dt).date()
+
+    # ---- recurring tasks (משימות רב פעמיות) ----
+    def _today(self, now: datetime | None = None) -> datetime:
+        return (now or datetime.now(timezone.utc)).astimezone(self.tz)
+
+    @staticmethod
+    def _series_of(data: dict, t: dict) -> dict | None:
+        sid = t.get("series_id")
+        return next((x for x in data["series"] if x["id"] == sid), None) if sid else None
+
+    def _series_visible(self, s: dict, p: Person) -> bool:
+        return self.visible({"created_by": s.get("created_by"), "assignee": (s.get("owners") or [""])[0],
+                             "assignees": s.get("owners") or []}, p)
+
+    def _series_out(self, s: dict) -> dict:
+        rule = recurring.parse(s["rule"])
+        out = {k: s.get(k) for k in ("id", "title", "notes", "created_by", "owners", "mode", "rotate", "rule",
+                                     "time", "after_done", "approved", "status", "next_due", "current",
+                                     "created_at", "updated_at")}
+        out["label"] = recurring.label(rule, s.get("time", ""))
+        out["label_en"] = recurring.label(rule, s.get("time", ""), "en")
+        if s.get("rotate") and s.get("owners"):
+            out["next_turn"] = s["owners"][s.get("turn", 0) % len(s["owners"])]
+        return out
+
+    def add_series(self, creator: Person, title: str, people: list[Person], rule: str, time: str = "",
+                   notes: str = "", memo_id: str | None = None, mode: str = "any", rotate: bool = False,
+                   after_done: bool = False, now: datetime | None = None) -> dict:
+        """A recurring task. Its first occurrence is made at once (so it shows in the list), the rest on
+        their day. Returns that first occurrence, with "series" (the rule as the app shows it)."""
+        title = (title or "").strip()
+        if not title:
+            raise TaskError(400, "title is required")
+        try:
+            r, tm = recurring.parse(rule), recurring.clean_time(time)
+        except recurring.RuleError as e:
+            raise TaskError(400, str(e)) from None
+        people = [p for p in people if p is not None] or [creator]
+        ids = list(dict.fromkeys(p.id for p in people))
+        if rotate and len(ids) < 2:
+            rotate = False                                # taking turns needs two people
+        if after_done and r.freq != "every":
+            after_done = False                            # "N days after it was done" only fits every:N
+        local = self._today(now)
+        start = recurring.first(r, local, tm)
+        r = recurring.settle(r, start)
+        s = {"id": "s" + uuid.uuid4().hex[:9], "title": title[:300], "notes": (notes or "").strip()[:2000],
+             "created_by": creator.id, "owners": ids, "mode": "all" if mode == "all" else "any",
+             "rotate": bool(rotate), "turn": 0, "rule": r.text(), "time": tm, "after_done": bool(after_done),
+             "approved": creator.is_parent or ids == [creator.id], "status": "active", "next_due": None,
+             "current": None, "points": None, "memo_id": memo_id, "created_at": _now(), "updated_at": _now()}
+        ruled = effort_mod.rule_rating(title, "task", people[0])
+        if ruled is not None:
+            s["points"] = ruled
+        with self._locked():
+            data = self._read()
+            data["series"].append(s)
+            t = self._spawn(data, s, start)
+            s["next_due"] = None if after_done else recurring.after(r, start).isoformat()
+            self._write(data)
+        return dict(t, series=self._series_out(s))
+
+    def _spawn(self, data: dict, s: dict, day: date) -> dict:
+        """Make one occurrence of a series (inside the lock)."""
+        ids = s["owners"]
+        if s.get("rotate") and len(ids) > 1:
+            ids = [ids[s.get("turn", 0) % len(ids)]]
+            s["turn"] = s.get("turn", 0) + 1
+        people = [p for p in (self.family.get(i) for i in ids) if p is not None] \
+            or [self.family.get(s["created_by"]) or self.family.admin]
+        due = day.isoformat() + (f"T{s['time']}" if s.get("time") else "")
+        t = {"id": uuid.uuid4().hex[:10], "title": s["title"], "notes": s.get("notes", ""),
+             "assignee": people[0].id, "created_by": s["created_by"],
+             "status": "open" if s.get("approved") else "requested",
+             "due": due, "snoozed_until": None, "created_at": _now(), "updated_at": _now(),
+             "done_at": None, "done_by": None, "memo_id": s.get("memo_id"),
+             "series_id": s["id"], "repeat": recurring.label(recurring.parse(s["rule"]), s.get("time", ""))}
+        _set_owners(t, people, s.get("mode"))
+        if s.get("points"):
+            t["points"] = dict(s["points"])
+        data["tasks"].append(t)
+        s["current"], s["updated_at"] = t["id"], _now()
+        return t
+
+    def _schedule_after_done(self, s: dict, at: str) -> None:
+        r = recurring.parse(s["rule"])
+        done_day = datetime.fromisoformat(at.replace("Z", "+00:00")).astimezone(self.tz).date()
+        s["next_due"] = recurring.after(r, done_day).isoformat()
+
+    def roll(self, now: datetime | None = None) -> int:
+        """Make the occurrences whose day has come. One still open from before is quietly marked "missed"
+        (no coins taken, nothing shown). After a long gap (PC off) only the latest occurrence is made.
+        Returns how many were made. Cheap when there's nothing to do: it writes only on a change."""
+        today = self._today(now).date()
+        data = self._read()
+        if not any(x.get("status") == "active" and x.get("next_due") and x["next_due"] <= today.isoformat()
+                   for x in data["series"]):
+            return 0
+        made = 0
+        with self._locked():
+            data = self._read()
+            for s in data["series"]:
+                if s.get("status") != "active" or not s.get("next_due"):
+                    continue
+                day = date.fromisoformat(s["next_due"])
+                if day > today:
+                    continue
+                r = recurring.parse(s["rule"])
+                while recurring.after(r, day) <= today:          # skipped while the PC was off
+                    day = recurring.after(r, day)
+                    if s.get("rotate"):
+                        s["turn"] = s.get("turn", 0) + 1         # their turn passed too
+                cur = next((t for t in data["tasks"] if t["id"] == s.get("current")), None)
+                if cur is not None and cur.get("status") in LIVE:
+                    cur["status"], cur["updated_at"] = "missed", _now()    # parts already done stay paid
+                self._spawn(data, s, day)
+                s["next_due"] = None if s.get("after_done") else recurring.after(r, day).isoformat()
+                made += 1
+            if made:
+                self._write(data)
+        return made
+
+    def series_act(self, actor: Person, series_id: str, action: str, fields: dict | None = None) -> dict:
+        """stop (ends it and removes the open occurrence), pause, resume, edit (title, notes, rule, time,
+        owners, mode, rotate). Whoever created it, the admin, or a parent of the children it is for."""
+        if action not in SERIES_ACTIONS:
+            raise TaskError(400, f"unknown action {action}")
+        f = fields or {}
+        with self._locked():
+            data = self._read()
+            s = next((x for x in data["series"] if x["id"] == series_id and x.get("status") != "ended"), None)
+            if s is None or not self._series_visible(s, actor):
+                raise TaskError(404, "no such recurring task")
+            if actor.id != s["created_by"] and not actor.admin and not (
+                    actor.is_parent and all((p := self.family.get(i)) is not None and not p.is_parent
+                                            for i in s["owners"])):
+                raise TaskError(403, "only whoever created it (or a parent) can change it")
+            cur = next((t for t in data["tasks"] if t["id"] == s.get("current")), None)
+            live = cur if cur is not None and cur.get("status") in LIVE else None
+            if action == "stop":
+                s["status"] = "ended"
+                if live is not None and not live.get("done_parts"):
+                    live["status"], live["updated_at"] = "deleted", _now()
+            elif action == "pause":
+                s["status"] = "paused"
+            elif action == "resume":
+                if s["status"] == "paused":
+                    s["status"] = "active"
+                    r = recurring.parse(s["rule"])
+                    start = recurring.first(r, self._today(), s.get("time", ""))
+                    if live is not None and (live.get("due") or "")[:10] >= start.isoformat():
+                        start = recurring.after(r, date.fromisoformat(live["due"][:10]))
+                    s["next_due"] = None if s.get("after_done") and live is not None else start.isoformat()
+            else:
+                self._edit_series(s, actor, f, live)
+            s["updated_at"] = _now()
+            self._write(data)
+            return self._series_out(s)
+
+    def _edit_series(self, s: dict, actor: Person, f: dict, live: dict | None) -> None:
+        if str(f.get("title") or "").strip():
+            s["title"] = str(f["title"]).strip()[:300]
+        if "notes" in f:
+            s["notes"] = str(f["notes"] or "").strip()[:2000]
+        if f.get("rule") or "time" in f:
+            try:
+                r = recurring.parse(f.get("rule") or s["rule"])
+                tm = recurring.clean_time(f["time"]) if "time" in f else s.get("time", "")
+            except recurring.RuleError as e:
+                raise TaskError(400, str(e)) from None
+            start = recurring.first(r, self._today(), tm)
+            r = recurring.settle(r, start)
+            s["rule"], s["time"] = r.text(), tm
+            if s.get("after_done") and r.freq != "every":
+                s["after_done"] = False
+            if live is not None and (live.get("due") or "")[:10] >= start.isoformat():
+                start = recurring.after(r, date.fromisoformat(live["due"][:10]))
+            if not (s.get("after_done") and live is not None):
+                s["next_due"] = start.isoformat()
+        ids = f.get("owners") or f.get("assignees")
+        if ids:
+            people = self.resolve_people(ids)
+            s["owners"] = [p.id for p in people]
+            if not actor.is_parent and any(p.id != actor.id for p in people):
+                s["approved"] = False
+        if f.get("mode") in ("any", "all"):
+            s["mode"] = f["mode"]
+        if "rotate" in f:
+            s["rotate"] = bool(f["rotate"]) and len(s["owners"]) > 1
+        if live is not None and not live.get("done_parts"):     # the open one follows the change
+            live["title"], live["notes"] = s["title"], s.get("notes", "")
+            live["repeat"] = recurring.label(recurring.parse(s["rule"]), s.get("time", ""))
+            if ids and not s.get("rotate"):
+                _set_owners(live, self.resolve_people(s["owners"]), s.get("mode"))
+            live["updated_at"] = _now()
+
+    # ---- Jar ideas ----
+    def add_idea(self, creator: Person, title: str, notes: str = "", memo_id: str | None = None) -> dict:
+        """An idea for Jar, for the admin to accept (the one who suggested it gets idea coins) or decline."""
+        title = (title or "").strip()
+        if not title:
+            raise TaskError(400, "title is required")
+        admin = self.family.admin
+        t = {"id": uuid.uuid4().hex[:10], "title": title[:300], "notes": (notes or "").strip()[:2000],
+             "assignee": admin.id, "created_by": creator.id,
+             "status": "open" if creator.id == admin.id else "requested",
+             "due": None, "snoozed_until": None, "created_at": _now(), "updated_at": _now(),
+             "done_at": None, "done_by": None, "memo_id": memo_id, "kind": "idea",
+             "points": {"no_coins": True, "rated_by": "rule", "reason": "Jar idea"}}
+        with self._locked():
+            data = self._read()
+            data["tasks"].append(t)
+            self._write(data)
+        return t
+
+    def _credit_idea(self, t: dict, stage: str) -> dict | None:
+        if self.points is None or not hasattr(self.points, "credit_idea"):
+            return None
+        award = self.points.credit_idea(t, stage)
+        if stage == "accepted" and award is None and t.get("created_by") != self.family.admin.id:
+            t["idea_credit"] = "none"         # cap reached, or a parent's idea (see [points] idea_* settings)
+        elif award is not None:
+            t.setdefault("idea_credit", {})
+            if isinstance(t["idea_credit"], dict):
+                t["idea_credit"][stage] = award.get("coins", 0)
+        return award
+
+    @staticmethod
+    def _add_note(t: dict, actor: Person, text: str) -> None:
+        thread = t.setdefault("thread", [])
+        thread.append({"id": (max((c["id"] for c in thread), default=0) + 1), "by": actor.id,
+                       "text": text.strip()[:2000], "at": _now(), "ask": False})
 
     # ---- notes and questions on a task ----
     @staticmethod
@@ -487,6 +782,32 @@ class TaskStore:
         found.sort(key=lambda x: (x[0], x[1]), reverse=True)     # best match, then most recently touched
         return [t for _, _, t in found[:limit]]
 
+    # ---- calendar events a task stands for (a vague event's "add details or delete it") ----
+    def link_event(self, task_id: str, event: dict) -> None:
+        """Tie a calendar event to a task: deleting the task deletes the event. No coins for it."""
+        with self._locked():
+            data = self._read()
+            for t in data["tasks"]:
+                if t["id"] == task_id:
+                    t["event"] = dict(event)
+                    t["points"] = {"no_coins": True, "rated_by": "rule", "reason": "event follow-up"}
+                    self._write(data)
+                    return
+
+    def events_to_delete(self) -> list[dict]:
+        """Deleted tasks whose calendar event is still on the calendar."""
+        return [t for t in self._read()["tasks"]
+                if t.get("status") == "deleted" and t.get("event") and not t["event"].get("removed")]
+
+    def event_removed(self, task_id: str, note: str = "") -> None:
+        with self._locked():
+            data = self._read()
+            for t in data["tasks"]:
+                if t["id"] == task_id and t.get("event"):
+                    t["event"]["removed"] = note or _now()
+                    self._write(data)
+                    return
+
     def forget_memo(self, actor: Person, memo_id: str) -> int:
         """Re-filing a memo: delete the still-open tasks its earlier filing created, so nothing doubles."""
         n = 0
@@ -496,6 +817,11 @@ class TaskStore:
                 if t.get("memo_id") == memo_id and t.get("status") in ("open", "requested") \
                         and (t["created_by"] == actor.id or actor.admin):
                     t["status"], t["updated_at"] = "deleted", _now()
+                    n += 1
+            for x in data["series"]:
+                if x.get("memo_id") == memo_id and x.get("status") != "ended" \
+                        and (x["created_by"] == actor.id or actor.admin):
+                    x["status"], x["updated_at"] = "ended", _now()
                     n += 1
             if n:
                 self._write(data)
@@ -571,10 +897,14 @@ class TaskStore:
                 if t.get("due"):
                     d, _, tm = t["due"].partition("T")
                     s += f" 📅 {d}" + (f" ⏰ {tm}" if tm else "")
+                if t.get("repeat"):
+                    s += f" 🔁 {t['repeat']}"
+                if t.get("kind") == "idea":
+                    s = s.replace(f"- [{box}] ", f"- [{box}] 💡 ", 1)
                 if t["created_by"] != pid:
                     s += f" — from {name(t['created_by'])}"
                 if t["status"] == "requested":
-                    s += " (waiting for a parent's OK)"
+                    s += f" (new idea for {name(t['assignee'])})" if t.get("kind") == "idea" else " (waiting for a parent's OK)"
                 if t.get("memo_id"):
                     s += f" `memo {t['memo_id'][:6]}`"
                 if t["status"] == "done" and t.get("done_at"):

@@ -346,4 +346,54 @@
     <string name="meta_parts">%1$d/%2$d done</string>
     <string name="header_shared">👥 Shared</string>
     <string name="action_my_part_done">My part is done</string>
+
+    <!-- 1.3.0: recurring tasks and Jar ideas -->
+    <string name="tab_ideas">💡 Ideas</string>
+    <string name="empty_ideas">No ideas for Jar yet. Tap + to suggest one: if it\'s accepted, you get coins.</string>
+    <string name="add_mode_turns">Taking turns</string>
+    <string name="add_repeat">Repeats?</string>
+    <string name="repeat_once">Just once</string>
+    <string name="repeat_daily">Every day</string>
+    <string name="repeat_days">On days…</string>
+    <string name="repeat_weekly">Every week</string>
+    <string name="repeat_monthly">Every month</string>
+    <string name="repeat_time">⏰ At a time</string>
+    <string name="repeat_at">⏰ %1$s</string>
+    <string name="menu_recurring">🔁 Recurring tasks</string>
+    <string name="recurring_none">No recurring tasks yet. Add one with \"Repeats?\" when you create a task.</string>
+    <string name="recurring_paused">⏸ paused</string>
+    <string name="recurring_turn">next: %1$s</string>
+    <string name="recurring_pause">⏸ Pause</string>
+    <string name="recurring_resume">▶ Resume</string>
+    <string name="recurring_stop">Stop repeating</string>
+    <string name="recurring_stop_confirm">Stop “%1$s”? It won\'t come back (the tasks already done stay).</string>
+    <string name="recurring_not_yours">Only whoever created it (or a parent) can change it.</string>
+    <string name="delete_recurring_title">Delete “%1$s”</string>
+    <string name="delete_only_this">Only this time</string>
+    <string name="delete_whole_series">Stop repeating it</string>
+    <string name="idea_new">💡 Idea for Jar</string>
+    <string name="idea_hint">Something Jar should do or show? Your idea goes to Noam; if he accepts it you get coins, and more when it\'s built.</string>
+    <string name="idea_what">The idea</string>
+    <string name="idea_details">What exactly, and why (optional)</string>
+    <string name="idea_accept">✅ Accept the idea</string>
+    <string name="idea_decline">Decline</string>
+    <string name="idea_decline_note">A word to whoever suggested it (optional)</string>
+    <string name="idea_shipped">🚀 It\'s in Jar now</string>
+    <string name="idea_reopen">Back to accepted</string>
+    <string name="idea_status_new">💡 new</string>
+    <string name="idea_status_accepted">✅ accepted</string>
+    <string name="idea_status_shipped">🚀 in Jar</string>
+    <string name="idea_status_declined">declined</string>
+    <string name="idea_duplicate">already suggested</string>
+    <string name="idea_failed">Couldn\'t send the idea: %1$s</string>
+    <string name="notif_idea">A new idea for Jar from %1$s</string>
+    <string-array name="week_days_short">
+        <item>Sun</item>
+        <item>Mon</item>
+        <item>Tue</item>
+        <item>Wed</item>
+        <item>Thu</item>
+        <item>Fri</item>
+        <item>Sat</item>
+    </string-array>
 </resources>

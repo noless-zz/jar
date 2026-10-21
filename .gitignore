@@ -1,5 +1,7 @@
 # Personal, never on GitHub
 config.toml
+config.toml.bak*
+claude/
 data/
 notes/
 firmware/src/config.h

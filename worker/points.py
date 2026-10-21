@@ -36,6 +36,10 @@ class PointsConfig:
     parent_ok_over: int = 0           # 0 = off
     week_start: str = "sunday"
     announce: str = "sat 20:00"
+    idea_coins: int = 20              # a Jar idea the admin accepts: to whoever suggested it
+    idea_shipped_bonus: int = 10      # ...and when it ships
+    idea_credits_per_week: int = 3    # accepted ideas that pay, per person per week
+    idea_credit_parents: bool = False
 
     @classmethod
     def from_raw(cls, raw: dict | None) -> "PointsConfig":
@@ -49,7 +53,10 @@ class PointsConfig:
         return cls(daily_cap=num("daily_cap", 150), work_day_coins=num("work_day_coins", 30),
                    parent_ok_over=num("parent_ok_over", 0),
                    week_start="monday" if str(raw.get("week_start", "sunday")).lower().startswith("mon") else "sunday",
-                   announce=str(raw.get("announce", "sat 20:00")))
+                   announce=str(raw.get("announce", "sat 20:00")),
+                   idea_coins=num("idea_coins", 20), idea_shipped_bonus=num("idea_shipped_bonus", 10),
+                   idea_credits_per_week=num("idea_credits_per_week", 3),
+                   idea_credit_parents=bool(raw.get("idea_credit_parents", False)))
 
 
 def _now_iso() -> str:
@@ -145,7 +152,10 @@ class PointsStore:
         out: dict[str, dict[str, int]] = {}
         for ln in self._read()["lines"]:
             if ln.get("task_id") and not ln.get("reversed"):
-                out.setdefault(ln["task_id"], {})[ln.get("person", "")] = ln["coins"]
+                tid, _, extra = ln["task_id"].partition(":")      # "<id>:shipped" adds to the idea's own line
+                row = out.setdefault(tid, {})
+                who = ln.get("person", "")
+                row[who] = (row.get(who, 0) + ln["coins"]) if extra else ln["coins"] + row.get(who, 0)
         return out
 
     def pay(self, task: dict, at: str | None = None, person: str | None = None) -> dict | None:
@@ -245,6 +255,40 @@ class PointsStore:
             self._write(data)
             return self._award(data, line, new=True)
 
+    # ---- Jar ideas ----
+    def credit_idea(self, task: dict, stage: str, at: str | None = None) -> dict | None:
+        """Coins to whoever suggested a Jar idea: when the admin accepts it ("accepted", at most
+        idea_credits_per_week a week) and when it ships ("shipped"). Never to the admin; to a parent only
+        with idea_credit_parents. Safe to call twice. None = nothing paid."""
+        who = self.family.get(task.get("created_by"))
+        if who is None or who.admin or (who.is_parent and not self.cfg.idea_credit_parents):
+            return None
+        coins = self.cfg.idea_coins if stage == "accepted" else self.cfg.idea_shipped_bonus
+        if coins <= 0:
+            return None
+        key = task["id"] if stage == "accepted" else task["id"] + ":shipped"
+        at = at or _now_iso()
+        with locked(self.lock_path):
+            data = self._read()
+            old = self._active(data, key, who.id)
+            if old is not None:
+                return self._award(data, old, new=False)
+            if stage == "accepted":
+                start, end = self.week_bounds(_parse(at).astimezone(self.tz))
+                n = sum(1 for ln in data["lines"] if ln.get("kind") == "idea" and ln["person"] == who.id
+                        and not ln.get("reversed") and ln.get("stage") == "accepted"
+                        and start <= self._local_day(ln["at"]) <= end)
+                if n >= self.cfg.idea_credits_per_week:
+                    return None
+            data["seq"] += 1
+            line = {"id": data["seq"], "person": who.id, "task_id": key, "title": task.get("title", ""),
+                    "chore_key": "jar-idea", "category": "idea", "kind": "idea", "stage": stage, "at": at,
+                    "coins": coins, "breakdown": {"fixed": coins, "idea": stage}, "by_parent": False,
+                    "created_by": who.id, "rated_by": "rule", "reversed": False}
+            data["lines"].append(line)
+            self._write(data)
+            return self._award(data, line, new=True)
+
     # ---- weeks ----
     def week_bounds(self, local: datetime) -> tuple[date, date]:
         """The Sunday-to-Saturday week (or Monday-Sunday by config) that contains this local time."""
@@ -265,7 +309,7 @@ class PointsStore:
 
     def _may_see(self, viewer, ln: dict) -> bool:
         """The same rule as tasks: yours, ones you gave, and (parents) the children's. Work days are open."""
-        if ln.get("kind") == "work_day" or viewer.id in (ln.get("person"), ln.get("created_by")):
+        if ln.get("kind") in ("work_day", "idea") or viewer.id in (ln.get("person"), ln.get("created_by")):
             return True
         who = self.family.get(ln.get("person"))
         return viewer.is_parent and who is not None and not who.is_parent

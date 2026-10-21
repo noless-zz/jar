@@ -26,11 +26,16 @@ class FakeFamilyAccount:
 
     def __init__(self, allowed):
         self.real = FamilyGoogle(Path("/nonexistent"), Path(tempfile.mkdtemp()), TZ, allowed)
-        self.events, self.sent = [], []
+        self.events, self.sent, self.notes, self.deleted = [], [], [], []
 
     def create_family_event(self, title, day, start, dur, attendees, location="", notes=""):
         self.events.append((title, day, start, self.real.check(attendees)))
-        return Result("the family calendar", "https://calendar/x")
+        self.notes.append(notes)
+        return Result("the family calendar", "https://calendar/x", f"ev{len(self.events)}")
+
+    def delete_family_event(self, event_id):
+        self.deleted.append(event_id)
+        return True
 
     def send(self, to, subject, body):
         self.sent.append((self.real.check(to), subject, body))
@@ -104,3 +109,61 @@ class Tools(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EventDetails(Base):
+    """Every event says who asked and what they said; a vague one gets an "add details or delete" task."""
+
+    def test_description_says_who_and_what(self):
+        n = self.notes("yoni")
+        n.transcript = "תוסיף ליומן חזרה להצגה ביום רביעי בארבע"
+        n.create_event("חזרה להצגה", "2026-10-21", "16:00")
+        desc = self.acct.notes[0]
+        self.assertIn("לבקשת יוני", desc)
+        self.assertIn("18/10 19:00", desc)
+        self.assertIn(n.transcript, desc)
+        self.assertEqual(n.actions[0]["event_id"], "ev1")
+
+    def test_notes_kept_above_the_footer(self):
+        n = self.notes("avi")
+        n.family_event("ארוחת שישי", "2026-10-23", "all", "19:00", notes="אצל סבתא")
+        self.assertTrue(self.acct.notes[0].startswith("אצל סבתא\n\n"))
+
+    def test_clear_event_gets_no_followup(self):
+        n = self.notes("yoni")
+        out = n.family_event("לילה לבן של יוני", "2026-11-03", ["yoni"])
+        self.assertNotIn("no details", out)
+        self.assertEqual(self.store.snapshot(self.fam.people["yoni"])["tasks"], [])
+
+    def test_vague_event_asks_the_creator(self):
+        n = self.notes("yoni")
+        n.transcript = "תוסיף למחר אירוע לכולם"
+        out = n.family_event("אירוע משפחתי", "2026-10-19", "all")
+        self.assertIn("no details", out)
+        tasks = self.store.snapshot(self.fam.people["yoni"])["tasks"]
+        self.assertEqual(len(tasks), 1)
+        t = tasks[0]
+        self.assertEqual((t["assignee"], t["created_by"], t["status"]), ("yoni", "yoni", "open"))
+        self.assertIn("אירוע משפחתי", t["title"])
+        self.assertEqual(t["due"], "2026-10-18T20:00")
+        self.assertEqual(t["event"]["id"], "ev1")
+        self.assertTrue(t["points"]["no_coins"])
+        self.assertEqual([a["tool"] for a in n.actions], ["family_event", "add_task"])
+
+    def test_vague_words(self):
+        n = self.notes("avi")
+        for title in ("אירוע", "אירוע משפחתי", "אירוע לכולם", "Family event", "פגישה מחר", "אירוע למחר"):
+            self.assertTrue(n._vague_event(title), title)
+        for title in ("יום הולדת לסבתא", "רופא שיניים", "הצגה", "לילה לבן"):
+            self.assertFalse(n._vague_event(title), title)
+        self.assertFalse(n._vague_event("אירוע", notes="מסיבת הפתעה"))
+
+    def test_deleting_the_task_deletes_the_event(self):
+        n = self.notes("yoni")
+        n.family_event("אירוע", "2026-10-19", "all")
+        t = self.store.snapshot(self.fam.people["yoni"])["tasks"][0]
+        self.assertEqual(self.store.events_to_delete(), [])
+        self.store.act(self.fam.people["yoni"], t["id"], "delete")
+        self.assertEqual([x["id"] for x in self.store.events_to_delete()], [t["id"]])
+        self.store.event_removed(t["id"])
+        self.assertEqual(self.store.events_to_delete(), [])

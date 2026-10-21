@@ -16,6 +16,7 @@ Files (Obsidian-compatible Markdown, so any vault or OneDrive folder works):
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -23,6 +24,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
+
+log = logging.getLogger("jar.tools")
 
 ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f#\[\]^]')
 
@@ -84,6 +87,38 @@ def _time(value: str | None) -> str | None:
     if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
         return None
     return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
+# Words that say nothing about what an event is: a title made only of these is "vague".
+VAGUE_EVENT_WORDS = {
+    "אירוע", "אירועים", "משפחתי", "משפחתית", "משפחה", "המשפחה", "כולם", "לכולם", "של", "עם", "חדש", "חדשה",
+    "מחר", "היום", "יום", "פגישה", "מפגש", "תזכורת", "משהו", "דבר", "ביומן", "יומן", "בלוח", "שנה",
+    "event", "events", "family", "for", "everyone", "all", "the", "a", "new", "meeting", "reminder",
+    "something", "tomorrow", "today", "day",
+}
+
+
+# Hebrew weekdays as said after "כל", "יום", "ימי" or a prefix letter: "כל ראשון ורביעי", "בימי שני וחמישי".
+_HE_WEEKDAY = {"ראשון": 6, "שני": 0, "שלישי": 1, "רביעי": 2, "חמישי": 3, "שישי": 4, "שבת": 5}
+_HE_WEEKDAY_RE = re.compile(r"(?:(?:כל|יום|ימי|בימי|ביום|ימים)\s+|[וב])(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)(?![א-ת])")
+
+
+STOP_FOR_GOOD_RE = re.compile(r"(תפסיק|להפסיק|תפסיקי|כבר לא צריך|לא צריך יותר|יותר לא|אין צורך יותר|"
+                              r"\bstop\b|no longer|not anymore|any more)", re.I)
+ONLY_THIS_TIME_RE = re.compile(r"(רק היום|רק הפעם|היום לא|הפעם לא|just today|only today|this time)", re.I)
+
+
+def spoken_weekdays(text: str) -> set[int]:
+    """Weekday numbers (0 = Monday) named in a Hebrew memo, for checking a weekly rule against what was said."""
+    found = set()
+    for m in _HE_WEEKDAY_RE.finditer(text or ""):
+        pre = text[max(0, m.start() - 1):m.start()]
+        if m.group(0)[0] in "וב" and pre and pre not in " \t,":
+            continue                                       # a ו/ב inside a word, not a prefix
+        if m.group(1) == "שני" and re.match(r"\s*(ימים|שבועות|פעמים)", text[m.end():]):
+            continue                                       # "שני ימים" = two days
+        found.add(_HE_WEEKDAY[m.group(1)])
+    return found
 
 
 class ToolError(Exception):
@@ -195,12 +230,18 @@ class Notes:
         return self._record("save_note", f"note “{title.strip()}”", p)
 
     def add_task(self, title: str, due_date: str = "", due_time: str = "", notes: str = "",
-                 for_person: str = "", also_for=None, together: str = "") -> str:
+                 for_person: str = "", also_for=None, together: str = "", repeat: str = "",
+                 take_turns: bool = False) -> str:
         if not title.strip():
             raise ToolError("title is required")
         d, tm = self._day(due_date), _time(due_time)
         if due_date and not d:
             raise ToolError("due_date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
+        if (repeat or "").strip():
+            if self.store is None:
+                raise ToolError("recurring tasks need the family task list")
+            return self._recurring_task(title.strip(), repeat.strip(), d, tm, notes.strip(), for_person,
+                                        also_for, together, bool(take_turns))
         if tm and not d:
             d = self.ctx.recorded_local.date()
             if tm <= f"{self.ctx.recorded_local:%H:%M}":
@@ -220,15 +261,12 @@ class Notes:
         when = f" due {d.isoformat()}{' ' + tm if tm else ''}" if d else ""
         return self._record("add_task", f"task “{title.strip()}”{when}", p)
 
-    def _family_task(self, title: str, d, tm, notes: str, for_person: str, also_for=None,
-                     together: str = "") -> str:
-        from .taskstore import TaskError
+    def _task_people(self, for_person: str, also_for=None) -> list:
         names = ", ".join(f"{p.id} ({p.name})" for p in self.family.people.values())
         who = self.family.resolve(for_person) if for_person else None
         if for_person and who is None and for_person.strip().lower() not in ("me", "self", "אני"):
             raise ToolError(f"unknown person '{for_person}'. Use one of: {names}, or leave empty for the speaker")
-        who = who or self.speaker
-        people = [who]
+        people = [who or self.speaker]
         if isinstance(also_for, str):
             also_for = [x for x in re.split(r"[,\s]+", also_for) if x]
         for name in also_for or []:
@@ -237,6 +275,64 @@ class Notes:
                 raise ToolError(f"unknown person '{name}' in also_for. Use: {names}")
             if other not in people:
                 people.append(other)
+        return people
+
+    def _recurring_task(self, title: str, repeat: str, d, tm, notes: str, for_person: str, also_for,
+                        together: str, take_turns: bool) -> str:
+        """A task that comes back (every day, every Sunday…): the first one now, the next ones on their day."""
+        from . import recurring
+        from .taskstore import TaskError
+        people = self._task_people(for_person, also_for)
+        if take_turns and not (for_person or "").strip() and len(people) >= 3 and people[0] is self.speaker:
+            people = people[1:]               # "תורנות … ליבנה ואלונה": the named ones take turns, not the speaker
+        rule = repeat
+        try:
+            r = recurring.parse(repeat)
+        except recurring.RuleError as e:
+            raise ToolError(f"{e}") from e
+        said = spoken_weekdays(self.transcript)
+        if r.freq == "weekly" and said and set(r.days) != said:
+            r = recurring.Rule("weekly", days=tuple(sorted(said)))   # the days as said beat the model's guess
+            rule = r.text()
+        if d is not None and r.freq in ("weekly", "monthly") and not (r.days or r.dom):
+            rule = recurring.settle(r, d).text()           # "every week" said with a day: that weekday
+        try:
+            t = self.store.add_series(self.speaker, title, people, rule, tm or "", notes, self.ctx.memo_id,
+                                      mode="all" if together == "all" else "any", rotate=take_turns,
+                                      now=self.ctx.recorded_local)
+        except TaskError as e:
+            raise ToolError(str(e)) from e
+        ser = t["series"]
+        group = ", ".join(p.name for p in people)
+        how = " taking turns" if ser.get("rotate") else (" (each of them)" if len(people) > 1 and together == "all"
+                                                          else "")
+        first = t["due"].replace("T", " ")
+        wait = " (waits for a parent's OK)" if t["status"] == "requested" else ""
+        summary = f"recurring task “{title}” 🔁 {ser['label_en']} for {group}{how}, first {first}{wait}"
+        self.actions.append({"tool": "add_task", "summary": summary, "task_id": t["id"],
+                             "series_id": t["series_id"], "file": "Tasks.md"})
+        return f"ok: {summary}"
+
+    def suggest_idea(self, title: str, details: str = "") -> str:
+        """An idea for Jar itself, for the admin to accept or decline."""
+        from .taskstore import TaskError
+        if self.store is None:
+            return self.save_note(title, details or title, ["jar-idea"])
+        try:
+            t = self.store.add_idea(self.speaker, title.strip(), details.strip(), self.ctx.memo_id)
+        except TaskError as e:
+            raise ToolError(str(e)) from e
+        admin = self.family.admin
+        mine = self.speaker.id == admin.id
+        summary = (f"💡 Jar idea “{t['title']}”" + ("" if mine else f" sent to {admin.name}; coins if accepted"))
+        self.actions.append({"tool": "suggest_idea", "summary": summary, "task_id": t["id"], "file": "Tasks.md"})
+        return f"ok: {summary}"
+
+    def _family_task(self, title: str, d, tm, notes: str, for_person: str, also_for=None,
+                     together: str = "") -> str:
+        from .taskstore import TaskError
+        people = self._task_people(for_person, also_for)
+        who = people[0]
         mode = "all" if together == "all" else "any"
         due = f"{d.isoformat()}T{tm}" if d and tm else (d.isoformat() if d else None)
         try:
@@ -344,16 +440,42 @@ class Notes:
         from .taskstore import owners
         name = lambda pid: self.family.get(pid).name if self.family.get(pid) else pid  # noqa: E731
         lines = [f"- id={t['id']} | {t['title']} | for {', '.join(name(i) for i in owners(t))}"
-                 + (f" | due {t['due'].replace('T', ' ')}" if t.get("due") else "") for t in found]
+                 + (f" | due {t['due'].replace('T', ' ')}" if t.get("due") else "")
+                 + (f" | 🔁 recurring ({t['repeat']})" if t.get("repeat") else "")
+                 + (" | 💡 Jar idea" if t.get("kind") == "idea" else "") for t in found]
         return "matching open tasks:\n" + "\n".join(lines)
 
     def update_task(self, task_id: str, title: str = "", due_date: str = "", due_time: str = "",
-                    for_person: str = "", status: str = "") -> str:
+                    for_person: str = "", status: str = "", repeat: str = "") -> str:
         """Change, move, finish or cancel an existing task (id from find_tasks)."""
         from .taskstore import TaskError
         if self.store is None:
             raise ToolError("there is no task list")
         task_id = (task_id or "").strip().removeprefix("id=")
+        st = (status or "").strip().lower()
+        if st in ("cancel", "cancelled", "delete", "deleted") and STOP_FOR_GOOD_RE.search(self.transcript or "") \
+                and not ONLY_THIS_TIME_RE.search(self.transcript or ""):
+            t0 = next((x for x in self.store.snapshot(self.speaker)["tasks"] if x["id"] == task_id), None)
+            if t0 is not None and t0.get("series_id"):
+                st = "stop_repeating"            # "תפסיק להזכיר…", "כבר לא צריך": the whole recurring task
+        if st in ("stop_repeating", "stop") or (repeat or "").strip():
+            t = next((x for x in self.store.snapshot(self.speaker)["tasks"] if x["id"] == task_id), None)
+            if t is None or not t.get("series_id"):
+                raise ToolError("that task doesn't repeat (use an id of a 🔁 task from find_tasks)")
+            try:
+                if st in ("stop_repeating", "stop"):
+                    self.store.series_act(self.speaker, t["series_id"], "stop")
+                    summary = f"recurring task “{t['title']}” stopped"
+                else:
+                    f = {"rule": repeat.strip()}
+                    if _time(due_time):
+                        f["time"] = _time(due_time)
+                    ser = self.store.series_act(self.speaker, t["series_id"], "edit", f)
+                    summary = f"recurring task “{t['title']}” now 🔁 {ser['label_en']}"
+            except TaskError as e:
+                raise ToolError(str(e)) from e
+            self.actions.append({"tool": "update_task", "summary": summary, "task_id": t["id"], "file": "Tasks.md"})
+            return f"ok: {summary}"
         fields, did = {}, []
         if title.strip():
             fields["title"] = title.strip()
@@ -430,7 +552,7 @@ class Notes:
         if conn is not None:
             from .connectors import NotConnected
             try:
-                r = conn.create_event(title.strip(), d, tm, duration, location.strip(), notes.strip())
+                r = conn.create_event(title.strip(), d, tm, duration, location.strip(), self._event_notes(notes))
                 when = f"{d.isoformat()} {tm}" if tm else f"{d.isoformat()} (all day)"
                 p = self._append("Calendar.md", f"- {when} · {title.strip()} → {r.summary}"
                                  f"{' ([open](' + r.link + '))' if r.link else ''} ({self._link()})\n",
@@ -469,6 +591,50 @@ class Notes:
                      f"{' @ ' + location.strip() if location.strip() else ''}"
                      f" → [[Calendar/{ics.name}]] ({self._link()})\n", "# Calendar drafts")
         return self._record("create_event", f"event “{title.strip()}” {when}", ics)
+
+    # ---- what every calendar event says about where it came from ----
+    def _event_footer(self) -> str:
+        """Who asked for the event, when, and what they said: the event explains itself."""
+        who = getattr(self.speaker, "name", "") or "?"
+        when = f" · {self.ctx.recorded_local:%d/%m %H:%M}" if self.ctx else ""
+        lines = [f"נוצר ע״י Jar לבקשת {who}{when}"]
+        if self.transcript.strip():
+            lines.append(f"מה נאמר: “{self.transcript.strip()}”")
+        return "\n".join(lines)
+
+    def _event_notes(self, notes: str) -> str:
+        notes = (notes or "").strip()
+        return (notes + "\n\n" if notes else "") + self._event_footer()
+
+    def _vague_event(self, title: str, notes: str = "", location: str = "") -> bool:
+        """An event whose title says nothing about what it is ("אירוע משפחתי", "event for everyone")."""
+        if (notes or "").strip() or (location or "").strip():
+            return False
+        words = [w for w in re.split(r"[\s\-–—,.:;!?\"'״׳“”()]+", (title or "").lower()) if w]
+        return all(w in VAGUE_EVENT_WORDS or (w[0] in "והלבמש" and w[1:] in VAGUE_EVENT_WORDS) for w in words)
+
+    def _vague_followup(self, title: str, d, tm, r) -> str:
+        """A task for whoever asked: add what the event is, or delete it (deleting the task deletes the event)."""
+        if self.store is None or self.speaker is None:
+            return ""
+        day = f"{d:%d/%m}" + (f" {tm}" if tm else "")
+        task_notes = ("האירוע נוצר בלי פרטים. מה האירוע? הוסיפו פרטים ביומן" + (f": {r.link}" if r.link else "")
+                      + "\nלא צריך אותו? מחקו את המשימה הזו והאירוע יימחק מהיומן של כולם.")
+        due = None
+        if self.ctx and self.ctx.recorded_local.hour < 20 and d >= self.ctx.recorded_local.date():
+            due = f"{self.ctx.recorded_local:%Y-%m-%d}T20:00"
+        try:
+            t = self.store.add(self.speaker, f"להוסיף פרטים לאירוע “{title}” ({day}) או למחוק אותו",
+                               self.speaker, due, task_notes, self.ctx.memo_id if self.ctx else None)
+            if r.id:
+                self.store.link_event(t["id"], {"id": r.id, "link": r.link, "title": title, "date": d.isoformat()})
+        except Exception as e:  # noqa: BLE001 — the event is made; a missing follow-up is not worth failing for
+            log.warning("vague event follow-up failed: %s", e)
+            return ""
+        self.actions.append({"tool": "add_task", "summary": f"task for {self.speaker.name}: add details to "
+                             f"“{title}” or delete it", "task_id": t["id"], "file": "Tasks.md"})
+        return (" — NOTE: the event has no details. A task asks the speaker to add what it is or delete it;"
+                " tell them that in your answer, and ask what the event is.")
 
     # ---- the family's own Jar account: sends by itself, family members only ----
     def _family_people(self, who) -> list:
@@ -509,12 +675,17 @@ class Notes:
             from .connectors import NotConnected, NotFamily
             try:
                 r = self.family_account.create_family_event(title.strip(), d, tm, duration, emails,
-                                                            location.strip(), notes.strip())
+                                                            location.strip(), self._event_notes(notes))
                 when = f"{d.isoformat()} {tm}" if tm else f"{d.isoformat()} (all day)"
                 names = ", ".join(p.name for p in people if "@" in getattr(p, "email", ""))
                 p = self._append("Calendar.md", f"- {when} · {title.strip()} → family calendar, invited {names}"
                                  f"{' ([open](' + r.link + '))' if r.link else ''} ({self._link()})\n", "# Calendar")
-                return self._record("family_event", f"family event “{title.strip()}” {when}, invited {names}", p, r.link)
+                out = self._record("family_event", f"family event “{title.strip()}” {when}, invited {names}", p, r.link)
+                if r.id:
+                    self.actions[-1]["event_id"] = r.id     # so re-filing the memo can take the event back
+                if self._vague_event(title, notes, location):
+                    out += self._vague_followup(title.strip(), d, tm, r)
+                return out
             except (NotConnected, NotFamily) as e:
                 why = str(e)
             except Exception as e:  # noqa: BLE001 — the memo must not be lost because an API failed
@@ -631,7 +802,7 @@ def registry(notes: Notes) -> dict[str, Tool]:
     if notes.restricted:
         tools = {k: v for k, v in tools.items()
                  if k in ("save_note", "add_task", "find_tasks", "update_task", "note_on_task", "draft_whatsapp",
-                          "draft_join_instructions", "search_notes", "email_family")
+                          "draft_join_instructions", "search_notes", "email_family", "suggest_idea")
                  or (k == "create_event" and family_on)}      # family members' events: the family calendar
     return tools
 
@@ -647,6 +818,8 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
            "description": "who should do it: " + ", ".join(f"{p.id} = {p.name}" for p in people)
                           + "; empty = the speaker themself"} if people else string("leave empty")
     IDS = {"type": "array", "items": {"type": "string", "enum": [p.id for p in people]}}  # noqa: N806
+    WHO = {"type": "string", "enum": [""] + [p.id for p in people],  # noqa: N806
+           "description": "family member id (see add_task)"} if people else string("leave empty")
     tools = [
         Tool("save_note", "Save an idea, thought or piece of information as a note. "
              "Default choice when the memo is not a task, event, lesson idea or deep-work request.",
@@ -666,38 +839,39 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   due_date=string("the day AS SAID ('מחר', 'יום רביעי', 'Thursday', 'today') or YYYY-MM-DD for an explicit "
                                   "calendar date ('15 באוקטובר'); empty if no day was said"),
                   due_time=string("HH:MM 24h if a time was mentioned, else empty"),
-                  notes=string("extra details, optional")),
+                  notes=string("extra details, optional"),
+                  repeat=string("only if repeating: daily|weekdays|weekly:sun,wed|every:3d|every:2w|monthly:15"),
+                  take_turns={"type": "boolean", "description": "repeat: they take turns"}),
               "required": ["title"]},
              "internal", notes.add_task),
-        Tool("draft_join_instructions", "Prepare a WhatsApp message to someone explaining how to install the "
-             "Jar app and join (real download link + their own pairing link + steps). Use for any memo about "
-             "sending someone instructions to install / join / set up Jar or 'the app'. It prepares the whole "
-             "message, so don't call draft_whatsapp for it too.",
+        Tool("suggest_idea", "An idea for the Jar app itself (a feature or change), never add_task.",
+             {**s(title=string("the idea, short"), details=string("optional")), "required": ["title"]},
+             "internal", notes.suggest_idea),
+        Tool("draft_join_instructions", "WhatsApp message to someone on how to install and join the Jar app "
+             "(real download link + their pairing link + steps). For any memo about sending install / join / "
+             "set-up instructions for Jar or 'the app'; don't also call draft_whatsapp.",
              {**s(for_person=FOR,
-                  greeting=string("optional short opening line in the speaker's voice, e.g. 'היי ליבני, הנה מה "
-                                  "שצריך כדי להתחבר לאפליקציה של המשפחה'"),
+                  greeting=string("optional short opening line in the speaker's voice"),
                   language={"type": "string", "enum": ["he", "en"], "description": "language of the message"}),
               "required": ["for_person"]},
              "internal", notes.draft_join_instructions),
         Tool("search_notes", "Search the notes the speaker saved before (ideas, information, lesson ideas) for "
-             "facts to use in a message or task. Returns short snippets.",
+             "facts to use in a message or task.",
              {**s(query=string("a few key words")), "required": ["query"]},
              "none", notes.search_notes),
         Tool("draft_whatsapp", "Prepare a WhatsApp message on the speaker's phone; they review it and press "
              "Send themselves (nothing is sent automatically). Use when the memo says to message, text or WhatsApp "
              "someone ('תשלח לסווטה ש…', 'write to Dana on WhatsApp…', 'תכתוב בקבוצה…').",
-             {**s(text=string("the complete message, ready to send as-is, in the memo's language, written as the "
-                              "speaker (first person). Include every detail the recipient needs (steps, links, "
-                              "times, places) — never 'here are the instructions' without them"),
-                  to=string("who it is for, as said (a family member's name or any contact name); empty if not said. "
-                            "Never invent phone numbers")),
+             {**s(text=string("the complete message, ready to send, in the memo's language, as the speaker (first "
+                              "person), with every detail the recipient needs (steps, links, times, places)"),
+                  to=string("who it is for, as said; empty if not said. Never invent phone numbers")),
               "required": ["text"]},
              "internal", notes.draft_whatsapp),
         Tool("find_tasks", "Look up EXISTING open tasks by words in them. Use first when the memo changes, "
              "moves, finishes or cancels something already on the list ('move the dentist to Thursday', "
-             "'סיימתי לתלות כביסה', 'בטל את התזכורת על החלב', 'Yoni already did the dishes').",
+             "'סיימתי לתלות כביסה').",
              {**s(query=string("a few key words of the task, in the memo's language"),
-                  for_person=FOR),
+                  for_person=WHO),
               "required": ["query"]},
              "none", notes.find_tasks),
         Tool("update_task", "Change an existing task found with find_tasks: new title, new day/time, another "
@@ -706,14 +880,14 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   title=string("new title, or empty"),
                   due_date=string("new day AS SAID ('יום חמישי', 'מחר') or YYYY-MM-DD, or empty"),
                   due_time=string("new time HH:MM, or empty"),
-                  for_person=FOR,
-                  status={"type": "string", "enum": ["", "done", "cancel", "reopen"],
+                  for_person=WHO,
+                  status={"type": "string", "enum": ["", "done", "cancel", "reopen", "stop_repeating"],
                           "description": "done = finished; cancel = no longer needed; empty = no change"}),
               "required": ["task_id"]},
              "internal", notes.update_task),
-        Tool("note_on_task", "Add a note to an existing task (id from find_tasks), or ask a question about it: "
-             "ask=true sends it to the other side (whoever does it, or whoever asked for it) and the task pops up "
-             "for them until they answer. An answer to a question waiting on the speaker is a note (ask=false).",
+        Tool("note_on_task", "Add a note to an existing task (id from find_tasks), or ask about it: ask=true sends "
+             "it to the other side, and the task pops up for them until they answer. Answering a question "
+             "waiting on the speaker: ask=false.",
              {**s(task_id=string("the id from find_tasks"),
                   text=string("the note or question, complete, in the memo's language"),
                   ask={"type": "boolean", "description": "true = a question that needs an answer"}),
@@ -729,8 +903,8 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                      if notes.family_account is not None and people else {})),
               "required": ["title", "date"]},
              "internal", notes.create_event),
-        Tool("draft_email", "Write an email DRAFT (it is not sent; the owner reviews and sends it). "
-             "Use when the memo asks to email or write to someone.",
+        Tool("draft_email", "An email DRAFT (not sent; the owner reviews and sends it), when the memo asks "
+             "to email or write to someone.",
              {**s(subject=string("email subject in the memo's language"),
                   body=string("the full email text, polite and ready to send, in the memo's language"),
                   to=string("email address(es) ONLY if said explicitly in the memo, else empty"),
@@ -748,7 +922,7 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
               "required": ["idea"]},
              "internal", notes.save_lesson_idea),
         Tool("escalate_deep_work", "Hand a big job (research, long drafting, comparisons, anything needing "
-             "the web) to the cloud model. Use when the speaker says 'deep work' / 'עבודה עמוקה' or the task "
+             "the web) to the cloud model. Use when the speaker says 'deep work' / 'עבודה עמוקה' or it "
              "clearly needs research.",
              {**s(request=string("the full request, with all details from the memo"),
                   title=string("short title")),

@@ -44,6 +44,7 @@ class Result:
     tasks: list[dict]
     summary: str
     fam: Family
+    series: list[dict] = field(default_factory=list)
 
     def tools(self) -> list[str]:
         return [a["tool"] for a in self.actions]
@@ -81,6 +82,33 @@ def _message(r: Result, to: str, *must: str) -> str | None:
     for s in must:
         if not re.search(s, m["message"]):
             return f"message lacks {s!r}: {m['message'][:200]}"
+    return None
+
+
+def _one_series(r: Result, owners: list[str], rule: str, time: str = "", rotate: bool = False) -> str | None:
+    ss = [x for x in r.series if x.get("status") == "active"]
+    if len(ss) != 1:
+        return f"expected 1 recurring task, got {len(ss)} (tools: {r.tools()}, tasks: {len(r.new())})"
+    x = ss[0]
+    if sorted(x["owners"]) != sorted(owners):
+        return f"recurring task is for {x['owners']}, should be {owners}"
+    if x["rule"] != rule:
+        return f"repeat {x['rule']}, should be {rule}"
+    if time and x.get("time") != time:
+        return f"time {x.get('time')}, should be {time}"
+    if bool(x.get("rotate")) != rotate:
+        return "should take turns" if rotate else "should not take turns"
+    if len([t for t in r.new() if not t.get("series_id")]) or len(r.new()) != 1:
+        return f"expected just the first occurrence, got {len(r.new())} tasks"
+    return None
+
+
+def _one_idea(r: Result, admin: str, must: str) -> str | None:
+    ideas = r.new("idea")
+    if len(ideas) != 1 or r.new():
+        return f"expected 1 Jar idea and no task, got {len(ideas)} ideas, {len(r.new())} tasks (tools: {r.tools()})"
+    if ideas[0]["assignee"] != admin or must not in ideas[0]["title"] + ideas[0].get("notes", ""):
+        return f"idea “{ideas[0]['title']}” should mention “{must}”"
     return None
 
 
@@ -147,6 +175,31 @@ def cases(admin: str, fam: Family) -> list[Case]:
                         else f"no question on the task (tools: {r.tools()}, waiting_on: "
                              f"{_seeded(r, 'לסדר את החדר').get('waiting_on')})"),
              seed=[{"title": "לסדר את החדר", "assignee": son}]),
+        Case("a chore on fixed days repeats",
+             "כל ראשון ורביעי ליבנה צריך להוציא את הזבל בשמונה בערב",
+             lambda r: _one_series(r, [son], "weekly:sun,wed", "20:00")),
+        Case("kids taking turns",
+             "תורנות לפרוק את המדיח כל יום, ליבנה ואלונה",
+             lambda r: _one_series(r, [son, daughter], "daily", rotate=True)),
+        Case("every other day for me",
+             "להשקות את העציצים כל יומיים",
+             lambda r: _one_series(r, [admin], "every:2d")),
+        Case("a one-time chore does not repeat",
+             "תזכיר לליבנה מחר להוציא את הזבל",
+             lambda r: _one_task(r, son, "זבל") or (f"made a recurring task: {r.series}" if r.series else None)),
+        Case("stopping a recurring task",
+             "תפסיק להזכיר לליבנה להוציא את הזבל כל יום, כבר לא צריך",
+             lambda r: (None if r.series and r.series[0]["status"] == "ended" and not r.new()
+                        else f"series still {r.series[0]['status'] if r.series else '?'} (tools: {r.tools()})"),
+             seed=[{"title": "להוציא את הזבל", "assignee": son, "repeat": "daily"}]),
+        Case("a child's idea for the app",
+             "רעיון לג׳אר: שיהיה מצב לילה באפליקציה",
+             lambda r: _one_idea(r, admin, "לילה"),
+             speaker=son),
+        Case("feature request worded as a task",
+             "תוסיף לאפליקציה אפשרות לראות מי ניצח בשבוע שעבר",
+             lambda r: _one_idea(r, admin, "ניצח"),
+             speaker=daughter),
         Case("lesson idea",
              "רעיון לשיעור: להשתמש בבינגו כדי לתרגל פונקציות רציונליות בכיתה י'",
              lambda r: None if "save_lesson_idea" in r.tools() else f"not a lesson idea (tools: {r.tools()})"),
@@ -235,7 +288,11 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
             store = TaskStore(tmp / "tasks.json", fam)
             speaker = fam.get(c.speaker) or fam.admin
             for sd in c.seed:
-                t = store.add(speaker, sd["title"], fam.get(sd.get("assignee", "")) or speaker, sd.get("due"))
+                who = fam.get(sd.get("assignee", "")) or speaker
+                if sd.get("repeat"):
+                    t = store.add_series(speaker, sd["title"], [who], sd["repeat"], now=datetime(*WHEN, tzinfo=tz))
+                else:
+                    t = store.add(speaker, sd["title"], who, sd.get("due"))
                 data = json.loads((tmp / "tasks.json").read_text(encoding="utf-8"))
                 for x in data["tasks"]:
                     if x["id"] == t["id"]:
@@ -249,9 +306,9 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
             t0 = time.monotonic()
             try:
                 r = agent.run(c.memo, notes, datetime(*WHEN, tzinfo=tz), cfg.timezone, {})
-                tasks = json.loads((tmp / "tasks.json").read_text(encoding="utf-8"))["tasks"] \
-                    if (tmp / "tasks.json").exists() else []
-                res = Result(r.actions, tasks, r.summary, fam)
+                saved = json.loads((tmp / "tasks.json").read_text(encoding="utf-8")) \
+                    if (tmp / "tasks.json").exists() else {}
+                res = Result(r.actions, saved.get("tasks", []), r.summary, fam, saved.get("series", []))
                 problem = c.check(res)
                 summary = r.summary
             except Exception as e:  # noqa: BLE001

@@ -82,6 +82,14 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/add_mode_all" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/add_mode_turns"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/add_mode_turns"
+                    android:visibility="gone" />
             </com.google.android.material.chip.ChipGroup>
         </LinearLayout>
 
@@ -94,7 +102,81 @@
             android:textColor="?android:attr/textColorSecondary"
             android:visibility="gone" />
 
+        <LinearLayout
+            android:id="@+id/add_repeat_box"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/add_repeat"
+                android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/add_repeat"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/add_repeat_once"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:text="@string/repeat_once" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/add_repeat_daily"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/repeat_daily" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/add_repeat_days"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/repeat_days" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/add_repeat_weekly"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/repeat_weekly" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/add_repeat_monthly"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/repeat_monthly" />
+            </com.google.android.material.chip.ChipGroup>
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/add_days"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                app:singleSelection="false" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/add_repeat_time"
+                style="@style/Widget.Material3.Chip.Assist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/repeat_time"
+                android:visibility="gone" />
+        </LinearLayout>
+
         <TextView
+            android:id="@+id/add_when_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"

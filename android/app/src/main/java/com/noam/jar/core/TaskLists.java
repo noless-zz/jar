@@ -43,15 +43,35 @@ public final class TaskLists {
         return 2;
     }
 
-    /** Mine, and still something for me to do on it. */
+    /** Mine, and still something for me to do on it. Jar ideas live on their own tab. */
     public static boolean mineOpen(Task t, String me) {
-        return t.isFor(me) && t.openFor(me);
+        return !t.isIdea() && t.isFor(me) && t.openFor(me);
+    }
+
+    /** The 💡 tab: new ideas first, then accepted, shipped, declined; newest first within each. */
+    public static List<Task> ideas(List<Task> all) {
+        List<Task> out = new ArrayList<>();
+        for (Task t : all) if (t.isIdea()) out.add(t);
+        Collections.sort(out, (a, b) -> {
+            int ra = ideaRank(a), rb = ideaRank(b);
+            if (ra != rb) return Integer.compare(ra, rb);
+            return b.updatedAt.compareTo(a.updatedAt);
+        });
+        return out;
+    }
+
+    static int ideaRank(Task t) {
+        if (t.isRequested()) return 0;
+        if (t.isOpen()) return 1;
+        if (t.isDone()) return 2;
+        return 3;
     }
 
     /** "Mine": what I have to do. */
     public static List<Task> mine(List<Task> all, String me) {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
+            if (t.isIdea()) continue;
             if ((t.isFor(me) && !"declined".equals(t.status)) || t.waitingOn(me)) out.add(t);
         }
         Collections.sort(out, orderFor(me));
@@ -89,6 +109,7 @@ public final class TaskLists {
     public static List<Task> asked(List<Task> all, String me) {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
+            if (t.isIdea()) continue;
             if ((me.equals(t.createdBy) && !t.isFor(me)) || iAskedAndWait(t, me)) out.add(t);
         }
         Collections.sort(out, ORDER);
@@ -108,7 +129,7 @@ public final class TaskLists {
     /** "Family" (parents): everything else the server let me see — mostly the children's tasks. */
     public static List<Task> family(List<Task> all, String me) {
         List<Task> out = new ArrayList<>();
-        for (Task t : all) if (!t.isFor(me) && !me.equals(t.createdBy)) out.add(t);
+        for (Task t : all) if (!t.isIdea() && !t.isFor(me) && !me.equals(t.createdBy)) out.add(t);
         Collections.sort(out, ORDER);
         return out;
     }
@@ -117,7 +138,7 @@ public final class TaskLists {
     public static List<Task> needMyOk(List<Task> all, String me, boolean iAmParent) {
         List<Task> out = new ArrayList<>();
         if (!iAmParent) return out;
-        for (Task t : all) if (t.isRequested() && !me.equals(t.createdBy)) out.add(t);
+        for (Task t : all) if (t.isRequested() && !t.isIdea() && !me.equals(t.createdBy)) out.add(t);
         Collections.sort(out, ORDER);
         return out;
     }
@@ -227,9 +248,19 @@ public final class TaskLists {
 
     /** Ids of tasks assigned to me (or waiting for my OK) that I haven't been told about yet. */
     public static List<Task> news(List<Task> all, String me, boolean iAmParent, java.util.Set<String> seen) {
+        return news(all, me, iAmParent, false, seen);
+    }
+
+    /** As above; the admin also hears about each new Jar idea. */
+    public static List<Task> news(List<Task> all, String me, boolean iAmParent, boolean iAmAdmin,
+                                  java.util.Set<String> seen) {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
             if (seen.contains(t.id)) continue;
+            if (t.isIdea()) {
+                if (iAmAdmin && t.isRequested() && !me.equals(t.createdBy)) out.add(t);
+                continue;
+            }
             // A WhatsApp draft from my own memo: tell me it's ready to send.
             if (t.isMessage() && t.isFor(me) && t.isOpen()) {
                 out.add(t);

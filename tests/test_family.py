@@ -134,7 +134,8 @@ class WorkerTool(Base):
     def test_child_gets_only_tasks_and_notes(self):
         n = self.notes("maya")
         self.assertEqual(set(registry(n)), {"save_note", "add_task", "find_tasks", "update_task", "note_on_task",
-                                             "draft_whatsapp", "draft_join_instructions", "search_notes"})
+                                             "draft_whatsapp", "draft_join_instructions", "search_notes",
+                                             "suggest_idea"})
         self.assertIn("draft_email", registry(self.notes("avi")))
         out = n.add_task("לקנות מחברת", for_person="avi")
         self.assertIn("waits for a parent", out)

@@ -67,7 +67,7 @@ public final class TaskNotify {
             cache.setSeen(seen);
             cache.setFirstSyncDone();
         } else {
-            for (Task t : TaskLists.news(tasks, me, cache.iAmParent(), seen)) {
+            for (Task t : TaskLists.news(tasks, me, cache.iAmParent(), cache.iAmAdmin(), seen)) {
                 showNew(c, cache, t);
                 seen.add(t.id);
             }
@@ -186,6 +186,12 @@ public final class TaskNotify {
                     .setStyle(new NotificationCompat.BigTextStyle().bigText(t.message))
                     .setContentIntent(send)
                     .addAction(0, c.getString(R.string.send_whatsapp), send);
+            post(c, id(t.id), b);
+            return;
+        }
+        if (t.isIdea()) {
+            b = base(c, CH_NEW, "💡 " + t.title, c.getString(R.string.notif_idea, TaskLists.name(names, t.createdBy)))
+                    .addAction(0, c.getString(R.string.idea_accept), action(c, t.id, "accept", null));
             post(c, id(t.id), b);
             return;
         }

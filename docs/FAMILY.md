@@ -74,6 +74,34 @@ or scan the pair code again. **Test connection** then says "Connected over the i
 - **By voice.** Record something like "move the dentist to Thursday at 10", "סיימתי לתלות כביסה" (I finished hanging the laundry)
   or "cancel the milk reminder". Jar finds the existing task and changes it instead of adding a new one.
 
+## Recurring tasks 🔁 (משימות רב פעמיות)
+
+Say "כל ראשון ורביעי ליבנה צריך להוציא את הזבל בשמונה", "תורנות לפרוק את המדיח כל יום, ליבנה ואלונה", or
+"להשקות את העציצים כל יומיים". In the app: **+** → **Repeats?** → every day / on days… / every week / every month,
+optionally ⏰ at a time; with several people pick **Taking turns** (or one of them / each of them as usual).
+
+- Each time is an ordinary task on that day's list: tick it, coins as usual. The first one shows right away; the next
+  ones appear on their day (`TaskStore.roll`, run by the worker and on every app sync).
+- One not done by the time the next one comes is quietly dropped ("missed"): no coins taken, nothing shown.
+- Turns go round even when someone skips theirs. After the PC was off, only the latest one is made.
+- A child's recurring task for someone else waits for a parent's OK once, for the whole series.
+- Rated once: the coins (and a parent's correction) carry over to every next time.
+- Stop or pause: tap one → **🔁 Stop repeating**, or ⋮ → **🔁 Recurring tasks**; **Delete** asks "only this time /
+  stop repeating". By voice: "תפסיק להזכיר לליבנה להוציא את הזבל".
+- Rules: `daily`, `weekdays` (Sun–Thu), `weekly:sun,wed`, `weekly`, `every:3d`, `every:2w`, `monthly:15`
+  (31 = the month's last day). API: `POST /v1/tasks` with `"repeat": {"rule", "time", "rotate"}`;
+  `POST /v1/series/{id}/stop|pause|resume|edit`.
+
+## Jar ideas 💡
+
+Ideas for Jar itself ("רעיון לג׳אר: מצב לילה", "תוסיף לאפליקציה אפשרות…", or the 💡 tab → **+**) go to the admin on
+their own tab, not among the chores. The whole family sees every idea and what happened to it.
+
+- The admin taps one: **✅ Accept** (whoever suggested it gets `idea_coins`, 20), **Decline** (with an optional word to
+  them), and later **🚀 It's in Jar now** (`idea_shipped_bonus`, 10). Nobody earns coins for building an idea.
+- At most `idea_credits_per_week` (3) accepted ideas pay per person per week; the admin's own ideas and (by default)
+  the other parent's earn nothing. Settings under `[points]`.
+
 ## WhatsApp messages (prepared, you press Send)
 
 Say "תשלח לסווטה שאני מגיע בשש" ("tell Sveta I'm coming at six") or "write Dana on WhatsApp that…". A 💬 item appears

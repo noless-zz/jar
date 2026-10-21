@@ -43,11 +43,10 @@ Tools:
 - A question or remark about a task that already exists ("ask X whether they did <task>") -> find_tasks,
   then note_on_task (ask=true for a question).
 - A new to-do said as just an action (an infinitive, "I need to…") is a task for the speaker, not a note.
+{recurring}
 - A message to someone (WhatsApp, SMS, "תשלח ל…", "תכתוב ל…", "תגיד ל… בוואטסאפ") -> draft_whatsapp.
   An email ("email", "מייל", formal letters, school staff/parents) -> draft_email (never invent addresses).
   draft_email also adds a "send it" task by itself: do not add one.
-- For create_event and draft_email pick the account: "school" for classes, students, parents, staff,
-  lessons, grades or the school; "personal" for everything else.
 - Anything else -> save_note. If the memo is unclear, save it as a note tagged "unsorted".
 {messages}
 - Write in the memo's language. Fix obvious transcription errors (names especially); keep every detail.
@@ -59,6 +58,9 @@ Tools:
 Recording time: {when} ({weekday}), timezone {tz}.
 Dates of the coming days (use these, don't compute weekdays yourself):
 {days}"""
+
+RECURRING_RULES = """- Repeating ("כל יום", "כל ראשון ורביעי") -> ONE add_task with repeat; turns ("תורנות") -> take_turns.
+  Stop it -> find_tasks, update_task status=stop_repeating. An idea for the Jar app itself -> suggest_idea."""
 
 MESSAGE_RULES = """
 Messages (draft_whatsapp, draft_email) — write the real message, complete and ready to send:
@@ -94,6 +96,7 @@ Tools:
   action (an infinitive, "I need to…") is a task for the speaker: they see tasks in the app, never notes.
 - Changing, moving, finishing or cancelling an existing task -> find_tasks, then update_task.
 - A question or answer about a task that already exists -> find_tasks, then note_on_task (ask=true for a question).
+{recurring}
 - A message to someone (WhatsApp, "תשלח ל…", "תכתוב ל…") -> draft_whatsapp (prepared, they press Send).
 - Only information to keep that isn't something to do -> save_note (private; the speaker won't see it in the app).
 {messages}
@@ -134,7 +137,8 @@ def system_prompt(notes: Notes, recorded_local: datetime, tz_name: str, about: s
         fam += "\nEvent with family members -> create_event + invite. Email to family -> email_family.\n"
     return base.format(when=f"{recorded_local:%Y-%m-%d %H:%M}", weekday=f"{recorded_local:%A}", tz=tz_name,
                        family=fam, speaker=getattr(notes.speaker, "name", ""), owner=owner,
-                       about=(about + " ") if about else "", messages=MESSAGE_RULES, days=day_table(recorded_local))
+                       about=(about + " ") if about else "", messages=MESSAGE_RULES, days=day_table(recorded_local),
+                       recurring=RECURRING_RULES if notes.store is not None else "")
 
 
 class OllamaUnavailable(Exception):

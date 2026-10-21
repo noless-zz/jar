@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import com.noam.jar.core.Board;
+import com.noam.jar.core.Series;
 import com.noam.jar.core.Task;
 
 import org.json.JSONArray;
@@ -63,6 +64,26 @@ public final class TaskCache {
     public boolean iAmAdmin() {
         JSONObject p = meJson().optJSONObject("person");
         return p != null && p.optBoolean("admin");
+    }
+
+    /** Ids of the grown-ups in the family. */
+    public java.util.Set<String> parents() {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        JSONArray fam = meJson().optJSONArray("family");
+        for (int i = 0; fam != null && i < fam.length(); i++) {
+            JSONObject p = fam.optJSONObject(i);
+            if (p != null && !"child".equals(p.optString("role"))) out.add(p.optString("id"));
+        }
+        return out;
+    }
+
+    /** The recurring tasks from the last sync. */
+    public synchronized List<Series> series() {
+        try {
+            return TaskApi.parseSeries(new JSONObject(sp.getString("tasks", "{}")));
+        } catch (JSONException e) {
+            return new java.util.ArrayList<>();
+        }
     }
 
     /** id -> name, in the PC's order. */

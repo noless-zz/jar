@@ -40,6 +40,7 @@ import com.google.android.material.timepicker.MaterialTimePicker;
 import com.google.android.material.timepicker.TimeFormat;
 import com.noam.jar.core.Award;
 import com.noam.jar.core.Board;
+import com.noam.jar.core.Series;
 import com.noam.jar.core.Task;
 import com.noam.jar.core.TaskLists;
 
@@ -58,7 +59,7 @@ import java.util.concurrent.Executors;
  * Tick or swipe to finish, tap for snooze and more. The mic button records a memo, like the widget.
  */
 public final class TasksActivity extends AppCompatActivity {
-    private static final int TAB_MINE = 0, TAB_ASKED = 1, TAB_FAMILY = 2, TAB_BOARD = 3;
+    private static final int TAB_MINE = 0, TAB_ASKED = 1, TAB_FAMILY = 2, TAB_BOARD = 3, TAB_IDEAS = 4;
     /** From a notification: open this WhatsApp draft right away. */
     static final String EXTRA_SEND = "send_message";
     static final String EXTRA_INVITE = "invite";
@@ -125,6 +126,7 @@ public final class TasksActivity extends AppCompatActivity {
         tabs.addTab(tabs.newTab().setText(R.string.tab_asked));
         tabs.addTab(tabs.newTab().setText(R.string.tab_family));
         tabs.addTab(tabs.newTab().setText(R.string.tab_board));
+        tabs.addTab(tabs.newTab().setText(R.string.tab_ideas));
         tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
             @Override public void onTabSelected(TabLayout.Tab tab) { refresh(); }
             @Override public void onTabUnselected(TabLayout.Tab tab) { }
@@ -140,6 +142,8 @@ public final class TasksActivity extends AppCompatActivity {
                 openDashboard();
             } else if (id == R.id.menu_update) {
                 checkForUpdate(true);
+            } else if (id == R.id.menu_recurring) {
+                showSeriesList();
             } else if (id == R.id.menu_memos) {
                 startActivity(new Intent(this, MemosActivity.class));
             } else if (id == R.id.menu_invite) {
@@ -152,7 +156,10 @@ public final class TasksActivity extends AppCompatActivity {
             return true;
         });
         emptyButton.setOnClickListener(v -> startActivity(new Intent(this, MainActivity.class)));
-        addFab.setOnClickListener(v -> showAddDialog());
+        addFab.setOnClickListener(v -> {
+            if (tabs.getSelectedTabPosition() == TAB_IDEAS) showIdeaDialog();
+            else showAddDialog();
+        });
         recordFab.setOnClickListener(v -> toggleRecording());
 
         TaskSync.schedule(this);
@@ -455,6 +462,8 @@ public final class TasksActivity extends AppCompatActivity {
             for (Task t : TaskLists.asked(all, me)) rows.add(Row.task(t));
         } else if (tab == TAB_BOARD) {
             rows.addAll(boardRows(parent));
+        } else if (tab == TAB_IDEAS) {
+            for (Task t : TaskLists.ideas(all)) rows.add(Row.task(t));
         } else {
             Map<String, String> names = cache.names();
             List<Task> fam = TaskLists.family(all, me);
@@ -477,7 +486,7 @@ public final class TasksActivity extends AppCompatActivity {
         empty.setVisibility(none ? View.VISIBLE : View.GONE);
         emptyButton.setVisibility(View.GONE);
         emptyText.setText(tab == TAB_MINE ? R.string.empty_mine : tab == TAB_ASKED ? R.string.empty_asked
-                : R.string.empty_family);
+                : tab == TAB_IDEAS ? R.string.empty_ideas : R.string.empty_family);
     }
 
     private void refreshRecord() {
@@ -544,6 +553,10 @@ public final class TasksActivity extends AppCompatActivity {
     }
 
     private void showTaskMenu(Task t) {
+        if (t.isIdea()) {
+            showIdeaMenu(t);
+            return;
+        }
         String me = cache.myId();
         long now = System.currentTimeMillis();
         TimeZone tz = TimeZone.getDefault();
@@ -596,9 +609,29 @@ public final class TasksActivity extends AppCompatActivity {
             labels.add(getString(R.string.action_edit));
             actions.add(() -> showAddDialog(t));
         }
+        Series series = t.isRecurring() ? findSeries(t.seriesId) : null;
+        boolean seriesMine = series != null
+                && series.canChange(me, cache.iAmAdmin(), cache.iAmParent(), cache.parents());
+        if (seriesMine) {
+            labels.add("🔁 " + getString(R.string.recurring_stop));
+            actions.add(() -> confirmStopSeries(series));
+        }
         if (me.equals(t.createdBy) || cache.iAmAdmin()) {
             labels.add(getString(R.string.action_delete));
-            actions.add(() -> act(t, "delete", null));
+            actions.add(() -> {
+                if (!seriesMine) {
+                    act(t, "delete", null);
+                    return;
+                }
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle(getString(R.string.delete_recurring_title, t.title))
+                        .setItems(new String[]{getString(R.string.delete_only_this),
+                                getString(R.string.delete_whole_series)}, (d, which) -> {
+                            if (which == 0) act(t, "delete", null);
+                            else seriesAct(series.id, "stop");
+                        })
+                        .show();
+            });
         }
         String meta = TaskFormat.meta(this, t, me, cache.names());
         new MaterialAlertDialogBuilder(this)
@@ -670,6 +703,45 @@ public final class TasksActivity extends AppCompatActivity {
         onPeople.accept(people.getCheckedChipIds());
         people.setOnCheckedStateChangeListener((g, ids) -> onPeople.accept(ids));
 
+        // Repeats? (new tasks only): every day / on chosen days / every week / every month, optionally at a time.
+        View repeatBox = v.findViewById(R.id.add_repeat_box);
+        ChipGroup repeat = v.findViewById(R.id.add_repeat);
+        ChipGroup days = v.findViewById(R.id.add_days);
+        Chip repeatTime = v.findViewById(R.id.add_repeat_time);
+        Chip turns = v.findViewById(R.id.add_mode_turns);
+        View whenLabel = v.findViewById(R.id.add_when_label);
+        final String[] repeatAt = {""};
+        repeatBox.setVisibility(existing == null ? View.VISIBLE : View.GONE);
+        String[] dayKeys = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+        String[] dayNames = getResources().getStringArray(R.array.week_days_short);
+        for (int i = 0; i < dayKeys.length; i++) {
+            Chip c = chip(dayNames[i]);
+            c.setTag(dayKeys[i]);
+            days.addView(c);
+        }
+        Runnable onRepeat = () -> {
+            int rid = repeat.getCheckedChipId();
+            boolean on = existing == null && rid != View.NO_ID && rid != R.id.add_repeat_once;
+            days.setVisibility(on && rid == R.id.add_repeat_days ? View.VISIBLE : View.GONE);
+            repeatTime.setVisibility(on ? View.VISIBLE : View.GONE);
+            when.setVisibility(on ? View.GONE : View.VISIBLE);
+            whenLabel.setVisibility(on ? View.GONE : View.VISIBLE);
+            turns.setVisibility(on ? View.VISIBLE : View.GONE);
+            if (!on && mode.getCheckedChipId() == R.id.add_mode_turns) mode.check(R.id.add_mode_any);
+        };
+        repeat.setOnCheckedStateChangeListener((g, ids) -> onRepeat.run());
+        onRepeat.run();
+        repeatTime.setOnClickListener(x -> {
+            MaterialTimePicker tp = new MaterialTimePicker.Builder()
+                    .setTimeFormat(TimeFormat.CLOCK_24H).setHour(20).setMinute(0)
+                    .setTitleText(R.string.pick_time).build();
+            tp.addOnPositiveButtonClickListener(b -> {
+                repeatAt[0] = String.format(Locale.US, "%02d:%02d", tp.getHour(), tp.getMinute());
+                repeatTime.setText(getString(R.string.repeat_at, repeatAt[0]));
+            });
+            tp.show(getSupportFragmentManager(), "repeat_time");
+        });
+
         long now = System.currentTimeMillis();
         TimeZone tz = TimeZone.getDefault();
         final String[] picked = {null};
@@ -719,6 +791,12 @@ public final class TasksActivity extends AppCompatActivity {
                     }
                     if (who.isEmpty()) who.add(me);
                     boolean each = who.size() > 1 && mode.getCheckedChipId() == R.id.add_mode_all;
+                    String rule = existing == null ? repeatRule(repeat.getCheckedChipId(), days) : null;
+                    if (rule != null) {
+                        boolean rotate = who.size() > 1 && mode.getCheckedChipId() == R.id.add_mode_turns;
+                        createRecurring(text, who, each, rule, repeatAt[0], rotate);
+                        return;
+                    }
                     View selWhen = when.findViewById(when.getCheckedChipId());
                     String tag = selWhen == null ? "" : (String) selWhen.getTag();
                     String due = "pick".equals(tag) ? picked[0] : (tag.isEmpty() ? null : tag);
@@ -727,6 +805,195 @@ public final class TasksActivity extends AppCompatActivity {
                 })
                 .show();
         title.requestFocus();
+    }
+
+    /** The PC's rule for the chosen "Repeats?" chip, or null for a one-time task. */
+    private static String repeatRule(int chipId, ChipGroup days) {
+        if (chipId == R.id.add_repeat_daily) return "daily";
+        if (chipId == R.id.add_repeat_weekly) return "weekly";
+        if (chipId == R.id.add_repeat_monthly) return "monthly";
+        if (chipId != R.id.add_repeat_days) return null;
+        List<String> picked = new ArrayList<>();
+        for (int i = 0; i < days.getChildCount(); i++) {
+            View c = days.getChildAt(i);
+            if (c instanceof Chip && ((Chip) c).isChecked()) picked.add((String) c.getTag());
+        }
+        return picked.isEmpty() ? "weekly" : "weekly:" + String.join(",", picked);
+    }
+
+    private void createRecurring(String title, List<String> owners, boolean each, String rule, String time,
+                                 boolean rotate) {
+        syncStatus.setText(R.string.syncing);
+        io.execute(() -> {
+            try {
+                TaskApi.createRecurring(prefs, title, owners, each, rule, time, rotate);
+                main.post(() -> TaskSync.now(this));
+            } catch (IOException e) {
+                main.post(() -> {
+                    Toast.makeText(this, getString(R.string.add_failed, e.getMessage()), Toast.LENGTH_LONG).show();
+                    refresh();
+                });
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------- recurring tasks
+
+    private Series findSeries(String id) {
+        for (Series s : cache.series()) if (s.id.equals(id)) return s;
+        return null;
+    }
+
+    /** Toolbar → "Recurring tasks": every series I can see; tap one to pause, resume or stop it. */
+    private void showSeriesList() {
+        List<Series> all = cache.series();
+        if (all.isEmpty()) {
+            Toast.makeText(this, R.string.recurring_none, Toast.LENGTH_LONG).show();
+            return;
+        }
+        Map<String, String> names = cache.names();
+        String[] items = new String[all.size()];
+        for (int i = 0; i < all.size(); i++) {
+            Series s = all.get(i);
+            StringBuilder b = new StringBuilder(s.title).append("\n🔁 ").append(s.label)
+                    .append(" · ").append(TaskFormat.people(names, s.owners));
+            if (s.rotate && !s.nextTurn.isEmpty())
+                b.append(" · ").append(getString(R.string.recurring_turn, TaskLists.name(names, s.nextTurn)));
+            if (s.isPaused()) b.append(" · ").append(getString(R.string.recurring_paused));
+            items[i] = b.toString();
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.menu_recurring)
+                .setItems(items, (d, which) -> showSeriesMenu(all.get(which)))
+                .show();
+    }
+
+    private void showSeriesMenu(Series s) {
+        if (!s.canChange(cache.myId(), cache.iAmAdmin(), cache.iAmParent(), cache.parents())) {
+            Toast.makeText(this, R.string.recurring_not_yours, Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] items = {getString(s.isPaused() ? R.string.recurring_resume : R.string.recurring_pause),
+                getString(R.string.recurring_stop)};
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(s.title + "\n🔁 " + s.label)
+                .setItems(items, (d, which) -> {
+                    if (which == 0) seriesAct(s.id, s.isPaused() ? "resume" : "pause");
+                    else confirmStopSeries(s);
+                })
+                .show();
+    }
+
+    private void confirmStopSeries(Series s) {
+        new MaterialAlertDialogBuilder(this)
+                .setMessage(getString(R.string.recurring_stop_confirm, s.title))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.recurring_stop, (d, w) -> seriesAct(s.id, "stop"))
+                .show();
+    }
+
+    private void seriesAct(String seriesId, String action) {
+        syncStatus.setText(R.string.syncing);
+        io.execute(() -> {
+            try {
+                TaskApi.seriesAct(prefs, seriesId, action);
+                main.post(() -> TaskSync.now(this));
+            } catch (IOException e) {
+                main.post(() -> {
+                    Toast.makeText(this, getString(R.string.edit_failed, e.getMessage()), Toast.LENGTH_LONG).show();
+                    refresh();
+                });
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------- Jar ideas
+
+    private void showIdeaDialog() {
+        View v = LayoutInflater.from(this).inflate(R.layout.dialog_idea, null, false);
+        TextInputEditText title = v.findViewById(R.id.idea_title);
+        TextInputEditText details = v.findViewById(R.id.idea_details);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.idea_new)
+                .setView(v)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.add_save, (d, w) -> {
+                    String text = title.getText() == null ? "" : title.getText().toString().trim();
+                    String more = details.getText() == null ? "" : details.getText().toString().trim();
+                    if (text.isEmpty()) return;
+                    syncStatus.setText(R.string.syncing);
+                    io.execute(() -> {
+                        try {
+                            TaskApi.createIdea(prefs, text, more);
+                            main.post(() -> TaskSync.now(this));
+                        } catch (IOException e) {
+                            main.post(() -> Toast.makeText(this, getString(R.string.idea_failed, e.getMessage()),
+                                    Toast.LENGTH_LONG).show());
+                        }
+                    });
+                })
+                .show();
+        title.requestFocus();
+    }
+
+    /** An idea: everyone can open its notes (and add one); the admin decides; whoever suggested it can delete it. */
+    private void showIdeaMenu(Task t) {
+        String me = cache.myId();
+        boolean admin = cache.iAmAdmin();
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        labels.add(t.thread.isEmpty() ? getString(R.string.thread_open_empty) : getString(R.string.thread_open, t.thread.size()));
+        actions.add(() -> startActivity(new Intent(this, TaskThreadActivity.class)
+                .putExtra(TaskThreadActivity.EXTRA_ID, t.id)));
+        if (admin && t.isRequested()) {
+            labels.add(getString(R.string.idea_accept));
+            actions.add(() -> act(t, "accept", null));
+            labels.add(getString(R.string.idea_decline));
+            actions.add(() -> declineIdea(t));
+        } else if (admin && t.isOpen()) {
+            labels.add(getString(R.string.idea_shipped));
+            actions.add(() -> act(t, "done", null));
+        } else if (admin && t.isDone()) {
+            labels.add(getString(R.string.idea_reopen));
+            actions.add(() -> act(t, "reopen", null));
+        }
+        if (me.equals(t.createdBy) || admin) {
+            labels.add(getString(R.string.action_delete));
+            actions.add(() -> act(t, "delete", null));
+        }
+        String meta = TaskFormat.meta(this, t, me, cache.names());
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("💡 " + t.title + (meta.isEmpty() ? "" : "\n" + meta)
+                        + (t.notes.isEmpty() ? "" : "\n\n" + t.notes))
+                .setItems(labels.toArray(new String[0]), (d, which) -> actions.get(which).run())
+                .show();
+    }
+
+    private void declineIdea(Task t) {
+        View v = LayoutInflater.from(this).inflate(R.layout.dialog_idea, null, false);
+        v.findViewById(R.id.idea_hint).setVisibility(View.GONE);
+        v.findViewById(R.id.idea_details_box).setVisibility(View.GONE);
+        ((com.google.android.material.textfield.TextInputLayout) v.findViewById(R.id.idea_title_box))
+                .setHint(R.string.idea_decline_note);
+        TextInputEditText note = v.findViewById(R.id.idea_title);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(t.title)
+                .setView(v)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.idea_decline, (d, w) -> {
+                    String text = note.getText() == null ? "" : note.getText().toString().trim();
+                    syncStatus.setText(R.string.syncing);
+                    io.execute(() -> {
+                        try {
+                            TaskApi.declineIdea(prefs, t.id, text);
+                            main.post(() -> TaskSync.now(this));
+                        } catch (IOException e) {
+                            main.post(() -> Toast.makeText(this, getString(R.string.edit_failed, e.getMessage()),
+                                    Toast.LENGTH_LONG).show());
+                        }
+                    });
+                })
+                .show();
     }
 
     private void edit(Task t, String title, List<String> owners, boolean each, String due) {
@@ -1021,7 +1288,7 @@ public final class TasksActivity extends AppCompatActivity {
             TextView title = h.itemView.findViewById(R.id.title);
             TextView meta = h.itemView.findViewById(R.id.meta);
             MaterialCheckBox check = h.itemView.findViewById(R.id.check);
-            title.setText(t.isMessage() ? "💬 " + t.title : t.title);
+            title.setText(t.isMessage() ? "💬 " + t.title : t.isIdea() ? "💡 " + t.title : t.title);
             String me = cache.myId();
             boolean done = t.doneFor(me) || "declined".equals(t.status);
             title.setPaintFlags(done ? title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG
@@ -1035,7 +1302,7 @@ public final class TasksActivity extends AppCompatActivity {
             else meta.setTextColor((android.content.res.ColorStateList) meta.getTag());
             check.setOnCheckedChangeListener(null);
             check.setChecked(t.doneFor(me));
-            check.setEnabled(t.isOpen() || t.isDone());
+            check.setEnabled(t.isIdea() ? cache.iAmAdmin() && (t.isOpen() || t.isDone()) : t.isOpen() || t.isDone());
             check.setOnCheckedChangeListener((b, on) -> act(t, on ? "done" : "reopen", null));
             TextView coins = h.itemView.findViewById(R.id.coins);
             boolean showCoins = t.coins > 0 && !t.isMessage() && !"declined".equals(t.status);

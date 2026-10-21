@@ -410,19 +410,46 @@ def join_page():
 @app.get("/v1/tasks")
 def list_tasks(request: Request, authorization: str | None = Header(None), x_device_id: str = Header("")):
     p = check_auth(authorization, request, x_device_id)
+    try:
+        TASKS.roll()                       # today's recurring tasks, even when the worker is busy or down
+    except Exception:  # noqa: BLE001 — the list must still load
+        log.exception("rolling recurring tasks failed")
     return TASKS.snapshot(p)
 
 
 @app.post("/v1/tasks", status_code=201)
 def new_task(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
              x_device_id: str = Header("")):
-    """{"title", "due", "notes", "assignee": id} or, for a shared task, {"assignees": [ids], "mode": "any"|"all"}."""
+    """{"title", "due", "notes", "assignee": id} or, for a shared task, {"assignees": [ids], "mode": "any"|"all"}.
+    Recurring: + "repeat": {"rule": "weekly:sun,wed", "time": "20:00", "rotate": false, "after_done": false}
+    (returns the first occurrence, with "series"). A Jar idea: {"kind": "idea", "title", "notes"}."""
     p = check_auth(authorization, request, x_device_id)
     try:
+        if body.get("kind") == "idea":
+            return TASKS.add_idea(p, str(body.get("title", "")), str(body.get("notes", "")))
         ids = body.get("assignees") or ([body["assignee"]] if body.get("assignee") else [])
         who = TASKS.resolve_people(ids) or [p]
+        rep = body.get("repeat")
+        if isinstance(rep, str):
+            rep = {"rule": rep}
+        if isinstance(rep, dict) and rep.get("rule"):
+            return TASKS.add_series(p, str(body.get("title", "")), who, str(rep["rule"]), str(rep.get("time") or ""),
+                                    str(body.get("notes", "")), mode=str(body.get("mode") or "any"),
+                                    rotate=bool(rep.get("rotate")), after_done=bool(rep.get("after_done")))
         return TASKS.add(p, str(body.get("title", "")), who, body.get("due"), str(body.get("notes", "")),
                          mode=str(body.get("mode") or "any"))
+    except TaskError as e:
+        _task_error(e)
+
+
+@app.post("/v1/series/{series_id}/{action}")
+def series_action(series_id: str, action: str, request: Request, body: dict | None = Body(None),
+                  authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """A recurring task as a whole: stop | pause | resume | edit ({"title", "notes", "rule", "time",
+    "owners", "mode", "rotate"})."""
+    p = check_auth(authorization, request, x_device_id)
+    try:
+        return TASKS.series_act(p, series_id, action, body or {})
     except TaskError as e:
         _task_error(e)
 

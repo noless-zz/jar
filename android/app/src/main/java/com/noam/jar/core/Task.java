@@ -40,6 +40,11 @@ public final class Task {
     public boolean noCoins;
     /** "ai", "parent", "rule" or "default": who rated it. */
     public String ratedBy = "";
+    /** A recurring task's occurrence: the series it belongs to ("" = a one-time task) and its rule in words. */
+    public String seriesId = "";
+    public String repeat = "";
+    /** A declined Jar idea that repeats an earlier one: that idea's id. */
+    public String duplicateOf = "";
 
     public static final class Note {
         public int id;
@@ -101,6 +106,16 @@ public final class Task {
         return "message".equals(kind);
     }
 
+    /** An idea for Jar itself: the admin accepts it (coins to whoever suggested it), declines it or ships it. */
+    public boolean isIdea() {
+        return "idea".equals(kind);
+    }
+
+    /** One occurrence of a recurring task (משימה רב פעמית). */
+    public boolean isRecurring() {
+        return seriesId != null && !seriesId.isEmpty();
+    }
+
     /** A lesson a child logged: finished already, its note is what earned the coins. */
     public boolean isLesson() {
         return "lesson".equals(kind);
@@ -108,7 +123,7 @@ public final class Task {
 
     /** Can a parent change what this is worth? (WhatsApp drafts never earn.) */
     public boolean canRate() {
-        return !isMessage() && (isOpen() || isDone() || isRequested()) && !isLesson();
+        return !isMessage() && !isIdea() && (isOpen() || isDone() || isRequested()) && !isLesson();
     }
 
     /** Opens WhatsApp with the text filled in (and the chat, when the number is known). */
