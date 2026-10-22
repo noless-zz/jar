@@ -54,8 +54,8 @@
     <string name="test_ok_home">מחובר דרך הרשת הביתית (%1$s) · האסימון התקבל</string>
     <string name="test_ok_tailscale">מחובר דרך Tailscale ‏(%1$s) · האסימון התקבל</string>
     <string name="test_ok_public">מחובר דרך האינטרנט, מוצפן (%1$s) · האסימון התקבל</string>
-    <string name="test_unreachable">אף אחת מ-%1$d הכתובות השמורות לא ענתה (%2$s). האם המחשב דלוק ו-Tailscale מחובר?</string>
-    <string name="ts_off">Tailscale מותקן אבל לא מחובר. ההקלטות ימתינו בטלפון עד שתחזרו הביתה או שתחברו את Tailscale.</string>
+    <string name="test_unreachable">אף אחת מ-%1$d הכתובות השמורות לא ענתה (%2$s). המחשב של Jar לא זמין כרגע (כבוי או בלי אינטרנט). ההקלטות ממתינות בטלפון וישלחו לבד אחר כך.</string>
+    <string name="ts_off">Tailscale מותקן אבל כבוי. זה בסדר: Jar עובד גם בלעדיו, בבית ודרך הכתובת הציבורית.</string>
     <string name="ts_connected">Tailscale מחובר: ההקלטות מגיעות למחשב מכל מקום.</string>
     <string name="ts_open">פתיחת Tailscale</string>
     <plurals name="pair_info_paired">

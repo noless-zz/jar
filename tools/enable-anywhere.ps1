@@ -13,6 +13,8 @@
   The first time, Tailscale may print a link to approve Funnel (and HTTPS) for your tailnet:
   open it, click approve, and this script carries on by itself.
   The app learns the new address on its next sync at home, or re-pair from the dashboard's pair page.
+  Jar's supervisor then keeps it on: if the Funnel drops (Tailscale restarted or updated), it publishes it
+  again by itself (server/anywhere.py). data\anywhere.json records that you want it on; -Off clears it.
 #>
 param([switch]$Off, [switch]$Status)
 $ErrorActionPreference = "Continue"
@@ -37,6 +39,7 @@ if (Test-Path "config.toml") {
 }
 
 if ($Off) {
+    Set-Content -Path "data\anywhere.json" -Value '{"on": false}' -Encoding ascii
     & $ts funnel reset
     Write-Host "Funnel is off. Phones reach Jar only at home or over Tailscale again." -ForegroundColor Yellow
     exit 0
@@ -82,6 +85,8 @@ if (-not $ok) {
 }
 
 & $ts funnel status
+New-Item -ItemType Directory -Force "data" | Out-Null
+Set-Content -Path "data\anywhere.json" -Value '{"on": true}' -Encoding ascii   # the supervisor keeps it on
 if ($ok) {
     Write-Host ""
     Write-Host "Done: phones can reach Jar at $public from anywhere - no Tailscale app needed." -ForegroundColor Green

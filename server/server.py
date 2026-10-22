@@ -128,8 +128,10 @@ def find_existing(memo_id: str) -> dict | None:
 
 
 @app.get("/v1/health")
-def health():
-    return {"ok": True}
+def health(request: Request):
+    # "via": lets the supervisor's Funnel watch (server/anywhere.py) tell a real internet request from one
+    # Tailscale routed straight over the tailnet.
+    return {"ok": True, "via": "funnel" if request.headers.get("tailscale-funnel-request") else "direct"}
 
 
 @app.get("/v1/auth")

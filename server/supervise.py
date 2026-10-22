@@ -11,6 +11,10 @@
 - Takes orders from the admin's phone (data/supervisor-cmd.json, written by the server):
   "update" checks GitHub now, "restart" restarts the server and the worker.
 - Writes data/supervisor.json for the dashboard: code version, update status, restarts.
+- Keeps Jar reachable from anywhere (server/anywhere.py): re-publishes the Tailscale Funnel when it drops
+  (checked over the real internet path: public DNS + a request that must arrive through the Funnel;
+  a fix that doesn't help is retried every 30 minutes, with a diagnosis and Tailscale's own words in supervisor.json;
+  after re-announcing it waits for public DNS before judging the /v1 mapping).
 
 config.toml (all optional):
     [supervisor]
@@ -364,6 +368,8 @@ class Supervisor:
         self.code = self.code_version()
         self.last_reason = ""
         self.started = time.time()
+        from .anywhere import AnywhereWatch
+        self.anywhere = AnywhereWatch(self.data, int(port))
         import threading
         self._writing = threading.Event()
         self._done_cmd = 0.0
@@ -474,7 +480,7 @@ class Supervisor:
               "last_command": self.last_command,
               "auto_restart": bool(self.opt("auto_restart", True)),
               "github_pull": bool(self.opt("github_pull", True)),
-              "restarts": self.restarts, "last_reason": self.last_reason}
+              "restarts": self.restarts, "last_reason": self.last_reason, "anywhere": self.anywhere.status}
         hb["children"] = {c.name: c.proc.pid for c in (self.server, self.worker) if c.proc is not None}
         data = json.dumps(hb)
         if self._writing.is_set():
@@ -527,6 +533,7 @@ class Supervisor:
         self.keep_alive(self.worker)
 
         self.take_command()
+        self.anywhere.maybe_check()
         if self.opt("github_pull", True):
             every = max(2, int(self.opt("pull_minutes", 10))) * 60
             if time.time() - self.checked_at > every:
