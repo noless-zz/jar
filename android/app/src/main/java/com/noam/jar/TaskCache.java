@@ -3,6 +3,7 @@ package com.noam.jar;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import com.noam.jar.core.Area;
 import com.noam.jar.core.Board;
 import com.noam.jar.core.Series;
 import com.noam.jar.core.Task;
@@ -75,6 +76,15 @@ public final class TaskCache {
             if (p != null && !"child".equals(p.optString("role"))) out.add(p.optString("id"));
         }
         return out;
+    }
+
+    /** The areas of responsibility from the last sync. */
+    public synchronized List<Area> areas() {
+        try {
+            return TaskApi.parseAreas(new JSONObject(sp.getString("tasks", "{}")));
+        } catch (JSONException e) {
+            return new java.util.ArrayList<>();
+        }
     }
 
     /** The recurring tasks from the last sync. */

@@ -192,6 +192,13 @@ def cases(admin: str, fam: Family) -> list[Case]:
              lambda r: (None if r.series and r.series[0]["status"] == "ended" and not r.new()
                         else f"series still {r.series[0]['status'] if r.series else '?'} (tools: {r.tools()})"),
              seed=[{"title": "להוציא את הזבל", "assignee": son, "repeat": "daily"}]),
+        Case("an existing task becomes recurring",
+             "תהפוך את ההשקיה של העציצים למשימה חוזרת, כל ראשון וחמישי",
+             lambda r: (None if len(r.series) == 1 and r.series[0]["rule"] == "weekly:sun,thu"
+                        and r.series[0].get("current") == _seeded(r, "להשקות את העציצים")["id"] and not r.new()
+                        else f"series {[(x['rule'], x.get('current')) for x in r.series]}, new tasks {len(r.new())} "
+                             f"(tools: {r.tools()})"),
+             seed=[{"title": "להשקות את העציצים"}]),
         Case("a child's idea for the app",
              "רעיון לג׳אר: שיהיה מצב לילה באפליקציה",
              lambda r: _one_idea(r, admin, "לילה"),
@@ -274,6 +281,33 @@ def run_ratings(cfg: config_mod.Config, real: Family) -> list[dict]:
     return out
 
 
+# The AI's pick of an area of responsibility, for tasks no single keyword decides (worker/areas.py).
+AREA_CASES = [
+    ("a meal is food", "להכין ארוחת ערב", "food"),
+    ("the kitchen floor is floors", "לשטוף את הרצפה במטבח", "floors"),
+    ("own homework is no area", "להכין שיעורי בית במתמטיקה", ""),
+]
+
+
+def run_areas(cfg: config_mod.Config, real: Family) -> list[dict]:
+    from . import areas as areas_mod
+    areas = [dict(a, owner="") for a in areas_mod.STARTER]
+    out = []
+    for name, title, want in AREA_CASES:
+        t0 = time.monotonic()
+        try:
+            rating = effort.rate(cfg.ollama_url, cfg.llm_model, title, "", real.admin, [], None, cfg.num_ctx,
+                                 cfg.keep_alive, areas=areas)
+            got = rating.get("area", "")
+            problem = None if got == want else f"area {got or 'none'!r}, should be {want or 'none'!r}"
+        except Exception as e:  # noqa: BLE001
+            problem, got = f"{type(e).__name__}: {e}", ""
+        out.append({"case": "area: " + name, "memo": title, "ok": problem is None, "problem": problem,
+                    "seconds": round(time.monotonic() - t0, 1), "actions": [f"area {got or 'none'}"],
+                    "messages": [], "reply": ""})
+    return out
+
+
 def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repeats: int = 1) -> dict:
     cfg = cfg or config_mod.load()
     tz = ZoneInfo(cfg.timezone)
@@ -322,6 +356,7 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
     # Effort ratings for the points game (repeats count like the memo cases: the model varies a little).
     for _ in range(max(1, repeats)):
         results += run_ratings(cfg, real)
+        results += run_areas(cfg, real)
     # Quick replies (the app's ✨ button): one sample, shown in the report for a human to judge.
     from . import replies
     sample = {"title": "לסדר את החדר", "assignee": "son", "created_by": "dad", "waiting_on": "son",

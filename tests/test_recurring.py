@@ -327,6 +327,14 @@ class VoiceTools(Base):
         n.add_task("להוציא את הזבל", due_time="20:00", for_person="yoni", repeat="weekly:mon,wed")
         self.assertEqual(self.store._read()["series"][0]["rule"], "weekly:sun,wed")
 
+    def test_one_series_when_the_model_asks_per_day(self):
+        n = self.notes("dana")
+        n.transcript = "כל ראשון ורביעי ליבנה צריך להוציא את הזבל בשמונה בערב"
+        n.add_task("להוציא את הזבל", due_time="20:00", for_person="yoni", repeat="weekly:sun")
+        out = n.add_task("להוציא את הזבל", due_time="20:00", for_person="yoni", repeat="weekly:wed")
+        self.assertIn("already made", out)
+        self.assertEqual(len(self.store._read()["series"]), 1)
+
     def test_spoken_weekdays(self):
         from worker.tools import spoken_weekdays
         self.assertEqual(spoken_weekdays("כל ראשון ורביעי"), {6, 2})
@@ -373,6 +381,19 @@ class VoiceTools(Base):
         n.transcript = "היום לא צריך להוציא את הזבל"
         n.update_task(tid, status="cancel")
         self.assertEqual(self.store._read()["series"][0]["status"], "active")
+
+    def test_make_an_existing_task_repeat_by_voice(self):
+        n = self.notes("dana")
+        n.add_task("להוציא את הזבל", for_person="yoni", due_date="מחר", due_time="20:00")
+        tid = self.tasks("dana")[0]["id"]
+        n.transcript = "תהפוך את הזבל של יוני למשימה חוזרת כל ראשון ורביעי"
+        out = n.update_task(tid, repeat="weekly:mon,wed")
+        self.assertIn("now repeats", out)
+        s = self.store._read()["series"][0]
+        self.assertEqual((s["rule"], s["time"], s["current"]), ("weekly:sun,wed", "20:00", tid))
+        self.assertEqual(len(self.store._read()["tasks"]), 1)            # no second task
+        out = n.update_task(tid, repeat="daily")                         # repeats already: changes the schedule
+        self.assertIn("now 🔁 every day", out)
 
     def test_suggest_idea(self):
         n = self.notes("yoni")

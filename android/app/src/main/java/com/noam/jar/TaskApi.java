@@ -1,5 +1,6 @@
 package com.noam.jar;
 
+import com.noam.jar.core.Area;
 import com.noam.jar.core.Award;
 import com.noam.jar.core.Board;
 import com.noam.jar.core.Series;
@@ -364,6 +365,47 @@ public final class TaskApi {
         return out;
     }
 
+    /** The areas of responsibility in a snapshot. */
+    public static List<Area> parseAreas(JSONObject snapshot) {
+        List<Area> out = new ArrayList<>();
+        JSONArray arr = snapshot == null ? null : snapshot.optJSONArray("areas");
+        for (int i = 0; arr != null && i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) continue;
+            Area a = new Area();
+            a.id = o.optString("id");
+            a.name = o.optString("name");
+            a.emoji = o.optString("emoji", "");
+            a.owner = o.optString("owner");
+            a.description = o.optString("description", "");
+            JSONArray kw = o.optJSONArray("keywords");
+            for (int j = 0; kw != null && j < kw.length(); j++) a.keywords.add(kw.optString(j));
+            out.add(a);
+        }
+        return out;
+    }
+
+    /** A parent adds an area (keywords: the words that put a task in it). */
+    public static JSONObject addArea(Prefs prefs, String name, String emoji, String owner, List<String> keywords)
+            throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("name", name).put("emoji", emoji).put("owner", owner).put("keywords", new JSONArray(keywords));
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/areas", body);
+    }
+
+    /** Change an area: any of "name", "emoji", "owner", "keywords" (a JSONArray). */
+    public static JSONObject editArea(Prefs prefs, String areaId, JSONObject fields) throws IOException {
+        return call(prefs, "POST", "/v1/areas/" + areaId + "/edit", fields);
+    }
+
+    public static JSONObject deleteArea(Prefs prefs, String areaId) throws IOException {
+        return call(prefs, "POST", "/v1/areas/" + areaId + "/delete", new JSONObject());
+    }
+
     /** The recurring tasks in a snapshot ("series"), as this person may see them. */
     public static List<Series> parseSeries(JSONObject snapshot) {
         List<Series> out = new ArrayList<>();
@@ -421,6 +463,13 @@ public final class TaskApi {
         t.seriesId = o.isNull("series_id") ? "" : o.optString("series_id", "");
         t.repeat = o.isNull("repeat") ? "" : o.optString("repeat", "");
         t.duplicateOf = o.isNull("duplicate_of") ? "" : o.optString("duplicate_of", "");
+        t.area = o.isNull("area") ? "" : o.optString("area", "");
+        t.areaSuggest = o.isNull("area_suggest") ? "" : o.optString("area_suggest", "");
+        JSONObject ho = o.optJSONObject("handover");
+        if (ho != null) {
+            t.handoverTo = ho.optString("to", "");
+            t.handoverBy = ho.optString("by", "");
+        }
         t.coins = o.optInt("coins");
         t.paid = o.optBoolean("paid");
         JSONObject pts = o.optJSONObject("points");

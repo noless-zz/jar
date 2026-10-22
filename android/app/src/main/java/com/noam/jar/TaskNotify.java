@@ -70,6 +70,7 @@ public final class TaskNotify {
             for (Task t : TaskLists.news(tasks, me, cache.iAmParent(), cache.iAmAdmin(), seen)) {
                 showNew(c, cache, t);
                 seen.add(t.id);
+                if (t.hasHandover()) seen.add(TaskLists.handoverKey(t));
             }
             for (Task t : TaskLists.newNotes(tasks, me, seen)) {
                 showNote(c, cache, t);
@@ -186,6 +187,13 @@ public final class TaskNotify {
                     .setStyle(new NotificationCompat.BigTextStyle().bigText(t.message))
                     .setContentIntent(send)
                     .addAction(0, c.getString(R.string.send_whatsapp), send);
+            post(c, id(t.id), b);
+            return;
+        }
+        if (t.hasHandover() && t.handoverTo.equals(cache.myId())) {
+            b = base(c, CH_NEW, t.title, c.getString(R.string.notif_handover, TaskLists.name(names, t.handoverBy)))
+                    .addAction(0, c.getString(R.string.handover_accept_short), action(c, t.id, "handover_accept", null))
+                    .addAction(0, c.getString(R.string.handover_decline_short), action(c, t.id, "handover_decline", null));
             post(c, id(t.id), b);
             return;
         }

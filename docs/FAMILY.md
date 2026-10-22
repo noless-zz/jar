@@ -92,6 +92,22 @@ optionally ⏰ at a time; with several people pick **Taking turns** (or one of t
   (31 = the month's last day). API: `POST /v1/tasks` with `"repeat": {"rule", "time", "rotate"}`;
   `POST /v1/series/{id}/stop|pause|resume|edit`.
 
+## Areas of responsibility 🧭 (תחומי אחריות)
+
+Each area has an owner: 🍳 kitchen (Noam), 🧽 floors (Sveta), 👕 laundry (Alona), 🛒 food & shopping and general
+order (Livne). Each comes with starter recurring tasks (`tools/seed_areas.py`). Manage them in the app: ⋮ →
+**🧭 Areas of responsibility**. Parents can add or delete an area, change its owner, or edit the words that put a
+task in it. A new owner also takes over the area's recurring tasks and their open occurrence.
+
+- A new task is put in an area by its words. If no word matches, or words from two areas match ("לשטוף את
+  הרצפה במטבח"), the AI picks the area when it rates the task.
+- A chore said without naming anyone stays with whoever said it. When it's in someone else's area, the app shows
+  "🧽 רצפות: התחום של סווטה" and offers **↪ Move it to Sveta** or **Keep it with me**.
+- A move waits for the area's owner or a parent (not the one who asked). They get a notification with
+  **Take it / Not now**; the task shows "⏳ waiting for Sveta". If they decline, it stays and the suggestion is gone.
+- API: `POST /v1/areas`, `POST /v1/areas/{id}/edit|delete` (parents); task actions `handover`,
+  `handover_accept`, `handover_decline`, `dismiss_suggest`. The snapshot includes `areas`.
+
 ## Jar ideas 💡
 
 Ideas for Jar itself ("רעיון לג׳אר: מצב לילה", "תוסיף לאפליקציה אפשרות…", or the 💡 tab → **+**) go to the admin on

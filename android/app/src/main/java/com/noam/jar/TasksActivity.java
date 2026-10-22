@@ -38,6 +38,7 @@ import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.timepicker.MaterialTimePicker;
 import com.google.android.material.timepicker.TimeFormat;
+import com.noam.jar.core.Area;
 import com.noam.jar.core.Award;
 import com.noam.jar.core.Board;
 import com.noam.jar.core.Series;
@@ -45,6 +46,8 @@ import com.noam.jar.core.Task;
 import com.noam.jar.core.TaskLists;
 
 import java.io.IOException;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
@@ -144,6 +147,8 @@ public final class TasksActivity extends AppCompatActivity {
                 checkForUpdate(true);
             } else if (id == R.id.menu_recurring) {
                 showSeriesList();
+            } else if (id == R.id.menu_areas) {
+                showAreas();
             } else if (id == R.id.menu_memos) {
                 startActivity(new Intent(this, MemosActivity.class));
             } else if (id == R.id.menu_invite) {
@@ -420,6 +425,7 @@ public final class TasksActivity extends AppCompatActivity {
         refreshRecord();
         refreshUpdate();
         boolean paired = !prefs.token().isEmpty();
+        TaskFormat.setAreas(cache.areas());
         String me = cache.myId();
         boolean parent = cache.iAmParent();
         String name = cache.myName();
@@ -582,6 +588,24 @@ public final class TasksActivity extends AppCompatActivity {
             actions.add(() -> act(t, "accept", null));
             labels.add(getString(R.string.action_decline));
             actions.add(() -> act(t, "decline", null));
+        }
+        // Areas of responsibility: offer the move to the area's owner; approve or decline a waiting move.
+        Map<String, String> names = cache.names();
+        if (t.mayApproveHandover(me, cache.iAmParent())) {
+            labels.add(getString(R.string.handover_accept, TaskLists.name(names, t.handoverTo)));
+            actions.add(() -> act(t, "handover_accept", null));
+            labels.add(getString(R.string.handover_decline));
+            actions.add(() -> act(t, "handover_decline", null));
+        } else if (t.hasHandover() && me.equals(t.handoverBy)) {
+            labels.add(getString(R.string.handover_cancel));
+            actions.add(() -> act(t, "handover_decline", null));
+        } else if (!t.areaSuggest.isEmpty() && (t.isFor(me) || me.equals(t.createdBy))) {
+            Area area = TaskFormat.area(this, t.area);
+            labels.add(getString(R.string.handover_ask, TaskLists.name(names, t.areaSuggest),
+                    area == null ? "" : area.label()));
+            actions.add(() -> act(t, "handover", null));
+            labels.add(getString(R.string.handover_keep));
+            actions.add(() -> act(t, "dismiss_suggest", null));
         }
         if (t.openFor(me)) {
             labels.add(getString(t.eachMust() && t.isFor(me) ? R.string.action_my_part_done : R.string.action_done));
@@ -929,6 +953,122 @@ public final class TasksActivity extends AppCompatActivity {
                     Toast.makeText(this, getString(R.string.edit_failed, e.getMessage()), Toast.LENGTH_LONG).show();
                     refresh();
                 });
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------- areas of responsibility
+
+    /** Toolbar → "Areas": who is in charge of what. Parents tap one to change it, or add a new one. */
+    private void showAreas() {
+        List<Area> all = cache.areas();
+        Map<String, String> names = cache.names();
+        boolean parent = cache.iAmParent();
+        List<String> items = new ArrayList<>();
+        for (Area a : all) items.add(a.label() + " — " + TaskLists.name(names, a.owner));
+        if (parent) items.add(getString(R.string.areas_add));
+        if (items.isEmpty()) {
+            Toast.makeText(this, R.string.areas_none, Toast.LENGTH_LONG).show();
+            return;
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.menu_areas)
+                .setItems(items.toArray(new String[0]), (d, which) -> {
+                    if (!parent) return;
+                    if (which == all.size()) showAreaEditor(null);
+                    else showAreaMenu(all.get(which));
+                })
+                .show();
+    }
+
+    private void showAreaMenu(Area a) {
+        String[] items = {getString(R.string.areas_change_owner), getString(R.string.areas_edit),
+                getString(R.string.areas_delete)};
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(a.label())
+                .setItems(items, (d, which) -> {
+                    if (which == 0) pickPerson(getString(R.string.areas_change_owner), a.owner,
+                            id -> areaCall(() -> TaskApi.editArea(prefs, a.id, new JSONObject().put("owner", id))));
+                    else if (which == 1) showAreaEditor(a);
+                    else new MaterialAlertDialogBuilder(this)
+                                .setMessage(getString(R.string.areas_delete_confirm, a.label()))
+                                .setNegativeButton(android.R.string.cancel, null)
+                                .setPositiveButton(R.string.areas_delete, (x, y) -> areaCall(() -> TaskApi.deleteArea(prefs, a.id)))
+                                .show();
+                })
+                .show();
+    }
+
+    interface PersonPicked {
+        void picked(String id);
+    }
+
+    private void pickPerson(String title, String current, PersonPicked done) {
+        Map<String, String> names = cache.names();
+        List<String> ids = new ArrayList<>(names.keySet());
+        String[] labels = new String[ids.size()];
+        int checked = -1;
+        for (int i = 0; i < ids.size(); i++) {
+            labels[i] = names.get(ids.get(i));
+            if (ids.get(i).equals(current)) checked = i;
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(title)
+                .setSingleChoiceItems(labels, checked, (d, which) -> {
+                    d.dismiss();
+                    done.picked(ids.get(which));
+                })
+                .show();
+    }
+
+    /** New area (a == null) or change name, emoji and the words that put a task in it. */
+    private void showAreaEditor(Area a) {
+        View v = LayoutInflater.from(this).inflate(R.layout.dialog_area, null, false);
+        TextInputEditText name = v.findViewById(R.id.area_name);
+        TextInputEditText emoji = v.findViewById(R.id.area_emoji);
+        TextInputEditText words = v.findViewById(R.id.area_keywords);
+        if (a != null) {
+            name.setText(a.name);
+            emoji.setText(a.emoji);
+            words.setText(String.join(", ", a.keywords));
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(a == null ? R.string.areas_add : R.string.areas_edit)
+                .setView(v)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.add_save, (d, w) -> {
+                    String n = name.getText() == null ? "" : name.getText().toString().trim();
+                    String e = emoji.getText() == null ? "" : emoji.getText().toString().trim();
+                    List<String> kw = new ArrayList<>();
+                    for (String k : (words.getText() == null ? "" : words.getText().toString()).split("[,،\\n]+")) {
+                        if (!k.trim().isEmpty()) kw.add(k.trim());
+                    }
+                    if (n.isEmpty()) return;
+                    if (a == null) {
+                        pickPerson(getString(R.string.areas_owner), cache.myId(),
+                                id -> areaCall(() -> TaskApi.addArea(prefs, n, e.isEmpty() ? "📌" : e, id, kw)));
+                    } else {
+                        areaCall(() -> TaskApi.editArea(prefs, a.id, new JSONObject().put("name", n)
+                                .put("emoji", e.isEmpty() ? a.emoji : e).put("keywords", new JSONArray(kw))));
+                    }
+                })
+                .show();
+        name.requestFocus();
+    }
+
+    interface AreaCall {
+        void run() throws IOException, org.json.JSONException;
+    }
+
+    private void areaCall(AreaCall call) {
+        syncStatus.setText(R.string.syncing);
+        io.execute(() -> {
+            try {
+                call.run();
+                main.post(() -> TaskSync.now(this));
+            } catch (IOException | org.json.JSONException e) {
+                main.post(() -> Toast.makeText(this, getString(R.string.edit_failed, e.getMessage()),
+                        Toast.LENGTH_LONG).show());
             }
         });
     }

@@ -60,7 +60,9 @@ Dates of the coming days (use these, don't compute weekdays yourself):
 {days}"""
 
 RECURRING_RULES = """- Repeating ("כל יום", "כל ראשון ורביעי") -> ONE add_task with repeat; turns ("תורנות") -> take_turns.
-  Stop it -> find_tasks, update_task status=stop_repeating. An idea for the Jar app itself -> suggest_idea."""
+  Stop it -> find_tasks, update_task status=stop_repeating. An EXISTING task that should repeat from now on
+  ("תהפוך את … לחוזרת", "שזה יהיה כל יום") -> find_tasks, update_task with repeat (never a second task).
+- An idea for the Jar app itself -> suggest_idea."""
 
 MESSAGE_RULES = """
 Messages (draft_whatsapp, draft_email) — write the real message, complete and ready to send:
@@ -152,12 +154,13 @@ class AgentResult:
     rounds: int
     seconds: float
     fallback: bool
+    tokens: dict | None = None     # {"prompt", "output", "peak", "num_ctx"} as Ollama counted them
 
 
 class Agent:
     def __init__(self, url: str, model: str, temperature: float = 0.2, keep_alive: str = "10m",
                  max_rounds: int = 4, timeout: float = 300, about: str = "", think: bool = True,
-                 num_ctx: int = 8192):
+                 num_ctx: int = 12288):
         # Context window. Ollama's default (4096) is smaller than Jar's instructions plus tool list:
         # past it Ollama silently drops the start of the conversation, i.e. the memo itself.
         self.num_ctx = max(4096, int(num_ctx))
@@ -166,6 +169,7 @@ class Agent:
         self.url, self.model = url.rstrip("/"), model
         self.temperature, self.keep_alive = temperature, keep_alive
         self.max_rounds, self.timeout = max_rounds, timeout
+        self.usage: list[tuple[int, int]] = []     # (prompt tokens, output tokens) per call of the current memo
 
     # -- HTTP --
     def _chat(self, messages: list[dict], tools: list[dict], think: bool | None = None) -> dict:
@@ -179,7 +183,10 @@ class Agent:
                                      headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                return json.loads(r.read().decode())["message"]
+                out = json.loads(r.read().decode())
+                # Real token counts (not an estimate): the prompt so far, and what the model wrote incl. thinking.
+                self.usage.append((int(out.get("prompt_eval_count") or 0), int(out.get("eval_count") or 0)))
+                return out["message"]
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")[:300]
             if e.code == 404 or "not found" in detail:
@@ -206,6 +213,7 @@ class Agent:
     def run(self, transcript: str, notes: Notes, recorded_local: datetime, tz_name: str,
             meta: dict | None = None) -> AgentResult:
         t0 = time.monotonic()
+        self.usage = []
         notes.transcript = transcript
         tools = registry(notes)
         schemas = [t.schema() for t in tools.values()]
@@ -238,7 +246,11 @@ class Agent:
             first = " ".join(transcript.split()[:8]) or "Memo"
             notes.save_note(title=first, body=transcript, tags=["unsorted"])
             summary = summary or "Saved as an unsorted note."
-        return AgentResult(notes.actions, summary, rounds, round(time.monotonic() - t0, 2), fallback)
+        tokens = None
+        if self.usage:
+            tokens = {"prompt": max(p for p, _ in self.usage), "output": sum(o for _, o in self.usage),
+                      "peak": max(p + o for p, o in self.usage), "num_ctx": self.num_ctx}
+        return AgentResult(notes.actions, summary, rounds, round(time.monotonic() - t0, 2), fallback, tokens)
 
     def _loop(self, transcript: str, system: str, tools: dict, schemas: list, notes: Notes,
               think: bool) -> tuple[str, int]:

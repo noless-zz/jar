@@ -107,17 +107,25 @@ def child_bump(person) -> int:
     return 2 if 0 < age < 10 else 1
 
 
-def build_prompt(title: str, notes: str, person, known_keys: list[str] | None = None) -> str:
+def build_prompt(title: str, notes: str, person, known_keys: list[str] | None = None,
+                 areas: list[dict] | None = None) -> str:
     notes = (notes or "").strip()
+    extra = ""
+    if areas:
+        ids = [a["id"] for a in areas]
+        extra = ("\nAlso give area: which family area of responsibility this task belongs to, one of: "
+                 + "; ".join(f"{a['id']} = {a.get('description') or a.get('name')}" for a in areas)
+                 + '. "" if none fits (when unsure, ""). Add "area" to the JSON.')
+        extra += f" Allowed: {', '.join(ids)}."
     return PROMPT.format(
         title=(title or "").strip()[:200],
         notes=f"\nNotes: {notes[:300]}" if notes else "",
         categories=", ".join(CATEGORIES),
         keys=(f"\nKnown chore keys (reuse one if it is the same chore): {', '.join(known_keys[:15])}."
-              if known_keys else ""))
+              if known_keys else "")) + extra
 
 
-def parse(raw: str, title: str = "") -> dict | None:
+def parse(raw: str, title: str = "", area_ids: list[str] | None = None) -> dict | None:
     """The model's JSON as a clean rating, or None when it didn't give an effort."""
     try:
         data = json.loads(raw)
@@ -138,13 +146,17 @@ def parse(raw: str, title: str = "") -> dict | None:
     except (TypeError, ValueError):
         minutes = 0
     category = str(data.get("category") or "").strip().lower()
-    return {"effort": max(1, min(10, effort)), "minutes": max(0, min(600, minutes)),
-            "category": category if category in CATEGORIES else "other",
-            "chore_key": clean_key(data.get("chore_key"), title),
-            "reason": str(data.get("reason") or "").strip()[:120], "rated_by": "ai", "no_coins": False}
+    out = {"effort": max(1, min(10, effort)), "minutes": max(0, min(600, minutes)),
+           "category": category if category in CATEGORIES else "other",
+           "chore_key": clean_key(data.get("chore_key"), title),
+           "reason": str(data.get("reason") or "").strip()[:120], "rated_by": "ai", "no_coins": False}
+    area = str(data.get("area") or "").strip().lower()
+    if area_ids and area in area_ids:
+        out["area"] = area                    # taken off by TaskStore.rate (it goes on the task, not the rating)
+    return out
 
 
-def chat(ollama_url: str, model: str, prompt: str, num_ctx: int = 8192, keep_alive: str = "10m",
+def chat(ollama_url: str, model: str, prompt: str, num_ctx: int = 12288, keep_alive: str = "10m",
          timeout: float = 45) -> str:
     """One quick JSON answer. num_ctx and keep_alive match the memo agent's, so Ollama doesn't reload
     the model between a memo and a rating."""
@@ -162,16 +174,17 @@ def chat(ollama_url: str, model: str, prompt: str, num_ctx: int = 8192, keep_ali
 
 
 def rate(ollama_url: str, model: str, title: str, notes: str, person, known_keys: list[str] | None = None,
-         parent_effort: "callable | None" = None, num_ctx: int = 8192, keep_alive: str = "10m",
-         timeout: float = 45) -> dict:
+         parent_effort: "callable | None" = None, num_ctx: int = 12288, keep_alive: str = "10m",
+         timeout: float = 45, areas: list[dict] | None = None) -> dict:
     """The rating for a task, for the person who does it. Rules first (no model needed), then the model;
     a parent's earlier correction for the same chore key replaces the model's effort (the starting
     point next time). A child's chore gets the adult rating plus child_bump(). Raises RateError when the model is away or gives nothing usable."""
     ruled = rule_rating(title, "task", person)
     if ruled is not None:
         return ruled
-    raw = chat(ollama_url, model, build_prompt(title, notes, person, known_keys), num_ctx, keep_alive, timeout)
-    rating = parse(raw, title)
+    raw = chat(ollama_url, model, build_prompt(title, notes, person, known_keys, areas), num_ctx, keep_alive,
+               timeout)
+    rating = parse(raw, title, [a["id"] for a in areas or []])
     if rating is None:
         raise RateError("the AI didn't give an effort rating")
     bump = child_bump(person)
@@ -205,7 +218,7 @@ def lesson_fallback(note: str) -> int:
     return 1 if n < 20 else 2 if n < 45 else 3 if n < 130 else 4
 
 
-def rate_lesson(ollama_url: str, model: str, title: str, note: str, num_ctx: int = 8192,
+def rate_lesson(ollama_url: str, model: str, title: str, note: str, num_ctx: int = 12288,
                 keep_alive: str = "10m", timeout: float = 25) -> tuple[int, str]:
     """(effort 1-5, "ai" | "default") for a lesson note; falls back to length when the AI is away."""
     try:

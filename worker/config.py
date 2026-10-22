@@ -33,7 +33,7 @@ class Config:
     google_calendar_id: str
     about: str = ""          # [llm] about: who the owner is, one sentence for the model
     think: bool = True       # [llm] think: reason before calling tools (slower, better)
-    num_ctx: int = 8192      # [llm] num_ctx: context window; must hold instructions + tools + memo
+    num_ctx: int = 12288      # [llm] num_ctx: context window; must hold instructions + tools + memo
     port: int = 8080         # [server] port, for pairing links in messages
     token: str = ""          # [server] token = the admin's phone/pendant token
     family: dict | None = None   # [family] table (see worker/family.py)
@@ -79,7 +79,7 @@ def load(path: Path | None = None, root: Path = ROOT) -> Config:
         google_calendar_id=gg.get("calendar_id", "primary"),
         about=str(l.get("about", "")),
         think=bool(l.get("think", True)),
-        num_ctx=int(l.get("num_ctx", 8192)),
+        num_ctx=int(l.get("num_ctx", 12288)),
         port=int(s.get("port", 8080)),
         token=str(s.get("token", "")),
         family=raw.get("family", {}),

@@ -161,7 +161,14 @@ class Worker:
         notes.log_memo(m.meta.get("duration_ms", 0), m.meta.get("device_id", "?"), text,
                        m.meta.get("language", ""), r.summary)
         m.update(status="done", actions=r.actions, summary=r.summary, llm=self.cfg.llm_model,
-                 llm_seconds=r.seconds, llm_rounds=r.rounds, fallback=r.fallback, processed_at=_now(), error=None)
+                 llm_seconds=r.seconds, llm_rounds=r.rounds, fallback=r.fallback, processed_at=_now(), error=None,
+                 llm_tokens=r.tokens)
+        if r.tokens:
+            share = r.tokens["peak"] / r.tokens["num_ctx"]
+            (log.warning if share > 0.85 else log.info)(
+                "  context: peak %d of %d tokens (%d%%; prompt %d, model wrote %d)%s", r.tokens["peak"],
+                r.tokens["num_ctx"], round(share * 100), r.tokens["prompt"], r.tokens["output"],
+                " — near the limit: raise [llm] num_ctx" if share > 0.85 else "")
         log.info("  done in %.1f s: %s", r.seconds, "; ".join(a["summary"] for a in r.actions))
 
     def forget_events(self, actions: list[dict]) -> None:
@@ -214,13 +221,46 @@ class Worker:
         hb = {"pid": os.getpid(), "epoch": _t.time(), "at": _now(), "doing": doing,
               "whisper": f"{self.cfg.whisper_model} on {self.transcriber.device}",
               "llm": self.cfg.llm_model, "ollama_waiting": self._ollama_warned,
-              "ollama_problem": self._ollama_problem[:300], "accounts": self.account_status}
+              "ollama_problem": self._ollama_problem[:300], "accounts": self.account_status, "gpu": self.gpu_fit()}
         tmp = self.cfg.data_dir / "worker.json.tmp"
         try:
             tmp.write_text(json.dumps(hb), encoding="utf-8")
             os.replace(tmp, self.cfg.data_dir / "worker.json")
         except OSError:
             pass  # never let the heartbeat stop real work
+
+    def gpu_fit(self) -> str:
+        """How much of the loaded model Ollama has on the GPU ("100% GPU", "78% GPU / 22% CPU", "not loaded"),
+        from /api/ps, checked at most once a minute. A model that spills to the CPU gets slow: lower
+        [llm] num_ctx, or run tools/ollama-tuning.ps1."""
+        import json
+        import time as _t
+        import urllib.request
+        if _t.monotonic() - getattr(self, "_gpu_at", -1e9) < 60:
+            return getattr(self, "_gpu", "")
+        self._gpu_at, self._gpu = _t.monotonic(), "unknown"
+        try:
+            with urllib.request.urlopen(self.cfg.ollama_url + "/api/ps", timeout=3) as r:
+                models = json.loads(r.read().decode()).get("models", [])
+        except Exception:  # noqa: BLE001
+            return self._gpu
+        m = next((x for x in models if x.get("name", "").split(":")[0] == self.cfg.llm_model.split(":")[0]), None)
+        if m is None:
+            self._gpu = "not loaded"
+            return self._gpu
+        size, vram = int(m.get("size") or 0), int(m.get("size_vram") or 0)
+        pct = round(100 * vram / size) if size else 0
+        ctx = m.get("context_length")
+        self._gpu = (f"{pct}% GPU" if pct >= 100 else f"{pct}% GPU / {100 - pct}% CPU") + \
+            f", {size / 2**30:.1f} GB" + (f", ctx {ctx}" if ctx else "")
+        if pct < 100 and not getattr(self, "_gpu_warned", False):
+            log.warning("Ollama: %s — part of the model runs on the CPU (slower). Lower [llm] num_ctx or run "
+                        "tools/ollama-tuning.ps1", self._gpu)
+            self._gpu_warned = True
+        elif pct >= 100 and not getattr(self, "_gpu_logged", False):
+            log.info("Ollama: %s", self._gpu)
+            self._gpu_logged = True
+        return self._gpu
 
     def retry_failed(self) -> int:
         n = 0
@@ -240,21 +280,24 @@ class Worker:
             return 0
         from . import effort
         n = 0
+        areas = self.tasks.areas()
         for t in self.tasks.unrated(limit):
             who = self.family.get(t.get("assignee")) or self.family.admin
+            todo = [] if t.get("area") else areas          # the AI picks an area only when no keyword did
             self.heartbeat("rating tasks")
             try:
                 rating = effort.rate(self.cfg.ollama_url, self.cfg.llm_model, t.get("title", ""), t.get("notes", ""),
                                      who, self.points.known_keys(), self.points.parent_effort,
-                                     self.cfg.num_ctx, self.cfg.keep_alive)
+                                     self.cfg.num_ctx, self.cfg.keep_alive, areas=todo)
             except effort.RateError as e:
                 log.warning("  can't rate tasks right now: %s", e)
                 self._rate_retry_at = time.time() + 120
                 break
             if self.tasks.rate(t["id"], rating):
                 n += 1
-                log.info("  rated “%s” for %s: effort %s (%s, %s min) — %s", t.get("title", "")[:40], who.id,
-                         rating.get("effort"), rating.get("chore_key"), rating.get("minutes"), rating.get("reason"))
+                log.info("  rated “%s” for %s: effort %s (%s, %s min) — %s%s", t.get("title", "")[:40], who.id,
+                         rating.get("effort"), rating.get("chore_key"), rating.get("minutes"), rating.get("reason"),
+                         f" · area {rating['area']}" if rating.get("area") else "")
         return n
 
     def maybe_eval(self) -> None:

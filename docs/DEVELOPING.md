@@ -28,7 +28,7 @@
   repeats 1–3). Report in `data/eval/report.md`; last result 46/46 (13 memo + 10 rating cases, 2 repeats).
 
 ## Hard-won lessons
-- Prompt + tool schemas must stay well under `num_ctx` (8192): past it Ollama silently drops the memo.
+- Prompt + tool schemas must stay well under `num_ctx` (12288): past it Ollama silently drops the memo.
   `tests/test_worker.py::ContextBudget` guards this. Never quote AI-test memos as prompt examples — the 9B
   model copies them.
 - The PC reads Tailscale output as UTF-8; address discovery must never fail as a whole.

@@ -45,6 +45,12 @@ public final class Task {
     public String repeat = "";
     /** A declined Jar idea that repeats an earlier one: that idea's id. */
     public String duplicateOf = "";
+    /** The area of responsibility it belongs to ("" = none), and its owner when the app should offer the move. */
+    public String area = "";
+    public String areaSuggest = "";
+    /** A move to the area's owner waiting for their (or a parent's) OK: to whom, and who asked. "" = none. */
+    public String handoverTo = "";
+    public String handoverBy = "";
 
     public static final class Note {
         public int id;
@@ -109,6 +115,15 @@ public final class Task {
     /** An idea for Jar itself: the admin accepts it (coins to whoever suggested it), declines it or ships it. */
     public boolean isIdea() {
         return "idea".equals(kind);
+    }
+
+    public boolean hasHandover() {
+        return handoverTo != null && !handoverTo.isEmpty();
+    }
+
+    /** May {@code me} approve the waiting move: its target, or a parent who didn't ask for it. */
+    public boolean mayApproveHandover(String me, boolean iAmParent) {
+        return hasHandover() && (me.equals(handoverTo) || (iAmParent && !me.equals(handoverBy)));
     }
 
     /** One occurrence of a recurring task (משימה רב פעמית). */

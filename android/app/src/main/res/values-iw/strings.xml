@@ -404,4 +404,29 @@
         <item>ו׳</item>
         <item>ש׳</item>
     </string-array>
+
+    <!-- 1.4.0: areas of responsibility -->
+    <string name="menu_areas">🧭 תחומי אחריות</string>
+    <string name="areas_none">עוד אין תחומי אחריות.</string>
+    <string name="areas_add">＋ תחום חדש</string>
+    <string name="areas_edit">עריכת שם ומילים</string>
+    <string name="areas_change_owner">מי אחראי?</string>
+    <string name="areas_owner">מי אחראי על התחום?</string>
+    <string name="areas_delete">מחיקת התחום</string>
+    <string name="areas_delete_confirm">למחוק את %1$s? המשימות נשארות, רק בלי תחום.</string>
+    <string name="area_name">תחום</string>
+    <string name="area_emoji">אימוג׳י</string>
+    <string name="area_keywords">מילים ששייכות משימה לתחום</string>
+    <string name="area_keywords_hint">פסיק בין מילים. מספיק חלק ממילה (רצפ מוצא רצפה ורצפות). כשאף מילה לא מתאימה, ה-AI מחליט.</string>
+    <string name="meta_area_suggest">%1$s: התחום של %2$s</string>
+    <string name="meta_handover_waiting">⏳ מחכה ש%1$s יאשר/תאשר</string>
+    <string name="meta_handover_to_you">↪ %1$s מבקש/ת להעביר אליך</string>
+    <string name="handover_ask">↪ להעביר ל%1$s (%2$s)</string>
+    <string name="handover_keep">להשאיר אצלי</string>
+    <string name="handover_accept">✅ מאשר/ת, עובר ל%1$s</string>
+    <string name="handover_decline">✖ לא עכשיו, נשאר</string>
+    <string name="handover_cancel">ביטול בקשת ההעברה</string>
+    <string name="handover_accept_short">לקחת</string>
+    <string name="handover_decline_short">לא עכשיו</string>
+    <string name="notif_handover">%1$s מבקש/ת להעביר את זה לתחום שלך</string>
 </resources>

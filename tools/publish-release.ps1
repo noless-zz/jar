@@ -5,8 +5,9 @@
   from the menu: Check for updates).
 
   Usage:  .\tools\publish-release.ps1 0.4.0      (or leave out the version to be asked)
+        .\tools\publish-release.ps1 0.4.0 -Yes (commit any open changes without asking)
 #>
-param([string]$Version = "")
+param([string]$Version = "", [switch]$Yes)
 $ErrorActionPreference = "Continue"
 Set-Location (Join-Path $PSScriptRoot "..")
 
@@ -27,7 +28,7 @@ $dirty = & git status --porcelain
 if ($dirty) {
     Write-Host "You have changes that are not committed yet:" -ForegroundColor Yellow
     $dirty | ForEach-Object { Write-Host "  $_" }
-    $ans = Read-Host "Commit them all and publish $tag? (y/n)"
+    $ans = if ($Yes) { "y" } else { Read-Host "Commit them all and publish $tag? (y/n)" }
     if ($ans -ne "y") { exit 1 }
     & git add -A
     & git commit -m "Changes for $tag"

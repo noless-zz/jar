@@ -2,6 +2,7 @@ package com.noam.jar;
 
 import android.content.Context;
 
+import com.noam.jar.core.Area;
 import com.noam.jar.core.Task;
 import com.noam.jar.core.TaskLists;
 
@@ -49,6 +50,21 @@ final class TaskFormat {
         return at > 0 && at < System.currentTimeMillis();
     }
 
+    /** Areas of responsibility by id, from the last sync (refreshed by the tasks screen). */
+    private static Map<String, Area> areas = new java.util.HashMap<>();
+
+    static void setAreas(List<Area> list) {
+        Map<String, Area> m = new java.util.HashMap<>();
+        for (Area a : list) m.put(a.id, a);
+        areas = m;
+    }
+
+    static Area area(Context c, String id) {
+        if (id == null || id.isEmpty()) return null;
+        if (!areas.containsKey(id)) setAreas(new TaskCache(c).areas());
+        return areas.get(id);
+    }
+
     /** "for Yoni · from Dana · tomorrow 18:00 · snoozed to 20:00 · waiting for a parent's OK". */
     static String meta(Context c, Task t, String me, Map<String, String> names) {
         List<String> parts = new ArrayList<>();
@@ -79,6 +95,15 @@ final class TaskFormat {
             parts.add(c.getString(R.string.meta_from, TaskLists.name(names, t.createdBy)));
         if (t.due != null) parts.add(when(c, t.due));
         if (t.isRecurring() && !t.repeat.isEmpty()) parts.add("🔁 " + t.repeat);
+        Area area = area(c, t.area);
+        if (t.hasHandover()) {
+            parts.add(me.equals(t.handoverTo) ? c.getString(R.string.meta_handover_to_you, TaskLists.name(names, t.handoverBy))
+                    : c.getString(R.string.meta_handover_waiting, TaskLists.name(names, t.handoverTo)));
+        } else if (!t.areaSuggest.isEmpty() && area != null) {
+            parts.add(c.getString(R.string.meta_area_suggest, area.label(), TaskLists.name(names, t.areaSuggest)));
+        } else if (area != null) {
+            parts.add(area.label());
+        }
         if (t.isOpen() && t.snoozedUntil != null) parts.add(c.getString(R.string.meta_snoozed, when(c, t.snoozedUntil)));
         if (t.isRequested()) parts.add(c.getString(R.string.meta_waiting));
         if (t.waitingOn(me)) parts.add(0, c.getString(R.string.meta_question_for_you));

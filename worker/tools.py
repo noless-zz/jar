@@ -296,6 +296,11 @@ class Notes:
             rule = r.text()
         if d is not None and r.freq in ("weekly", "monthly") and not (r.days or r.dom):
             rule = recurring.settle(r, d).text()           # "every week" said with a day: that weekday
+        same = next((x for x in self.store._read()["series"]
+                     if x.get("memo_id") == self.ctx.memo_id and x.get("status") != "ended"
+                     and x.get("owners") == [p.id for p in people] and x.get("rule") == rule), None)
+        if same is not None:                 # the model asked twice (once per day said): one series is enough
+            return f"ok: this memo already made that recurring task (“{same['title']}”, {same['rule']}); nothing more to do"
         try:
             t = self.store.add_series(self.speaker, title, people, rule, tm or "", notes, self.ctx.memo_id,
                                       mode="all" if together == "all" else "any", rotate=take_turns,
@@ -352,6 +357,9 @@ class Notes:
                  "in the morning summary that day" if d else "no time given: in the morning summary")
         if who.id == self.speaker.id:
             summary = f"task “{title}”{when} ({alert})"
+            if t.get("area_suggest") and self.family.get(t["area_suggest"]):
+                summary += (f"; it's in {self.family.get(t['area_suggest']).name}'s area of responsibility: the app "
+                            "offers to move it to them (they or a parent approve)")
         elif t["status"] == "requested":
             summary = f"request to {who.name}: “{title}”{when} (waits for a parent's OK)"
         else:
@@ -446,7 +454,7 @@ class Notes:
         return "matching open tasks:\n" + "\n".join(lines)
 
     def update_task(self, task_id: str, title: str = "", due_date: str = "", due_time: str = "",
-                    for_person: str = "", status: str = "", repeat: str = "") -> str:
+                    for_person: str = "", status: str = "", repeat: str = "", take_turns: bool = False) -> str:
         """Change, move, finish or cancel an existing task (id from find_tasks)."""
         from .taskstore import TaskError
         if self.store is None:
@@ -460,14 +468,36 @@ class Notes:
                 st = "stop_repeating"            # "תפסיק להזכיר…", "כבר לא צריך": the whole recurring task
         if st in ("stop_repeating", "stop") or (repeat or "").strip():
             t = next((x for x in self.store.snapshot(self.speaker)["tasks"] if x["id"] == task_id), None)
-            if t is None or not t.get("series_id"):
-                raise ToolError("that task doesn't repeat (use an id of a 🔁 task from find_tasks)")
+            if t is None:
+                raise ToolError("no such task (use an id from find_tasks)")
+            rule = repeat.strip()
+            if rule:
+                from . import recurring
+                try:
+                    r = recurring.parse(rule)
+                except recurring.RuleError as e:
+                    raise ToolError(str(e)) from e
+                said = spoken_weekdays(self.transcript)
+                if r.freq == "weekly" and said and set(r.days) != said:
+                    rule = recurring.Rule("weekly", days=tuple(sorted(said))).text()   # the days as said
+            if not t.get("series_id"):
+                if st in ("stop_repeating", "stop") or not rule:
+                    raise ToolError("that task doesn't repeat (use an id of a 🔁 task from find_tasks)")
+                try:                                   # a one-time task from now on comes back
+                    out = self.store.make_recurring(self.speaker, t["id"], rule, _time(due_time) or "",
+                                                    bool(take_turns))
+                except TaskError as e:
+                    raise ToolError(str(e)) from e
+                summary = f"task “{t['title']}” now repeats 🔁 {out['series']['label_en']}, next {out['series']['next_due']}"
+                self.actions.append({"tool": "update_task", "summary": summary, "task_id": t["id"],
+                                     "series_id": out["series_id"], "file": "Tasks.md"})
+                return f"ok: {summary}"
             try:
                 if st in ("stop_repeating", "stop"):
                     self.store.series_act(self.speaker, t["series_id"], "stop")
                     summary = f"recurring task “{t['title']}” stopped"
                 else:
-                    f = {"rule": repeat.strip()}
+                    f = {"rule": rule}
                     if _time(due_time):
                         f["time"] = _time(due_time)
                     ser = self.store.series_act(self.speaker, t["series_id"], "edit", f)
@@ -882,7 +912,9 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   due_time=string("new time HH:MM, or empty"),
                   for_person=WHO,
                   status={"type": "string", "enum": ["", "done", "cancel", "reopen", "stop_repeating"],
-                          "description": "done = finished; cancel = no longer needed; empty = no change"}),
+                          "description": "done = finished; cancel = no longer needed; empty = no change"},
+                  repeat=string("make it repeat / change its schedule (as add_task repeat); else empty"),
+                  take_turns={"type": "boolean", "description": "repeat: its people take turns"}),
               "required": ["task_id"]},
              "internal", notes.update_task),
         Tool("note_on_task", "Add a note to an existing task (id from find_tasks), or ask about it: ask=true sends "

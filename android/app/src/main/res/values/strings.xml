@@ -397,4 +397,29 @@
         <item>Fri</item>
         <item>Sat</item>
     </string-array>
+
+    <!-- 1.4.0: areas of responsibility -->
+    <string name="menu_areas">🧭 Areas of responsibility</string>
+    <string name="areas_none">No areas yet.</string>
+    <string name="areas_add">＋ New area</string>
+    <string name="areas_edit">Edit name and words</string>
+    <string name="areas_change_owner">Who is in charge?</string>
+    <string name="areas_owner">Who is in charge of it?</string>
+    <string name="areas_delete">Delete the area</string>
+    <string name="areas_delete_confirm">Delete %1$s? Its tasks stay; they just lose the area.</string>
+    <string name="area_name">Area</string>
+    <string name="area_emoji">Emoji</string>
+    <string name="area_keywords">Words that put a task in it</string>
+    <string name="area_keywords_hint">Comma between words. Part of a word is enough (רצפ finds רצפה and רצפות). When no word fits, the AI decides.</string>
+    <string name="meta_area_suggest">%1$s is %2$s\'s area</string>
+    <string name="meta_handover_waiting">⏳ waiting for %1$s to take it</string>
+    <string name="meta_handover_to_you">↪ %1$s asks to move it to you</string>
+    <string name="handover_ask">↪ Move it to %1$s (%2$s)</string>
+    <string name="handover_keep">Keep it with me</string>
+    <string name="handover_accept">✅ OK, it goes to %1$s</string>
+    <string name="handover_decline">✖ Not now, it stays</string>
+    <string name="handover_cancel">Cancel the move</string>
+    <string name="handover_accept_short">Take it</string>
+    <string name="handover_decline_short">Not now</string>
+    <string name="notif_handover">%1$s asks to move this to your area</string>
 </resources>

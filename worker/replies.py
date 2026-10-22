@@ -73,9 +73,10 @@ def parse(raw: str, n: int = 3) -> list[str]:
 
 
 def suggest(ollama_url: str, model: str, task: dict, me: str, names: dict[str, str], n: int = 3,
-            timeout: float = 60) -> list[str]:
-    body = json.dumps({"model": model, "stream": False, "think": False, "format": "json",
-                       "options": {"temperature": 0.7},
+            timeout: float = 60, num_ctx: int = 12288, keep_alive: str = "10m") -> list[str]:
+    # num_ctx / keep_alive match the memo agent's: a different context size makes Ollama reload the model.
+    body = json.dumps({"model": model, "stream": False, "think": False, "format": "json", "keep_alive": keep_alive,
+                       "options": {"temperature": 0.7, "num_ctx": num_ctx},
                        "messages": [{"role": "user", "content": build_prompt(task, me, names, n)}]}).encode()
     req = urllib.request.Request(ollama_url.rstrip("/") + "/api/chat", data=body,
                                  headers={"Content-Type": "application/json"})

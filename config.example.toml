@@ -30,8 +30,10 @@ keep_alive = "10m"
 max_rounds = 6
 # Let the model reason before choosing tools: slower (some seconds per memo), much better decisions.
 think = true
-# Context window (tokens). Jar's instructions + tool list need ~5000; Ollama's default 4096 is too small.
-num_ctx = 8192
+# Context window (tokens): instructions + tool list (~4-6k) + the memo + the model's thinking.
+# Bigger costs VRAM; with tools/ollama-tuning.ps1 (flash attention + q8_0 cache) 12288 fits an 8 GB card.
+# Each memo logs "context: peak X of N"; data/worker.json "gpu" says whether the model fits on the GPU.
+num_ctx = 12288
 # One sentence about you, so the model files things sensibly (optional):
 # about = "I'm a teacher; 'school' means my school's Google account."
 

@@ -22,6 +22,10 @@ when the next one is made is quietly marked "missed". See worker/recurring.py fo
     series: id, title, notes, created_by, owners, mode, rotate, turn, rule, time, after_done, approved,
             status (active | paused | ended), next_due (YYYY-MM-DD), current (task id), points, memo_id
 
+Areas of responsibility (worker/areas.py): data["areas"]; a task gets "area" (matched by its words, or by the
+AI rating), "area_suggest" (the area's owner, when the task stays with someone else) and, while a move waits
+for the owner's or a parent's OK, "handover" {to, from, by, area, at}.
+
 Jar ideas: kind "idea", for the admin, status requested (new) -> open (accepted: the one who suggested it
 gets idea coins) | declined -> done (shipped: a small bonus). Nobody earns coins for building an idea.
 """
@@ -37,13 +41,15 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from . import areas as areas_mod
 from . import effort as effort_mod
 from . import recurring
 from .family import Family, Person
 from .filelock import locked
 
 WHEN_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$")
-ACTIONS = ("done", "reopen", "snooze", "accept", "decline", "delete", "edit")
+ACTIONS = ("done", "reopen", "snooze", "accept", "decline", "delete", "edit",
+           "handover", "handover_accept", "handover_decline", "dismiss_suggest")
 SERIES_ACTIONS = ("stop", "pause", "resume", "edit")
 LIVE = ("open", "requested")
 
@@ -127,6 +133,7 @@ class TaskStore:
         except FileNotFoundError:
             data = {"rev": 0, "tasks": []}
         data.setdefault("series", [])
+        data.setdefault("areas", [])
         return data
 
     def _write(self, data: dict) -> None:
@@ -145,6 +152,9 @@ class TaskStore:
     def visible(self, t: dict, p: Person) -> bool:
         if t.get("kind") == "idea":
             return True                                  # the family sees every idea and what became of it
+        ho = t.get("handover") or {}
+        if ho and (p.id == ho.get("to") or p.is_parent):
+            return True                                  # whoever may approve the move sees it
         ids = owners(t)
         if p.id == t.get("created_by") or p.id in ids:
             return True
@@ -170,7 +180,7 @@ class TaskStore:
         tasks = self._decorate(tasks, p)
         series = [self._series_out(x) for x in data["series"]
                   if x.get("status") != "ended" and self._series_visible(x, p)]
-        return {"rev": data.get("rev", 0), "tasks": tasks, "series": series}
+        return {"rev": data.get("rev", 0), "tasks": tasks, "series": series, "areas": data["areas"]}
 
     def _decorate(self, tasks: list[dict], viewer: Person | None = None) -> list[dict]:
         """Copies of the tasks with "coins": what a done task paid, or what an open one will pay
@@ -226,6 +236,8 @@ class TaskStore:
             t["points"] = ruled                      # no model needed: no coins, or a parent's work day
         with self._locked():
             data = self._read()
+            if kind == "task":
+                self._tag_area(data, t)
             data["tasks"].append(t)
             self._write(data)
         return t
@@ -241,6 +253,11 @@ class TaskStore:
             if t is None or not self.visible(t, actor):
                 raise TaskError(404, "no such task")
             idea = t.get("kind") == "idea"
+            if action in ("handover", "handover_accept", "handover_decline", "dismiss_suggest"):
+                self._handover(data, t, actor, action, fields or {})
+                t["updated_at"] = _now()
+                self._write(data)
+                return t
             if idea and action in ("accept", "decline", "done", "reopen") and not actor.admin:
                 raise TaskError(403, f"only {self.family.admin.name} decides about Jar ideas")
             if action in ("accept", "decline"):
@@ -435,6 +452,11 @@ class TaskStore:
             t = next((x for x in data["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
             if t is None or t.get("points") is not None:
                 return False
+            rating = dict(rating)
+            area = rating.pop("area", None)
+            if area and not t.get("area") and any(a["id"] == area for a in data["areas"]):
+                t["area"] = area                          # no keyword matched: the AI's choice
+                self._suggest(data, t)
             t["points"] = rating
             s = self._series_of(data, t)
             if s is not None and not s.get("points"):
@@ -501,7 +523,7 @@ class TaskStore:
 
     def add_series(self, creator: Person, title: str, people: list[Person], rule: str, time: str = "",
                    notes: str = "", memo_id: str | None = None, mode: str = "any", rotate: bool = False,
-                   after_done: bool = False, now: datetime | None = None) -> dict:
+                   after_done: bool = False, now: datetime | None = None, area: str | None = None) -> dict:
         """A recurring task. Its first occurrence is made at once (so it shows in the list), the rest on
         their day. Returns that first occurrence, with "series" (the rule as the app shows it)."""
         title = (title or "").strip()
@@ -530,6 +552,7 @@ class TaskStore:
             s["points"] = ruled
         with self._locked():
             data = self._read()
+            s["area"] = area or areas_mod.match(f"{title} {notes}", data["areas"])
             data["series"].append(s)
             t = self._spawn(data, s, start)
             s["next_due"] = None if after_done else recurring.after(r, start).isoformat()
@@ -572,6 +595,7 @@ class TaskStore:
                  "status": "active", "next_due": recurring.after(r, start).isoformat(), "current": t["id"],
                  "points": dict(t["points"]) if t.get("points") else None, "memo_id": t.get("memo_id"),
                  "created_at": _now(), "updated_at": _now()}
+            s["area"] = t.get("area")
             if s["rotate"]:
                 _set_owners(t, [self.family.get(ids[0])], "any")   # this time: the first one's turn
             data["series"].append(s)
@@ -599,6 +623,9 @@ class TaskStore:
         _set_owners(t, people, s.get("mode"))
         if s.get("points"):
             t["points"] = dict(s["points"])
+        if s.get("area"):
+            t["area"] = s["area"]
+            self._suggest(data, t)
         data["tasks"].append(t)
         s["current"], s["updated_at"] = t["id"], _now()
         return t
@@ -714,6 +741,159 @@ class TaskStore:
             if ids and not s.get("rotate"):
                 _set_owners(live, self.resolve_people(s["owners"]), s.get("mode"))
             live["updated_at"] = _now()
+
+
+    # ---- areas of responsibility ----
+    def areas(self) -> list[dict]:
+        return self._read()["areas"]
+
+    @staticmethod
+    def _area(data: dict, aid: str | None) -> dict | None:
+        return next((a for a in data["areas"] if a["id"] == aid), None) if aid else None
+
+    def _tag_area(self, data: dict, t: dict) -> None:
+        if not t.get("area"):
+            aid = areas_mod.match(f"{t.get('title', '')} {t.get('notes', '')}", data["areas"])
+            if aid:
+                t["area"] = aid
+        self._suggest(data, t)
+
+    def _suggest(self, data: dict, t: dict) -> None:
+        """A task someone gave themselves that belongs to someone else's area: suggest moving it to them."""
+        a = self._area(data, t.get("area"))
+        ids = owners(t)
+        owner = (a or {}).get("owner")
+        if (a is None or not owner or self.family.get(owner) is None or t.get("handover")
+                or t.get("suggest_dismissed") or t.get("status") not in LIVE or len(ids) != 1
+                or ids[0] == owner or ids[0] != t.get("created_by")):
+            t.pop("area_suggest", None)
+            return
+        t["area_suggest"] = owner
+
+    def _may_approve(self, t: dict, actor: Person) -> bool:
+        ho = t.get("handover") or {}
+        return actor.id == ho.get("to") or (actor.is_parent and actor.id != ho.get("by")) or \
+            (actor.admin and actor.id != ho.get("by"))
+
+    def _handover(self, data: dict, t: dict, actor: Person, action: str, f: dict) -> None:
+        """Moving a task to the area's owner: asked by whoever does it (or made it), approved by that owner or
+        a parent (not the one who asked). "dismiss_suggest" hides the suggestion for good."""
+        ids = owners(t)
+        if action == "dismiss_suggest":
+            if actor.id not in ids and actor.id != t.get("created_by"):
+                raise TaskError(403, "not your task")
+            t.pop("area_suggest", None)
+            t["suggest_dismissed"] = True
+            return
+        if action == "handover":
+            if t.get("status") not in LIVE or t.get("kind", "task") != "task":
+                raise TaskError(409, "only an open task can move")
+            if actor.id not in ids and actor.id != t.get("created_by") and not actor.admin:
+                raise TaskError(403, "only whoever does it (or made it) can ask to move it")
+            to = str(f.get("to") or t.get("area_suggest") or "")
+            target = self.family.get(to)
+            if target is None:
+                raise TaskError(400, "move it to whom?")
+            if ids == [to]:
+                raise TaskError(409, "it is theirs already")
+            t["handover"] = {"to": to, "from": ids[0] if ids else "", "by": actor.id, "area": t.get("area"),
+                             "at": _now()}
+            t.pop("area_suggest", None)
+            if actor.id == to:                            # the owner takes it themselves: nothing to approve
+                action = "handover_accept"
+            else:
+                return
+        ho = t.get("handover")
+        if not ho:
+            raise TaskError(409, "no move is waiting on this task")
+        if action == "handover_decline":
+            if not self._may_approve(t, actor) and actor.id != ho.get("by"):
+                raise TaskError(403, "the owner of the area or a parent decides")
+            t.pop("handover", None)
+            t["suggest_dismissed"] = True
+            return
+        if not self._may_approve(t, actor) and actor.id != ho.get("to"):
+            raise TaskError(403, "the owner of the area or a parent approves the move")
+        target = self.family.get(ho["to"])
+        before = ids[0] if ids else ""
+        _set_owners(t, [target], "any")
+        t.pop("handover", None)
+        t.pop("area_suggest", None)
+        if before != target.id and (t.get("points") or {}).get("rated_by") in ("ai", "default"):
+            t.pop("points")                               # rated for someone else: rate again
+            ruled = effort_mod.rule_rating(t["title"], t.get("kind", "task"), target)
+            if ruled is not None:
+                t["points"] = ruled
+
+    def area_act(self, actor: Person, action: str, area_id: str = "", fields: dict | None = None) -> dict:
+        """Parents manage the areas: add {name, emoji, owner, description, keywords}, edit (the same fields;
+        a new owner also takes over the area's recurring tasks and their open occurrences), delete."""
+        if not actor.is_parent:
+            raise TaskError(403, "parents manage the areas")
+        f = fields or {}
+        with self._locked():
+            data = self._read()
+            if action == "add":
+                name = str(f.get("name") or "").strip()[:40]
+                if not name:
+                    raise TaskError(400, "the area needs a name")
+                owner = self.family.get(str(f.get("owner") or ""))
+                if owner is None:
+                    raise TaskError(400, "who is in charge of it?")
+                a = {"id": areas_mod.slug(str(f.get("id") or name), {x["id"] for x in data["areas"]}),
+                     "name": name, "emoji": str(f.get("emoji") or "📌").strip()[:4], "owner": owner.id,
+                     "description": str(f.get("description") or name).strip()[:300],
+                     "keywords": areas_mod.clean_keywords(f.get("keywords")) or [name]}
+                data["areas"].append(a)
+                for t in data["tasks"]:                   # open tasks that match it now
+                    if t.get("status") in LIVE and t.get("kind", "task") == "task" and not t.get("area"):
+                        self._tag_area(data, t)
+            else:
+                a = self._area(data, area_id)
+                if a is None:
+                    raise TaskError(404, "no such area")
+                if action == "delete":
+                    data["areas"].remove(a)
+                    for t in data["tasks"]:
+                        if t.get("area") == a["id"]:
+                            t.pop("area", None)
+                            t.pop("area_suggest", None)
+                    for x in data["series"]:
+                        if x.get("area") == a["id"]:
+                            x["area"] = None
+                elif action == "edit":
+                    if str(f.get("name") or "").strip():
+                        a["name"] = str(f["name"]).strip()[:40]
+                    if f.get("emoji"):
+                        a["emoji"] = str(f["emoji"]).strip()[:4]
+                    if "description" in f:
+                        a["description"] = str(f["description"] or a["name"]).strip()[:300]
+                    if "keywords" in f:
+                        a["keywords"] = areas_mod.clean_keywords(f["keywords"]) or [a["name"]]
+                    if f.get("owner") and f["owner"] != a["owner"]:
+                        new = self.family.get(str(f["owner"]))
+                        if new is None:
+                            raise TaskError(400, f"no such family member: {f['owner']}")
+                        self._move_area(data, a, new)
+                else:
+                    raise TaskError(400, f"unknown action {action}")
+            self._write(data)
+            return a
+
+    def _move_area(self, data: dict, a: dict, new: Person) -> None:
+        """A new owner for an area: its single-owner recurring tasks (and their open occurrence) move to them."""
+        old = a["owner"]
+        a["owner"] = new.id
+        for s in data["series"]:
+            if s.get("area") == a["id"] and s.get("status") != "ended" and s.get("owners") == [old]:
+                s["owners"], s["updated_at"] = [new.id], _now()
+                cur = next((t for t in data["tasks"] if t["id"] == s.get("current")), None)
+                if cur is not None and cur.get("status") in LIVE and owners(cur) == [old]:
+                    _set_owners(cur, [new], "any")
+                    cur["updated_at"] = _now()
+        for t in data["tasks"]:                           # suggestions follow the new owner
+            if t.get("area") == a["id"]:
+                self._suggest(data, t)
 
     # ---- Jar ideas ----
     def add_idea(self, creator: Person, title: str, notes: str = "", memo_id: str | None = None) -> dict:

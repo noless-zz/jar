@@ -454,6 +454,29 @@ def task_repeat(task_id: str, request: Request, body: dict = Body(...), authoriz
         _task_error(e)
 
 
+@app.post("/v1/areas", status_code=201)
+def new_area(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+             x_device_id: str = Header("")):
+    """A parent adds an area of responsibility: {"name", "emoji", "owner", "description", "keywords": [...]}."""
+    p = check_auth(authorization, request, x_device_id)
+    try:
+        return TASKS.area_act(p, "add", fields=body)
+    except TaskError as e:
+        _task_error(e)
+
+
+@app.post("/v1/areas/{area_id}/{action}")
+def area_action(area_id: str, action: str, request: Request, body: dict | None = Body(None),
+                authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """edit ({"name", "emoji", "owner", "description", "keywords"}; a new owner takes over the area's recurring
+    tasks) | delete. Parents only."""
+    p = check_auth(authorization, request, x_device_id)
+    try:
+        return TASKS.area_act(p, action, area_id, body or {})
+    except TaskError as e:
+        _task_error(e)
+
+
 @app.post("/v1/series/{series_id}/{action}")
 def series_action(series_id: str, action: str, request: Request, body: dict | None = Body(None),
                   authorization: str | None = Header(None), x_device_id: str = Header("")):
@@ -502,7 +525,9 @@ def task_suggest(task_id: str, request: Request, authorization: str | None = Hea
     llm = _raw.get("llm", {})
     names = {x.id: x.name for x in FAMILY.people.values()}
     try:
-        return {"replies": replies.suggest(_ollama_url(), llm.get("model", "qwen3.5:9b"), t, p.id, names)}
+        return {"replies": replies.suggest(_ollama_url(), llm.get("model", "qwen3.5:9b"), t, p.id, names,
+                                           num_ctx=int(llm.get("num_ctx", 12288)),
+                                           keep_alive=str(llm.get("keep_alive", "10m")))}
     except replies.SuggestError as e:
         raise HTTPException(503, str(e)) from e
 
@@ -553,7 +578,7 @@ def new_lesson(request: Request, body: dict = Body(...), authorization: str | No
         raise HTTPException(400, "write a sentence about what you learned")
     llm = _raw.get("llm", {})
     rated, by = effort.rate_lesson(_ollama_url(), llm.get("model", "qwen3.5:9b"), str(body.get("title", "")), note,
-                                   int(llm.get("num_ctx", 8192)), str(llm.get("keep_alive", "10m")))
+                                   int(llm.get("num_ctx", 12288)), str(llm.get("keep_alive", "10m")))
     try:
         return TASKS.add_lesson(p, str(body.get("title", "")), note, rated, by)
     except TaskError as e:

@@ -100,6 +100,11 @@ public final class TaskLists {
         return out;
     }
 
+    /** "h:<task>:<to>" in {@code seen}: told about this move already. */
+    public static String handoverKey(Task t) {
+        return "h:" + t.id + ":" + t.handoverTo;
+    }
+
     public static String noteKey(Task t) {
         Task.Note n = t.lastNote();
         return "n:" + t.id + ":" + (n == null ? 0 : n.id);
@@ -137,8 +142,12 @@ public final class TaskLists {
     /** Requests from a child that a parent has to approve (not ones I made myself). */
     public static List<Task> needMyOk(List<Task> all, String me, boolean iAmParent) {
         List<Task> out = new ArrayList<>();
-        if (!iAmParent) return out;
+        if (!iAmParent) {                     // a child approves only moves into their own area
+            for (Task t : all) if (t.mayApproveHandover(me, false)) out.add(t);
+            return out;
+        }
         for (Task t : all) if (t.isRequested() && !t.isIdea() && !me.equals(t.createdBy)) out.add(t);
+        for (Task t : all) if (t.mayApproveHandover(me, iAmParent) && !out.contains(t)) out.add(t);
         Collections.sort(out, ORDER);
         return out;
     }
@@ -256,6 +265,10 @@ public final class TaskLists {
                                   java.util.Set<String> seen) {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
+            if (t.hasHandover() && me.equals(t.handoverTo)) {
+                if (!seen.contains(handoverKey(t))) out.add(t);     // asked to take a task into my area
+                continue;
+            }
             if (seen.contains(t.id)) continue;
             if (t.isIdea()) {
                 if (iAmAdmin && t.isRequested() && !me.equals(t.createdBy)) out.add(t);
