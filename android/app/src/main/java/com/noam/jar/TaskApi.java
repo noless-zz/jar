@@ -84,6 +84,18 @@ public final class TaskApi {
         return call(prefs, "POST", "/v1/tasks", body);
     }
 
+    /** Make an existing task repeat; it stays as the first time. */
+    public static JSONObject makeRecurring(Prefs prefs, String taskId, String rule, String time, boolean rotate)
+            throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("rule", rule).put("time", time == null ? "" : time).put("rotate", rotate);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/tasks/" + taskId + "/repeat", body);
+    }
+
     /** A Jar idea, for the admin to accept or decline. */
     public static JSONObject createIdea(Prefs prefs, String title, String notes) throws IOException {
         JSONObject body = new JSONObject();

@@ -387,6 +387,7 @@
     <string name="idea_duplicate">already suggested</string>
     <string name="idea_failed">Couldn\'t send the idea: %1$s</string>
     <string name="notif_idea">A new idea for Jar from %1$s</string>
+    <string name="make_repeat">🔁 Make it repeat</string>
     <string-array name="week_days_short">
         <item>Sun</item>
         <item>Mon</item>

@@ -442,6 +442,18 @@ def new_task(request: Request, body: dict = Body(...), authorization: str | None
         _task_error(e)
 
 
+@app.post("/v1/tasks/{task_id}/repeat")
+def task_repeat(task_id: str, request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+                x_device_id: str = Header("")):
+    """Make an existing task repeat: {"rule": "weekly:sun,wed", "time": "20:00", "rotate": false}."""
+    p = check_auth(authorization, request, x_device_id)
+    try:
+        return TASKS.make_recurring(p, task_id, str(body.get("rule") or ""), str(body.get("time") or ""),
+                                    bool(body.get("rotate")))
+    except TaskError as e:
+        _task_error(e)
+
+
 @app.post("/v1/series/{series_id}/{action}")
 def series_action(series_id: str, action: str, request: Request, body: dict | None = Body(None),
                   authorization: str | None = Header(None), x_device_id: str = Header("")):

@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+1.3.1 | כל משימה אפשר להפוך לחוזרת: לוחצים עליה ← 🔁 להפוך למשימה חוזרת (או בעריכה) | Any task can become a recurring one: tap it → 🔁 Make it repeat (or in Edit)
 1.3.0 | משימות חוזרות 🔁 (כל יום, בימים קבועים, כל שבוע או חודש, גם בתורות) ולשונית 💡 רעיונות לג׳אר: רעיון שמתקבל שווה מטבעות | Recurring tasks 🔁 (every day, on set days, weekly or monthly, also taking turns) and a 💡 Ideas tab for Jar: an accepted idea earns coins
 1.2.0 | משימות משפחתיות: אפשר לבחור כמה אנשים למשימה, ולקבוע אם מספיק שאחד יעשה או שכל אחד צריך | Family tasks: pick several people for one task, and choose whether one of them is enough or each of them must do it
 1.1.0 | משחק המטבעות: 🪙 על כל משימה, לוח מובילים שבועי, מי ניצח בשבת ב-20:00, יום עבודה לגדולים ו״מה למדתי״ לילדים | The coin game: 🪙 on every task, a weekly leaderboard, Saturday 20:00 winner, work days for grown-ups and "what I learned" notes for kids

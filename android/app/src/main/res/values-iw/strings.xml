@@ -394,6 +394,7 @@
     <string name="idea_duplicate">כבר הוצע</string>
     <string name="idea_failed">לא הצלחתי לשלוח את הרעיון: %1$s</string>
     <string name="notif_idea">רעיון חדש לג׳אר מ%1$s</string>
+    <string name="make_repeat">🔁 להפוך למשימה חוזרת</string>
     <string-array name="week_days_short">
         <item>א׳</item>
         <item>ב׳</item>

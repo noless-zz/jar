@@ -609,6 +609,10 @@ public final class TasksActivity extends AppCompatActivity {
             labels.add(getString(R.string.action_edit));
             actions.add(() -> showAddDialog(t));
         }
+        if (canMakeRepeat(t)) {
+            labels.add(getString(R.string.make_repeat));
+            actions.add(() -> showAddDialog(t, true));
+        }
         Series series = t.isRecurring() ? findSeries(t.seriesId) : null;
         boolean seriesMine = series != null
                 && series.canChange(me, cache.iAmAdmin(), cache.iAmParent(), cache.parents());
@@ -670,8 +674,27 @@ public final class TasksActivity extends AppCompatActivity {
         showAddDialog(null);
     }
 
-    /** New task, or (existing != null) edit its title, person and time. */
     private void showAddDialog(Task existing) {
+        showAddDialog(existing, false);
+    }
+
+    /** May I turn this one-time task into a recurring one? (the PC checks the same) */
+    private boolean canMakeRepeat(Task t) {
+        if (t.isRecurring() || t.isMessage() || t.isIdea() || t.isLesson() || !(t.isOpen() || t.isRequested()))
+            return false;
+        String me = cache.myId();
+        if (me.equals(t.createdBy) || cache.iAmAdmin()) return true;
+        if (!cache.iAmParent()) return false;
+        java.util.Set<String> parents = cache.parents();
+        for (String o : t.owners()) if (parents.contains(o)) return false;
+        return true;
+    }
+
+    /**
+     * New task, or (existing != null) edit its title, person and time — and make a one-time task repeat
+     * ({@code repeatNow}: opened from "Make it repeat", with "every day" picked).
+     */
+    private void showAddDialog(Task existing, boolean repeatNow) {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_add_task, null, false);
         TextInputEditText title = v.findViewById(R.id.add_title);
         ChipGroup people = v.findViewById(R.id.add_people);
@@ -711,7 +734,9 @@ public final class TasksActivity extends AppCompatActivity {
         Chip turns = v.findViewById(R.id.add_mode_turns);
         View whenLabel = v.findViewById(R.id.add_when_label);
         final String[] repeatAt = {""};
-        repeatBox.setVisibility(existing == null ? View.VISIBLE : View.GONE);
+        boolean mayRepeat = existing == null || canMakeRepeat(existing);
+        repeatBox.setVisibility(mayRepeat ? View.VISIBLE : View.GONE);
+        if (repeatNow) repeat.check(R.id.add_repeat_daily);
         String[] dayKeys = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
         String[] dayNames = getResources().getStringArray(R.array.week_days_short);
         for (int i = 0; i < dayKeys.length; i++) {
@@ -721,7 +746,7 @@ public final class TasksActivity extends AppCompatActivity {
         }
         Runnable onRepeat = () -> {
             int rid = repeat.getCheckedChipId();
-            boolean on = existing == null && rid != View.NO_ID && rid != R.id.add_repeat_once;
+            boolean on = mayRepeat && rid != View.NO_ID && rid != R.id.add_repeat_once;
             days.setVisibility(on && rid == R.id.add_repeat_days ? View.VISIBLE : View.GONE);
             repeatTime.setVisibility(on ? View.VISIBLE : View.GONE);
             when.setVisibility(on ? View.GONE : View.VISIBLE);
@@ -791,9 +816,9 @@ public final class TasksActivity extends AppCompatActivity {
                     }
                     if (who.isEmpty()) who.add(me);
                     boolean each = who.size() > 1 && mode.getCheckedChipId() == R.id.add_mode_all;
-                    String rule = existing == null ? repeatRule(repeat.getCheckedChipId(), days) : null;
-                    if (rule != null) {
-                        boolean rotate = who.size() > 1 && mode.getCheckedChipId() == R.id.add_mode_turns;
+                    String rule = mayRepeat ? repeatRule(repeat.getCheckedChipId(), days) : null;
+                    boolean rotate = who.size() > 1 && mode.getCheckedChipId() == R.id.add_mode_turns;
+                    if (rule != null && existing == null) {
                         createRecurring(text, who, each, rule, repeatAt[0], rotate);
                         return;
                     }
@@ -801,6 +826,7 @@ public final class TasksActivity extends AppCompatActivity {
                     String tag = selWhen == null ? "" : (String) selWhen.getTag();
                     String due = "pick".equals(tag) ? picked[0] : (tag.isEmpty() ? null : tag);
                     if (existing == null) create(text, who, each, due);
+                    else if (rule != null) editAndRepeat(existing, text, who, each, due, rule, repeatAt[0], rotate);
                     else edit(existing, text, who, each, due);
                 })
                 .show();
@@ -994,6 +1020,24 @@ public final class TasksActivity extends AppCompatActivity {
                     });
                 })
                 .show();
+    }
+
+    /** Save the edit, then make the task repeat (it stays as the first time). */
+    private void editAndRepeat(Task t, String title, List<String> owners, boolean each, String due, String rule,
+                               String time, boolean rotate) {
+        syncStatus.setText(R.string.syncing);
+        io.execute(() -> {
+            try {
+                TaskApi.edit(prefs, t.id, title, owners, each, due);
+                TaskApi.makeRecurring(prefs, t.id, rule, time, rotate);
+                main.post(() -> TaskSync.now(this));
+            } catch (IOException e) {
+                main.post(() -> {
+                    Toast.makeText(this, getString(R.string.edit_failed, e.getMessage()), Toast.LENGTH_LONG).show();
+                    TaskSync.now(this);
+                });
+            }
+        });
     }
 
     private void edit(Task t, String title, List<String> owners, boolean each, String due) {

@@ -203,6 +203,43 @@ class Series(Base):
             self.store.add_series(self.p["dana"], "x", [self.p["yoni"]], "sometimes")
 
 
+class MakeRecurring(Base):
+    def test_existing_task_becomes_the_first_occurrence(self):
+        t = self.store.add(self.p["dana"], "להוציא את הזבל", self.p["yoni"], "2026-10-22T20:00")
+        self.store.rate(t["id"], dict(RATED))
+        out = self.store.make_recurring(self.p["dana"], t["id"], "weekly:sun,thu", now=at(2026, 10, 22, 7))
+        self.assertEqual((out["id"], out["due"], out["repeat"]), (t["id"], "2026-10-22T20:00", "כל ראשון וחמישי ב-20:00"))
+        self.assertEqual(out["series"]["next_due"], "2026-10-25")
+        self.store.roll(at(2026, 10, 25, 6))
+        nxt = self.all_tasks()[-1]
+        self.assertEqual((nxt["due"], nxt["assignee"], nxt["points"]["effort"]), ("2026-10-25T20:00", "yoni", 3))
+
+    def test_no_due_starts_today_with_the_new_time(self):
+        t = self.store.add(self.p["dana"], "להשקות", self.p["dana"])
+        out = self.store.make_recurring(self.p["dana"], t["id"], "daily", "19:00", now=at(2026, 10, 22, 7))
+        self.assertEqual(out["due"], "2026-10-22T19:00")
+
+    def test_turns_from_a_shared_task(self):
+        t = self.store.add(self.p["dana"], "לפרוק מדיח", [self.p["yoni"], self.p["maya"]], "2026-10-22")
+        out = self.store.make_recurring(self.p["dana"], t["id"], "daily", rotate=True, now=at(2026, 10, 22))
+        self.assertEqual((out["assignee"], owners(out)), ("yoni", ["yoni"]))
+        self.store.roll(at(2026, 10, 23))
+        self.assertEqual(self.all_tasks()[-1]["assignee"], "maya")
+
+    def test_rules(self):
+        t = self.store.add(self.p["dana"], "x", self.p["yoni"])
+        with self.assertRaises(TaskError):
+            self.store.make_recurring(self.p["yoni"], t["id"], "daily")             # Dana's, not his to change
+        with self.assertRaises(TaskError):
+            self.store.make_recurring(self.p["dana"], t["id"], "sometimes")
+        self.store.make_recurring(self.p["dana"], t["id"], "daily")
+        with self.assertRaises(TaskError):
+            self.store.make_recurring(self.p["dana"], t["id"], "daily")             # repeats already
+        idea = self.store.add_idea(self.p["yoni"], "רעיון")
+        with self.assertRaises(TaskError):
+            self.store.make_recurring(self.p["avi"], idea["id"], "daily")
+
+
 class Ideas(Base):
     def test_idea_lifecycle_and_credit(self):
         t = self.store.add_idea(self.p["yoni"], "משימות רב פעמיות", "כמו להוציא זבל כל יום")
@@ -376,6 +413,9 @@ class Api(Base):
         self.assertEqual(r.status_code, 200, r.text)
         r = c.post("/v1/tasks", headers=h, json={"title": "x", "repeat": {"rule": "sometimes"}})
         self.assertEqual(r.status_code, 400)
+        t = c.post("/v1/tasks", headers=h, json={"title": "לסדר", "assignee": "yoni"}).json()
+        r = c.post(f"/v1/tasks/{t['id']}/repeat", headers=h, json={"rule": "weekly:fri", "time": "10:00"})
+        self.assertEqual((r.status_code, r.json()["repeat"]), (200, "כל שישי ב-10:00"), r.text)
         c, h = self.client("yoni")
         r = c.post("/v1/tasks", headers=h, json={"kind": "idea", "title": "מצב כהה"})
         self.assertEqual((r.status_code, r.json()["kind"], r.json()["assignee"]), (201, "idea", "avi"))

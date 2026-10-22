@@ -536,6 +536,51 @@ class TaskStore:
             self._write(data)
         return dict(t, series=self._series_out(s))
 
+    def make_recurring(self, actor: Person, task_id: str, rule: str, time: str = "", rotate: bool = False,
+                       now: datetime | None = None) -> dict:
+        """Turn an existing one-time task into a recurring one: it stays as the first occurrence (on its own
+        day, or today), and the next ones follow the rule. Whoever created it, the admin, or a parent of the
+        children it is for. Returns the task, with "series"."""
+        try:
+            r, tm = recurring.parse(rule), recurring.clean_time(time)
+        except recurring.RuleError as e:
+            raise TaskError(400, str(e)) from None
+        with self._locked():
+            data = self._read()
+            t = next((x for x in data["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
+            if t is None or not self.visible(t, actor):
+                raise TaskError(404, "no such task")
+            if t.get("series_id"):
+                raise TaskError(409, "this task repeats already")
+            if t.get("kind", "task") != "task" or t.get("status") not in LIVE:
+                raise TaskError(409, "only an open task can repeat")
+            ids = owners(t)
+            if actor.id != t["created_by"] and not actor.admin and not (
+                    actor.is_parent and all((p := self.family.get(i)) is not None and not p.is_parent for i in ids)):
+                raise TaskError(403, "only whoever created it (or a parent) can make it repeat")
+            due = t.get("due") or ""
+            tm = tm or (due[11:16] if len(due) >= 16 else "")
+            local = self._today(now)
+            start = date.fromisoformat(due[:10]) if due else recurring.first(r, local, tm)
+            r = recurring.settle(r, start)
+            creator = self.family.get(t["created_by"]) or actor
+            s = {"id": "s" + uuid.uuid4().hex[:9], "title": t["title"], "notes": t.get("notes", ""),
+                 "created_by": t["created_by"], "owners": ids, "mode": t.get("mode", "any"),
+                 "rotate": bool(rotate) and len(ids) > 1, "turn": 1 if rotate and len(ids) > 1 else 0,
+                 "rule": r.text(), "time": tm, "after_done": False,
+                 "approved": t["status"] == "open" or creator.is_parent or ids == [creator.id],
+                 "status": "active", "next_due": recurring.after(r, start).isoformat(), "current": t["id"],
+                 "points": dict(t["points"]) if t.get("points") else None, "memo_id": t.get("memo_id"),
+                 "created_at": _now(), "updated_at": _now()}
+            if s["rotate"]:
+                _set_owners(t, [self.family.get(ids[0])], "any")   # this time: the first one's turn
+            data["series"].append(s)
+            t["series_id"], t["repeat"] = s["id"], recurring.label(r, tm)
+            t["due"] = start.isoformat() + (f"T{tm}" if tm else "")
+            t["updated_at"] = _now()
+            self._write(data)
+            return dict(self._decorate([t], actor)[0], series=self._series_out(s))
+
     def _spawn(self, data: dict, s: dict, day: date) -> dict:
         """Make one occurrence of a series (inside the lock)."""
         ids = s["owners"]
