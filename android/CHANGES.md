@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+1.9.0 | העיצוב החדש הוא ברירת המחדל (אפשר לחזור לקלאסי בהגדרות): פתיחה ראשונה וחיבור, הודעות וואטסאפ, הזמנה ועדכונים, התראות והווידג'ט במראה שלך, ואפליקציה קטנה יותר | The new design is now the default (Classic screen in Settings switches back): first run and pairing, WhatsApp messages, invite and updates, notifications and the widget in your look, and a smaller app
 1.8.0 | בעיצוב החדש: הוספה ועריכה של משימה, כל הפעולות, משימות חוזרות, תחומי אחריות, ארכיון, ההקלטות שלי, הערות ושאלות, רעיונות ו'מה למדתי' | In the new design: add and edit tasks, all task actions, recurring tasks, areas, archive, my memos, notes and questions, ideas and lessons
 1.7.0 | עיצוב חדש: לילה ורגוע שונים באמת, לשוניות משפחה, לוח מטבעות ורעיונות, הגדרות, מסך הקלטה ורגע 'כל הכבוד' | New design: Night and Calm truly distinct, Family, Coin board and Ideas tabs, settings, a recording screen and a done moment
 1.6.0 | עיצוב חדש (בטא): בתפריט ← ״✨ עיצוב חדש״. שלושה סגנונות לבחירה (רגוע, לילה, שובב), בהיר או כהה ו־16 צבעים; משימות לפי באיחור / היום / בהמשך, החלקה לסיום או לדחייה, וכפתור הקלטה גדול באמצע | New design (beta): menu → "✨ New design". Three looks to pick from (Calm, Night, Playful), light or dark and 16 colours; tasks by overdue / today / coming up, swipe to finish or snooze, and a big record button in the middle
