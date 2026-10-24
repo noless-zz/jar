@@ -46,6 +46,7 @@ object JarIcons {
     val Edit = line("edit", "M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4")
     val Gear = line("gear", "M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0", "M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1")
     val Fire = line("fire", "M12 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 0-7z")
+    val Trash = line("trash", "M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3")
     val Undo = line("undo", "M4 12a8 8 0 1 0 3-6.2M4 4v4h4")
     val Chevron = line("chevron", "M9 6l6 6-6 6", mirror = true)   // points forward: right in English, left in Hebrew
     val Palette = line("palette", "M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0",

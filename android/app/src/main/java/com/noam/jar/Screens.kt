@@ -35,6 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -283,10 +285,12 @@ fun MemosScreen() {
     var memos by remember { mutableStateOf<List<JSONObject>?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var open by remember { mutableStateOf<JSONObject?>(null) }
+    var deleting by remember { mutableStateOf<Triple<JSONObject, Int, JSONObject>?>(null) }
+    val actions = LocalActions.current
     LaunchedEffect(gen) {
         problem = null
         val fake = MemoFeed.fake
-        if (fake != null) { memos = fake; return@LaunchedEffect }
+        if (fake != null) { memos = fake.map { JSONObject(it.toString()) }; return@LaunchedEffect }
         val prefs = Prefs(ctx)
         if (prefs.token().isEmpty()) { problem = ctx.getString(R.string.tasks_not_paired); return@LaunchedEffect }
         try {
@@ -304,19 +308,40 @@ fun MemosScreen() {
             problem != null -> item(key = "problem") { Muted(problem!!, Modifier.padding(8.dp)) }
             list == null -> item(key = "loading") { Muted(stringResource(R.string.syncing), Modifier.padding(8.dp)) }
             list.isEmpty() -> item(key = "none") { Muted(stringResource(R.string.memos_empty), Modifier.padding(8.dp)) }
-            else -> items(list, key = { it.optString("id") }) { m -> MemoCard(m) { if (transcript(m).isNotEmpty()) open = m } }
+            else -> items(list, key = { it.optString("id") }) { m ->
+                MemoCard(m, onDelete = { i, item -> deleting = Triple(m, i, item) }) { if (transcript(m).isNotEmpty()) open = m }
+            }
         }
     }
     val m = open
     if (m != null) ModalBottomSheet(onDismissRequest = { open = null }, containerColor = c.bg) {
         RefileSheet(m) { open = null; gen++ }
     }
+    deleting?.let { (memo, i, item) ->
+        val what = ctx.getString(when (item.optString("tool")) {
+            "add_task", "draft_whatsapp", "suggest_idea" -> R.string.ui_memo_del_task
+            "family_event", "create_event" -> R.string.ui_memo_del_event
+            "draft_email" -> R.string.ui_memo_del_draft
+            else -> R.string.ui_memo_del_note
+        })
+        Confirm(ctx.getString(R.string.ui_memo_del_confirm, item.optString("summary"), what), ctx.getString(R.string.action_delete),
+            onDismiss = { deleting = null }) {
+            deleting = null
+            val prefs = Prefs(ctx); val id = memo.optString("id")
+            if (MemoFeed.fake != null) {            // tests: no PC, mark it on the stored copy
+                MemoFeed.fake?.firstOrNull { it.optString("id") == id }?.optJSONArray("items")?.optJSONObject(i)
+                    ?.put("removed", true)?.put("deletable", false)
+                gen++
+            } else actions.background({ TaskApi.deleteMemoItem(prefs, id, i) }, { gen++ },
+                { e -> actions.toast(ctx.getString(R.string.memos_failed, e.message)) })
+        }
+    }
 }
 
 private fun transcript(m: JSONObject): String = m.optString("transcript").takeIf { it != "null" } ?: ""
 
 @Composable
-private fun MemoCard(m: JSONObject, onClick: () -> Unit) {
+private fun MemoCard(m: JSONObject, onDelete: (Int, JSONObject) -> Unit, onClick: () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val ctx = LocalContext.current
@@ -333,10 +358,37 @@ private fun MemoCard(m: JSONObject, onClick: () -> Unit) {
                 if (m.optBoolean("edited")) Chip(ctx.getString(R.string.memo_edited), c.surface2, c.muted)
             }
             Text(text.ifEmpty { ctx.getString(R.string.memo_no_text) }, color = if (text.isEmpty()) c.muted else c.ink, fontSize = 16.sp, fontFamily = jar.font)
-            if (did != null && did.length() > 0) {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(c.accentSoft).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // What Jar did: each thing it made can be taken back from here (the newer PC sends "items").
+            val items = m.optJSONArray("items")
+            val n = items?.length() ?: did?.length() ?: 0
+            if (n > 0) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(c.accentSoft).padding(start = 10.dp, top = 10.dp, bottom = 6.dp, end = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(stringResource(R.string.ui_jar_did), color = c.onAccentSoft, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = jar.font)
-                    for (i in 0 until did.length()) Text(did.optString(i), color = c.ink, fontSize = 14.sp, fontFamily = jar.font)
+                    for (i in 0 until n) {
+                        val item = items?.optJSONObject(i)
+                        val summary = item?.optString("summary") ?: did?.optString(i) ?: ""
+                        val removed = item?.optBoolean("removed") == true
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(summary, color = if (removed) c.muted else c.ink, fontSize = 14.sp, fontFamily = jar.font,
+                                    textDecoration = if (removed) androidx.compose.ui.text.style.TextDecoration.LineThrough else null)
+                                when {
+                                    removed -> Text(stringResource(R.string.ui_memo_removed), color = c.muted, fontSize = 12.sp, fontFamily = jar.font)
+                                    item?.optBoolean("removing") == true -> Text(stringResource(R.string.ui_memo_removing), color = c.coin, fontSize = 12.sp, fontFamily = jar.font)
+                                    item?.optString("failed").orEmpty().isNotEmpty() -> Text(ctx.getString(R.string.ui_memo_remove_failed, item!!.optString("failed")),
+                                        color = c.danger, fontSize = 12.sp, fontFamily = jar.font)
+                                }
+                            }
+                            if (item?.optBoolean("deletable") == true) {
+                                val label = ctx.getString(R.string.action_delete) + ": " + summary
+                                Box(Modifier.size(40.dp).clip(CircleShape).clickable(role = Role.Button) { onDelete(i, item) }
+                                    .semantics { contentDescription = label }.testTag("memo_item_delete"), contentAlignment = Alignment.Center) {
+                                    Icon(JarIcons.Trash, null, tint = c.muted, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

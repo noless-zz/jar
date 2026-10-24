@@ -11,6 +11,7 @@ model file them, and records everything in the memo's .json and the daily memo l
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import time
@@ -180,6 +181,48 @@ class Worker:
                     log.info("  re-filing: removed family event %s", a.get("summary", a["event_id"]))
                 except Exception as e:  # noqa: BLE001
                     log.warning("  re-filing: couldn't remove family event %s: %s", a["event_id"], e)
+
+    def memo_item_deletes(self) -> int:
+        """From the app's My memos: remove the events and drafts people took back (data/deletes/, see memo_items)."""
+        from . import memo_items
+        qdir = self.cfg.data_dir / "deletes"
+        if not qdir.is_dir():
+            return 0
+        n = 0
+        for req_path in sorted(qdir.glob("*.json")):
+            try:
+                req = json.loads(req_path.read_text(encoding="utf-8"))
+                found = list((self.cfg.data_dir / "memos").glob(f"*/{req['memo']}.json"))
+                if not found:
+                    req_path.unlink(missing_ok=True)
+                    continue
+                meta_path = found[0]
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                a = meta["actions"][int(req["index"])]
+                k = memo_items.kind(a)
+                ok, problem = True, ""
+                try:
+                    if k == "family_event":
+                        if self.family_account is None:
+                            raise RuntimeError("the family account isn't connected")
+                        self.family_account.delete_family_event(a["event_id"])
+                    elif k in ("event", "draft"):
+                        conn = self.accounts.get(a.get("account") or "personal")
+                        if conn is None or not hasattr(conn, "delete"):
+                            raise RuntimeError(f"the {a.get('account') or 'personal'} account isn't connected")
+                        conn.delete(k, a["event_id" if k == "event" else "draft_id"])
+                except Exception as e:  # noqa: BLE001 — reported on the memo; the request isn't retried
+                    ok, problem = False, f"{type(e).__name__}: {e}"
+                memo_items.mark(meta, int(req["index"]), ok, problem)
+                memo_items.save(meta_path, meta)
+                req_path.unlink(missing_ok=True)
+                (log.info if ok else log.warning)("memo %s: %s “%s”%s", req["memo"], "removed" if ok else "couldn't remove",
+                                                  a.get("summary", ""), "" if ok else f" ({problem})")
+                n += 1
+            except Exception:  # noqa: BLE001 — a broken request must not block the rest
+                log.exception("bad delete request %s", req_path.name)
+                req_path.rename(req_path.with_suffix(".bad"))
+        return n
 
     def sync_event_deletes(self) -> int:
         """A deleted follow-up task ("add details or delete it") deletes its calendar event too."""
@@ -376,6 +419,10 @@ class Worker:
             self.sync_event_deletes()
         except Exception:  # noqa: BLE001 — never stops memos
             log.exception("syncing deleted events failed")
+        try:
+            self.memo_item_deletes()
+        except Exception:  # noqa: BLE001 — never stops memos
+            log.exception("deleting memo items failed")
         try:
             self.rate_pending()
         except Exception:  # noqa: BLE001 — a rating problem must never stop memos

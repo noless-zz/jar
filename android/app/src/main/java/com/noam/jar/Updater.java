@@ -36,8 +36,12 @@ public final class Updater {
 
     private Updater() {}
 
+    /** Emulator tests turn the update banner on in the debug build (which never updates itself). */
+    @androidx.annotation.VisibleForTesting
+    public static volatile boolean testEnabled = false;
+
     public static boolean enabled() {
-        return !BuildConfig.DEBUG;
+        return !BuildConfig.DEBUG || testEnabled;
     }
 
     private static SharedPreferences sp(Context c) {
@@ -67,10 +71,22 @@ public final class Updater {
      * Returns true when a newer version is available. Background threads only.
      */
     public static boolean check(Context c, boolean force) throws IOException {
+        return check(c, force ? 0 : CHECK_EVERY_MS);
+    }
+
+    /**
+     * Opening the app asks GitHub again after an hour (the background check waits 6), so a release from
+     * this evening shows on the task list the next time someone opens Jar.
+     */
+    public static boolean checkOnOpen(Context c) throws IOException {
+        return check(c, 3600 * 1000L);
+    }
+
+    private static boolean check(Context c, long olderThanMs) throws IOException {
         if (!enabled()) return false;
         SharedPreferences sp = sp(c);
         long last = sp.getLong("checked_at", 0);
-        if (!force && System.currentTimeMillis() - last < CHECK_EVERY_MS) return availableTag(c) != null;
+        if (System.currentTimeMillis() - last < olderThanMs) return availableTag(c) != null;
         JSONObject rel = getJson("https://api.github.com/repos/" + BuildConfig.UPDATE_REPO + "/releases/latest");
         String tag = rel.optString("tag_name", "");
         String apk = null;

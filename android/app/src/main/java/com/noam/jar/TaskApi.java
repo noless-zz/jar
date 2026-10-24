@@ -224,6 +224,11 @@ public final class TaskApi {
     }
 
     /** File a memo again; with transcript != null, that corrected text is filed. */
+    /** Take back one thing a memo made (a task, a note, an event, a draft): its index in the memo's "items". */
+    public static JSONObject deleteMemoItem(Prefs prefs, String memoId, int index) throws IOException {
+        return call(prefs, "POST", "/v1/memos/" + memoId + "/items/" + index + "/delete", new JSONObject());
+    }
+
     public static JSONObject refile(Prefs prefs, String memoId, String transcript) throws IOException {
         JSONObject body = new JSONObject();
         try {

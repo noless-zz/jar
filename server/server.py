@@ -20,7 +20,7 @@ from pathlib import Path
 from fastapi import Body, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from worker import effort
+from worker import effort, memo_items
 from worker.family import Family, Person
 from worker.points import PointsConfig, PointsStore
 from worker.taskstore import TaskError, TaskStore
@@ -635,9 +635,11 @@ def my_memos(request: Request, limit: int = 30, authorization: str | None = Head
         except (OSError, ValueError):
             continue
         if _mine(m, p):
+            acts = m.get("actions") or []
             out.append({k: m.get(k) for k in ("id", "recorded_at", "duration_ms", "status", "transcript",
                                                "summary", "edited", "error")}
-                       | {"actions": [a.get("summary", "") for a in (m.get("actions") or [])]})
+                       | {"actions": [a.get("summary", "") if isinstance(a, dict) else str(a) for a in acts],
+                          "items": memo_items.items(acts)})
     out.sort(key=lambda x: x.get("recorded_at") or "", reverse=True)
     return {"memos": out[:max(1, min(limit, 200))]}
 
@@ -656,6 +658,51 @@ def refile_my_memo(memo_id: str, request: Request, body: dict | None = Body(None
         text = (body or {}).get("transcript")
         return refile_memo(meta_path, m, None if text is None else str(text))
     raise HTTPException(404, "no such memo")
+
+@app.post("/v1/memos/{memo_id}/items/{index}/delete")
+def delete_memo_item(memo_id: str, index: int, request: Request, authorization: str | None = Header(None),
+                     x_device_id: str = Header("")):
+    """Take back one thing a memo made (worker/memo_items.py): a task, a note, an event or a draft.
+    Tasks and files go at once; calendar and email are removed by the worker within a minute."""
+    p = check_auth(authorization, request, x_device_id)
+    if not ID_RE.match(memo_id):
+        raise HTTPException(400, "bad memo id")
+    for meta_path in DATA_DIR.glob(f"*/{memo_id}.json"):
+        m = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not _mine(m, p):
+            break
+        if m.get("status") != "done":
+            raise HTTPException(409, "Jar is still filing this memo: try again in a minute")
+        acts = m.get("actions") or []
+        if not 0 <= index < len(acts) or not isinstance(acts[index], dict):
+            raise HTTPException(404, "no such item")
+        a = acts[index]
+        k = memo_items.kind(a)
+        if k is None:
+            raise HTTPException(409, "this one changed something that was already there: undo it in the app instead")
+        if a.get("removed"):
+            return {"items": memo_items.items(acts)}
+        if k == "task":
+            try:
+                TASKS.act(p, a["task_id"], "delete")
+            except TaskError as e:
+                if e.status != 404:            # 404: already gone, which is what was asked
+                    _task_error(e)
+            memo_items.mark(m, index, True)
+        elif k == "file":
+            try:
+                memo_items.remove_file(memo_items.notes_root(NOTES_DIR, p, p.admin), a.get("file", ""))
+            except (OSError, ValueError) as e:
+                raise HTTPException(500, f"couldn't delete the file: {e}")
+            memo_items.mark(m, index, True)
+        else:
+            a["removing"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            memo_items.queue(DATA_ROOT / "deletes", memo_id, index)
+        memo_items.save(meta_path, m)
+        log.info("%s deleted “%s” from memo %s", p.name, a.get("summary", ""), memo_id)
+        return {"items": memo_items.items(m.get("actions") or [])}
+    raise HTTPException(404, "no such memo")
+
 
 LOGINS = LoginLinks(TOKEN)
 
