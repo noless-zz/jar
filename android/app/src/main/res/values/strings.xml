@@ -433,7 +433,7 @@
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
     </plurals>
-    <string name="ui_new_design">✨ New design (beta)</string>
+    <string name="ui_new_design">✨ New design</string>
     <string name="ui_menu_classic">Classic screen</string>
     <string name="ui_menu_look">Look</string>
     <string name="ui_good_morning">Good morning, %1$s</string>
@@ -530,4 +530,18 @@
     <string name="ui_archive_empty">Nothing in the archive yet.</string>
     <string name="ui_memos_sub">What Jar heard and what it did. Tap one to fix a mishearing.</string>
     <string name="ui_jar_did">Jar did</string>
+    <string name="ui_welcome_title">Welcome to Jar</string>
+    <string name="ui_welcome_sub">Say it and Jar files it: tasks, reminders and notes for the whole family. To start, connect this phone to the family PC with the invitation you got.</string>
+    <string name="ui_scan_invite">Scan the invitation code</string>
+    <string name="ui_paste_invite">Paste the invitation link</string>
+    <string name="ui_advanced_connection">Connect by hand (address and code)</string>
+    <string name="ui_ready_title">You\'re in, %1$s!</string>
+    <string name="ui_ready_title_noname">Connected!</string>
+    <string name="ui_ready_sub">Two more things: let Jar use the microphone and send reminders, and pick how it looks. You can change both later in Settings.</string>
+    <string name="ui_allow_permissions">Allow microphone and reminders</string>
+    <string name="ui_pick_look">Pick your look</string>
+    <string name="ui_start">Start</string>
+    <string name="ui_message">The message</string>
+    <string name="ui_invite_sub">Jar writes them a personal message with the app and their code; you send it in WhatsApp.</string>
+    <string name="ui_update_title">Jar %1$s is ready</string>
 </resources>

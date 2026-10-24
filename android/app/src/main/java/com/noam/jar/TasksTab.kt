@@ -139,6 +139,7 @@ fun TasksTab(data: HomeData, memo: JSONObject?, onOpen: (Task) -> Unit, onSettin
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 110.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            if (data.update != null) item(key = "update") { UpdateBanner(data) }
             if (recentMemo != null && filter == Filter.MINE) item(key = "memo") {
                 if (jar.style == JarStyle.NIGHT) HeardPill(recentMemo) else HeardCard(recentMemo)
             }

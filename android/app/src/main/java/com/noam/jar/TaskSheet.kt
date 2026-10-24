@@ -65,7 +65,6 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
     val tz = TimeZone.getDefault()
     val open = t.openFor(data.me)
     var more by remember { mutableStateOf(false) }
-    val classic = { onClose(); actions.classic(0) { it.putExtra(TasksActivity.EXTRA_OPEN, t.id) } }
     val editable = t.status != "declined" && !t.isMessage
     val repeatable = data.canMakeRepeat(t)
     val edit = { onClose(); actions.edit(EditReq(t)) }
@@ -78,6 +77,11 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
                 Text(ctx.getString(R.string.ui_from, TaskLists.name(data.names, t.createdBy)), color = c.muted, fontSize = 13.sp, fontFamily = jar.font)
             Text(t.title, color = c.ink, fontSize = if (jar.style == JarStyle.NIGHT) 26.sp else 24.sp, fontWeight = FontWeight.Bold, fontFamily = jar.display)
             SheetChips(t, data)
+        }
+        if (t.isMessage) {
+            MessageActions(t, onClose)
+            if (t.isDone) SideButton(ctx.getString(R.string.action_reopen)) { act("reopen", null) }
+            return@Column
         }
         if (jar.style == JarStyle.NIGHT) {
             if (open) SlideToFinish(onDone = { act("done", null) })
@@ -113,7 +117,7 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
         Notes(t, data) { onClose(); actions.thread(t) }
         if (more) MoreActions(t, data, onClose)
         else Text(stringResource(R.string.ui_open_in_classic), color = c.muted, fontSize = 14.sp, fontFamily = jar.font,
-            modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) { if (t.isMessage) { classic() } else { more = true } }
+            modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) { more = true }
                 .padding(vertical = 8.dp).testTag("all_actions"))
     }
 }

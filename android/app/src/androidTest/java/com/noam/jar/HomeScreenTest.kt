@@ -217,11 +217,84 @@ class HomeScreenTest {
     }
 
     @Test
-    fun classic_sendsYouToTheNewDesignWhenItIsOn() {
-        seed("noam")
-        LookPrefs.setNewUi(context, true)
+    fun newDesign_isTheDefault() {
+        seed("noam")                                    // jar_look cleared: nobody chose anything
         scenario = ActivityScenario.launch(TasksActivity::class.java)
         compose.onNodeWithText("Buy milk").assertExists()
+    }
+
+    // ---------------------------------------------------------------- step 4: nothing left on the classic screen
+
+    @Test
+    fun notification_opensTheNewThread() {
+        seed("livne")
+        scenario = ActivityScenario.launch<TaskThreadActivity>(android.content.Intent(context, TaskThreadActivity::class.java)
+            .putExtra(TaskThreadActivity.EXTRA_ID, "t9"))
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithTag("thread").assertExists() }.isSuccess }
+        compose.onNodeWithText("Yes, after my homework").assertExists()
+    }
+
+    @Test
+    fun widget_opensTheTaskSheet() {
+        seed("noam")
+        scenario = ActivityScenario.launch<TasksActivity>(android.content.Intent(context, TasksActivity::class.java)
+            .putExtra(TasksActivity.EXTRA_OPEN, "t1"))
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithTag("all_actions").assertExists() }.isSuccess }
+        compose.onNodeWithText(s(R.string.action_done)).assertExists()
+    }
+
+    @Test
+    fun whatsappMessage_inTheSheet() {
+        for ((style, mode, tag) in styles) {
+            scenario?.close()
+            launch(style, mode)
+            compose.onNodeWithTag("task_list").performScrollToNode(hasText("Message to Grandma"))
+            compose.onNodeWithText("Message to Grandma").performClick()
+            compose.onNodeWithTag("message").assertExists()
+            compose.onNodeWithTag("send_whatsapp").assertExists()
+            compose.onNodeWithText("Hi Grandma, we'll come on Friday at five").assertExists()
+            shot("51-message-$tag")
+        }
+    }
+
+    @Test
+    fun settings_inviteAndAbout() {
+        launch(JarStyle.NIGHT, JarMode.DARK)
+        openFromSettings(s(R.string.ui_set_invite))
+        compose.onNodeWithTag("invite").assertExists()
+        compose.onNodeWithText("Livne").assertExists()
+        shot("52-invite")
+        back()
+        compose.onNodeWithTag("settings").performScrollToNode(hasText(s(R.string.ui_set_about)))
+        compose.onNodeWithText(s(R.string.ui_set_about)).performClick()
+        compose.onNodeWithTag("about").assertExists()
+        compose.onNodeWithText(s(R.string.share_app)).assertExists()
+        shot("53-about")
+    }
+
+    @Test
+    fun welcome_firstRun_inEachStyle() {
+        for ((style, mode, tag) in styles) {
+            scenario?.close()
+            for (f in listOf("jar_prefs", "jar_tasks")) context.getSharedPreferences(f, Context.MODE_PRIVATE).edit().clear().commit()
+            LookPrefs.save(context, Look(style, mode, 0, 0))
+            scenario = ActivityScenario.launch(HomeActivity::class.java)
+            compose.onNodeWithTag("welcome").assertExists()
+            compose.onNodeWithTag("scan").assertExists()
+            shot("60-welcome-$tag")
+        }
+        // A copied invitation link: paired, then the "you're in" step (the PC isn't there, so the check fails quietly).
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            context.getSystemService(android.content.ClipboardManager::class.java)
+                .setPrimaryClip(android.content.ClipData.newPlainText("Jar", "Join us: jar://pair?v=1&t=welcome-test&u=http%3A%2F%2F127.0.0.1%3A9"))
+        }
+        compose.onNodeWithTag("paste").performClick()
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithTag("start").assertExists() }.isSuccess }
+        assertEquals("welcome-test", Prefs(context).token())
+        shot("61-welcome-paired")
+        compose.onNodeWithTag("start").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("welcome").assertDoesNotExist()
     }
 
     // ---------------------------------------------------------------- step 3: the screens that were still classic
@@ -400,6 +473,8 @@ class HomeScreenTest {
                     .put(JSONObject().put("id", 1).put("by", "noam").put("text", "Can you do it before dinner?").put("at", utc(now - 3 * HOUR)).put("ask", true))
                     .put(JSONObject().put("id", 2).put("by", "livne").put("text", "Yes, after my homework").put("at", utc(now - 2 * HOUR)))))
             .put(task("i1", "Night mode", "noam", "requested", null, now - HOUR, null).put("kind", "idea").put("created_by", "livne"))
+            .put(task("t10", "Message to Grandma", me, "open", null, now - HOUR, null).put("kind", "message")
+                .put("message", "Hi Grandma, we'll come on Friday at five").put("to", "Grandma"))
         val series = JSONArray()
             .put(JSONObject().put("id", "s1").put("title", "Water the plants").put("created_by", "noam").put("owners", JSONArray().put("noam").put("livne"))
                 .put("rule", "weekly:sun,wed").put("time", "18:00").put("label", "Every Sunday and Wednesday at 18:00").put("rotate", true)

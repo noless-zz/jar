@@ -56,6 +56,12 @@ public final class TaskThreadActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (LookPrefs.INSTANCE.newUi(this)) {        // the new design has its own notes screen
+            startActivity(new android.content.Intent(this, HomeActivity.class)
+                    .putExtra(HomeActivity.EXTRA_THREAD, getIntent().getStringExtra(EXTRA_ID)));
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_thread);
         prefs = new Prefs(this);
         cache = new TaskCache(this);
