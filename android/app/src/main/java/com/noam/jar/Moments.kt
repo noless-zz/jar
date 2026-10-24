@@ -75,31 +75,37 @@ fun BottomBar(modifier: Modifier, tab: Tab, parent: Boolean, recording: Boolean,
     val recLabel = ctx.getString(if (recording) R.string.ui_nav_stop else R.string.ui_nav_record)
     when (jar.style) {
         JarStyle.NIGHT -> Row(modifier.fillMaxWidth().height(104.dp).padding(horizontal = 18.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceAround) {
-            items.take(half).forEach { (t, icon, res) -> NightNav(icon, ctx.getString(res), t == tab) { onTab(t) } }
-            Orb(recording, recLabel, onRecord)
-            items.drop(half).forEach { (t, icon, res) -> NightNav(icon, ctx.getString(res), t == tab) { onTab(t) } }
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            items.take(half).forEach { (t, icon, res) -> Slot { NightNav(icon, ctx.getString(res), t == tab) { onTab(t) } } }
+            Slot { Orb(recording, recLabel, onRecord) }
+            items.drop(half).forEach { (t, icon, res) -> Slot { NightNav(icon, ctx.getString(res), t == tab) { onTab(t) } } }
         }
         JarStyle.PLAYFUL -> Box(modifier.fillMaxWidth().padding(14.dp), contentAlignment = Alignment.Center) {
             Row(Modifier.fillMaxWidth().height(72.dp).clip(RoundedCornerShape(26.dp)).background(c.ink),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceAround) {
-                items.take(half).forEach { (t, icon, res) -> PlayfulNav(icon, ctx.getString(res), t == tab) { onTab(t) } }
-                Spacer(Modifier.width(60.dp))
-                items.drop(half).forEach { (t, icon, res) -> PlayfulNav(icon, ctx.getString(res), t == tab) { onTab(t) } }
+                items.take(half).forEach { (t, icon, res) -> Slot { PlayfulNav(icon, ctx.getString(res), t == tab) { onTab(t) } } }
+                Slot { Spacer(Modifier.width(60.dp)) }
+                items.drop(half).forEach { (t, icon, res) -> Slot { PlayfulNav(icon, ctx.getString(res), t == tab) { onTab(t) } } }
             }
             RecordButton(recording, recLabel, 60.dp, c.record, c.onRecord, Modifier.border(3.dp, c.bg, CircleShape), onRecord)
         }
         JarStyle.CALM -> Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
             Row(Modifier.fillMaxWidth().height(80.dp).background(c.surface).border(1.dp, c.line),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceAround) {
-                items.take(half).forEach { (t, icon, res) -> CalmNav(icon, ctx.getString(res), t == tab) { onTab(t) } }
-                Spacer(Modifier.width(72.dp))
-                items.drop(half).forEach { (t, icon, res) -> CalmNav(icon, ctx.getString(res), t == tab) { onTab(t) } }
+                items.take(half).forEach { (t, icon, res) -> Slot { CalmNav(icon, ctx.getString(res), t == tab) { onTab(t) } } }
+                Slot { Spacer(Modifier.width(72.dp)) }
+                items.drop(half).forEach { (t, icon, res) -> Slot { CalmNav(icon, ctx.getString(res), t == tab) { onTab(t) } } }
             }
             RecordButton(recording, recLabel, 66.dp, c.record, c.onRecord,
                 Modifier.padding(bottom = 34.dp).shadow(8.dp, CircleShape), onRecord)
         }
     }
+}
+
+/** An equal share of the bar, so the items sit evenly around the record button whatever their width. */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.Slot(content: @Composable () -> Unit) {
+    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { content() }
 }
 
 @Composable
@@ -157,17 +163,9 @@ private fun CalmNav(icon: ImageVector, label: String, selected: Boolean, onClick
 private fun PlayfulNav(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
-    if (selected) {
-        Row(Modifier.height(46.dp).clip(RoundedCornerShape(18.dp)).background(c.accent).clickable(role = Role.Tab, onClick = onClick)
-            .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(icon, null, tint = c.ink, modifier = Modifier.size(20.dp))
-            Text(label, color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = jar.display)
-        }
-    } else {
-        Box(Modifier.size(46.dp).clip(RoundedCornerShape(18.dp)).clickable(role = Role.Tab, onClick = onClick)
-            .semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = c.bg, modifier = Modifier.size(22.dp))
-        }
+    Box(Modifier.size(width = 54.dp, height = 46.dp).clip(RoundedCornerShape(18.dp)).background(if (selected) c.accent else Color.Transparent)
+        .clickable(role = Role.Tab, onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = if (selected) c.ink else c.bg, modifier = Modifier.size(22.dp))
     }
 }
 

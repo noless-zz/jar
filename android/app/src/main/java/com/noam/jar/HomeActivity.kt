@@ -242,7 +242,7 @@ private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo:
 class HomeData(
     val me: String, val myName: String, val parent: Boolean, val admin: Boolean, val all: List<Task>,
     val names: Map<String, String>, val colors: Map<String, Color>, val board: com.noam.jar.core.Board, val syncedAt: Long,
-    val syncedText: String,
+    val parents: Set<String>,
 ) {
     fun color(id: String): Color = colors[id] ?: PersonColors[0]
 
@@ -252,7 +252,7 @@ class HomeData(
             TaskFormat.setAreas(cache.areas())
             return HomeData(cache.myId(), cache.myName(), cache.iAmParent(), cache.iAmAdmin(), cache.tasks(), names,
                 names.keys.mapIndexed { i, id -> id to PersonColors[i % PersonColors.size] }.toMap(), cache.board(),
-                cache.syncedAt(), "")
+                cache.syncedAt(), cache.parents())
         }
     }
 }

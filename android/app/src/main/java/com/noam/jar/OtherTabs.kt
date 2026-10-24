@@ -86,9 +86,11 @@ fun FamilyTab(data: HomeData, onOpen: (Task) -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val ctx = LocalContext.current
-    val fam = remember(data) { TaskLists.family(data.all, data.me) }
+    // Every child's tasks, also the ones I gave them (the classic "Family" tab left those under "I asked").
     val byKid = remember(data) {
-        fam.flatMap { t -> t.owners().filter { it != data.me }.map { it to t } }.groupBy({ it.first }, { it.second })
+        data.all.filter { !it.isIdea && !it.isMessage && it.status != "declined" }
+            .flatMap { t -> t.owners().filter { it != data.me && it !in data.parents }.map { it to t } }
+            .groupBy({ it.first }, { it.second })
     }
     val now = System.currentTimeMillis()
     LazyColumn(Modifier.fillMaxSize().testTag("family"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 110.dp),

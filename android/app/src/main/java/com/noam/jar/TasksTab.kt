@@ -232,8 +232,8 @@ private fun CalmHeader(data: HomeData, onSettings: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(longDate(), color = c.muted, fontSize = 13.sp, fontFamily = jar.font)
-            Text(stringResource(greetingRes(), data.myName), color = c.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold,
-                fontFamily = jar.display, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(stringResource(greetingRes(), data.myName), color = c.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                fontFamily = jar.display, maxLines = 2, lineHeight = 26.sp, overflow = TextOverflow.Ellipsis)
         }
         AddButton { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ADD, true) } }
         Box(Modifier.width(10.dp))

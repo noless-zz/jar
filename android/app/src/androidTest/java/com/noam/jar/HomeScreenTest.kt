@@ -8,7 +8,9 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -105,7 +107,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Buy milk").performClick()
         compose.onNodeWithTag("slide_done").assertExists()                  // slide to finish
         shot("19-night-sheet")
-        compose.onNodeWithTag("slide_done").performClick()                  // a tap works too (accessibility)
+        compose.onNodeWithTag("slide_done").performSemanticsAction(SemanticsActions.OnClick)   // what TalkBack's double-tap does
         compose.waitForIdle()
         compose.onNodeWithTag("done_moment").assertExists()
         shot("20-night-done")
