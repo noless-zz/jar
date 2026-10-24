@@ -140,8 +140,8 @@ object WidgetBuilder {
         // ---- rows: as many as fit
         // Measured on the emulator: header + paddings, one row, and the footer line.
         val compact = heightDp < 150
-        val head = when (style) { JarStyle.CALM -> 124; JarStyle.NIGHT -> 100; JarStyle.PLAYFUL -> 132 }
-        val rowH = when (style) { JarStyle.CALM -> 48; JarStyle.NIGHT -> 56; JarStyle.PLAYFUL -> 64 }
+        val head = when (style) { JarStyle.CALM -> 124; JarStyle.NIGHT -> 100; JarStyle.PLAYFUL -> 118 }
+        val rowH = when (style) { JarStyle.CALM -> 48; JarStyle.NIGHT -> 56; JarStyle.PLAYFUL -> 58 }
         val space = heightDp - head
         var fit = if (compact) 0 else ((space - 26) / rowH).coerceIn(0, 6)
         if (!compact && fit == 0 && space >= rowH) fit = 1                  // one task rather than the footer
