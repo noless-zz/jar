@@ -69,6 +69,7 @@ public final class TasksActivity extends AppCompatActivity {
     static final String EXTRA_CLASSIC = "classic";     // opened from the new design: don't send it back there
     static final String EXTRA_TAB = "tab";             // 0 mine, 1 asked, 2 family, 3 board, 4 ideas
     static final String EXTRA_ADD = "add_task";        // open the add-task dialog right away
+    static final String EXTRA_ACTION = "action";       // from the new design: areas, recurring, keep_done, idea, work_day, lesson, invite, update, share
     static final String EXTRA_OPEN = "open_task";       // from the tasks widget: show that task's actions
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -227,6 +228,22 @@ public final class TasksActivity extends AppCompatActivity {
             intent.removeExtra(EXTRA_TAB);
             TabLayout.Tab t = tabs.getTabAt(tab);
             if (t != null) tabs.selectTab(t);
+        }
+        String action = intent == null ? null : intent.getStringExtra(EXTRA_ACTION);
+        if (action != null) {
+            intent.removeExtra(EXTRA_ACTION);
+            switch (action) {
+                case "areas": showAreas(); break;
+                case "recurring": showSeriesList(); break;
+                case "keep_done": showKeepDone(); break;
+                case "idea": showIdeaDialog(); break;
+                case "work_day": logWorkDay(); break;
+                case "lesson": showLessonDialog(); break;
+                case "invite": chooseInvite(); break;
+                case "update": checkForUpdate(true); break;
+                case "share": shareAppLink(); break;
+                default: break;
+            }
         }
         if (intent != null && intent.getBooleanExtra(EXTRA_ADD, false)) {
             intent.removeExtra(EXTRA_ADD);
