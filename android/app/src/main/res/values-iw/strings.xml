@@ -544,7 +544,7 @@
     <string name="ui_paste_invite">הדבקת קישור ההזמנה</string>
     <string name="ui_advanced_connection">חיבור ידני (כתובת וקוד)</string>
     <string name="ui_ready_title">נכנסת, %1$s!</string>
-    <string name="ui_ready_title_noname">מחובר!</string>
+    <string name="ui_ready_title_noname">הטלפון נקשר למשפחה</string>
     <string name="ui_ready_sub">עוד שני דברים: לאפשר ל־Jar להשתמש במיקרופון ולשלוח תזכורות, ולבחור איך הוא נראה. אפשר לשנות את שניהם אחר כך בהגדרות.</string>
     <string name="ui_allow_permissions">לאפשר מיקרופון ותזכורות</string>
     <string name="ui_pick_look">לבחור מראה</string>

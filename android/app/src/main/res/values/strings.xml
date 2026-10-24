@@ -536,7 +536,7 @@
     <string name="ui_paste_invite">Paste the invitation link</string>
     <string name="ui_advanced_connection">Connect by hand (address and code)</string>
     <string name="ui_ready_title">You\'re in, %1$s!</string>
-    <string name="ui_ready_title_noname">Connected!</string>
+    <string name="ui_ready_title_noname">Linked to the family</string>
     <string name="ui_ready_sub">Two more things: let Jar use the microphone and send reminders, and pick how it looks. You can change both later in Settings.</string>
     <string name="ui_allow_permissions">Allow microphone and reminders</string>
     <string name="ui_pick_look">Pick your look</string>
