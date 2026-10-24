@@ -3,6 +3,8 @@ package com.noam.jar
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -263,6 +265,96 @@ fun KeepDoneSheet(current: Int, onClose: () -> Unit) {
                     onClose()
                 }
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- WhatsApp messages, invite, about
+
+/** A message Jar drafted for WhatsApp: the text, then send (WhatsApp opens with it), change it, or copy it. */
+@Composable
+fun MessageActions(t: Task, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val actions = LocalActions.current
+    val jar = LocalJar.current
+    var editing by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf(t.message) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("message")) {
+        if (editing) {
+            JarField(text, { text = it }, stringResource(R.string.ui_message), minLines = 3)
+            MainButton(stringResource(R.string.ui_save), enabled = text.isNotBlank()) {
+                val prefs = Prefs(ctx); val m = text.trim()
+                actions.call(R.string.edit_failed, ctx) { TaskApi.editMessage(prefs, t.id, m) }
+                onClose()
+            }
+        } else {
+            Block {
+                Text(t.message, color = jar.colors.ink, fontSize = 16.sp, fontFamily = jar.font, modifier = Modifier.padding(14.dp))
+            }
+            if (t.isOpen) {
+                MainButton(stringResource(R.string.send_whatsapp), Modifier.testTag("send_whatsapp")) { onClose(); actions.sendWhatsApp(t) }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SideButton(plain(stringResource(R.string.message_edit)).trimEnd('…'), Modifier.weight(1f)) { editing = true }
+                    SideButton(stringResource(R.string.message_copy), Modifier.weight(1f)) {
+                        ctx.getSystemService(android.content.ClipboardManager::class.java)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText("Jar", t.message))
+                        actions.toast(ctx.getString(R.string.message_copied))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The admin picks who to invite; the PC writes their personal "install and join" message for WhatsApp. */
+@Composable
+fun InviteSheet(data: HomeData, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val actions = LocalActions.current
+    val others = data.names.filterKeys { it != data.me }
+    SheetColumn("invite") {
+        SheetTitle(stringResource(R.string.ui_set_invite), stringResource(R.string.ui_invite_sub))
+        if (others.isEmpty()) Muted(stringResource(R.string.invite_nobody))
+        for ((id, name) in others) {
+            ActionRow(JarIcons.Family, name) { onClose(); actions.invite(id) }
+        }
+    }
+}
+
+/** Version, updates, the download page and sharing the app. */
+@Composable
+fun AboutSheet(data: HomeData, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val actions = LocalActions.current
+    SheetColumn("about") {
+        SheetTitle(stringResource(R.string.ui_set_about), ctx.getString(R.string.ui_version, BuildConfig.VERSION_NAME))
+        if (data.update != null) {
+            Muted(ctx.getString(R.string.update_available, data.update, BuildConfig.VERSION_NAME) +
+                if (data.whatsNew.isEmpty()) "" else "\n" + ctx.getString(R.string.update_whats_new, data.whatsNew))
+            MainButton(stringResource(R.string.update_install)) { onClose(); actions.installUpdate() }
+        } else {
+            MainButton(stringResource(R.string.menu_update)) { actions.checkUpdate() }
+        }
+        SideButton(stringResource(R.string.update_open_page)) { onClose(); actions.openUrl(TasksActivity.downloadPage()) }
+        SideButton(stringResource(R.string.share_app)) { onClose(); actions.shareApp() }
+    }
+}
+
+/** On the task list when a newer Jar is out: what's new, and Update. */
+@Composable
+fun UpdateBanner(data: HomeData) {
+    val ctx = LocalContext.current
+    val actions = LocalActions.current
+    val jar = LocalJar.current
+    val tag = data.update ?: return
+    Block(Modifier.testTag("update_banner")) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(ctx.getString(R.string.ui_update_title, tag), color = jar.colors.ink, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    fontFamily = jar.font)
+                if (data.whatsNew.isNotEmpty()) Text(data.whatsNew, color = jar.colors.muted, fontSize = 13.sp, fontFamily = jar.font, maxLines = 3)
+            }
+            MainButton(stringResource(R.string.update_install), Modifier.width(110.dp)) { actions.installUpdate() }
         }
     }
 }

@@ -108,10 +108,12 @@ public final class TasksActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Intent start = getIntent();
-        boolean special = start != null && (start.getBooleanExtra(EXTRA_CLASSIC, false) || start.hasExtra(EXTRA_OPEN)
-                || start.hasExtra(EXTRA_SEND) || start.getBooleanExtra(EXTRA_INVITE, false));
-        if (!special && LookPrefs.INSTANCE.newUi(this)) {
-            startActivity(new Intent(this, HomeActivity.class));
+        boolean classic = start != null && start.getBooleanExtra(EXTRA_CLASSIC, false);
+        if (!classic && LookPrefs.INSTANCE.newUi(this)) {
+            // The new design: it opens the task, the WhatsApp message or the invite this was started for.
+            Intent home = new Intent(this, HomeActivity.class);
+            if (start != null && start.getExtras() != null) home.putExtras(start.getExtras());
+            startActivity(home);
             finish();
             return;
         }

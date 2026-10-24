@@ -49,9 +49,11 @@ object LookPrefs {
             .putInt("accent", look.accent).putInt("palette", look.palette).apply()
     }
 
-    /** The new screens are opt-in while they are being built ("New design (beta)" in the menu). */
-    fun newUi(c: Context): Boolean = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("new_ui", false)
+    /** The new design is the default; "Classic screen" in Settings switches back (and the classic menu returns). */
+    @JvmStatic
+    fun newUi(c: Context): Boolean = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("new_ui", true)
 
+    @JvmStatic
     fun setNewUi(c: Context, on: Boolean) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean("new_ui", on).apply()
     }

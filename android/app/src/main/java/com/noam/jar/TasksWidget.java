@@ -61,6 +61,12 @@ public final class TasksWidget extends AppWidgetProvider {
         Prefs prefs = new Prefs(c);
         String me = cache.myId();
         String name = cache.myName();
+        // In the person's look (Calm / Night / Playful, light or dark), like the app.
+        WidgetLook look = WidgetLook.of(c);
+        v.setInt(R.id.tw_root, "setBackgroundResource", look.getBackground());
+        v.setTextColor(R.id.tw_title, look.getInk());
+        for (int id : new int[] {R.id.tw_status, R.id.tw_empty, R.id.tw_board, R.id.tw_last_memo}) v.setTextColor(id, look.getMuted());
+        v.setInt(R.id.tw_refresh, "setColorFilter", look.getMuted());
 
         int open = TaskLists.openCount(cache.tasks(), me);
         v.setTextViewText(R.id.tw_title, name.isEmpty() ? c.getString(R.string.tasks_title)
@@ -104,7 +110,8 @@ public final class TasksWidget extends AppWidgetProvider {
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         v.setOnClickPendingIntent(R.id.tw_title, openPi);
         v.setOnClickPendingIntent(R.id.tw_empty, openPi);
-        Intent memos = new Intent(c, MemosActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent memos = (LookPrefs.INSTANCE.newUi(c) ? new Intent(c, HomeActivity.class).putExtra(HomeActivity.EXTRA_SUB, "MEMOS")
+                : new Intent(c, MemosActivity.class)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         v.setOnClickPendingIntent(R.id.tw_last_memo, PendingIntent.getActivity(c, 3, memos,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
         Intent refresh = new Intent(c, TasksWidget.class).setAction(REFRESH);

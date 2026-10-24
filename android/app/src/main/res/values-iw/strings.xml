@@ -441,7 +441,7 @@
         <item quantity="two">%1$d ימים</item>
         <item quantity="other">%1$d ימים</item>
     </plurals>
-    <string name="ui_new_design">✨ עיצוב חדש (בטא)</string>
+    <string name="ui_new_design">✨ עיצוב חדש</string>
     <string name="ui_menu_classic">המסך הקלאסי</string>
     <string name="ui_menu_look">מראה</string>
     <string name="ui_good_morning">בוקר טוב, %1$s</string>
@@ -538,4 +538,18 @@
     <string name="ui_archive_empty">עדיין אין כלום בארכיון.</string>
     <string name="ui_memos_sub">מה Jar שמע ומה הוא עשה. אפשר לגעת בהקלטה כדי לתקן מה שלא נשמע נכון.</string>
     <string name="ui_jar_did">Jar עשה</string>
+    <string name="ui_welcome_title">ברוכים הבאים ל־Jar</string>
+    <string name="ui_welcome_sub">אומרים, ו־Jar מסדר: משימות, תזכורות והערות לכל המשפחה. כדי להתחיל, מחברים את הטלפון למחשב המשפחתי עם ההזמנה שקיבלתם.</string>
+    <string name="ui_scan_invite">סריקת קוד ההזמנה</string>
+    <string name="ui_paste_invite">הדבקת קישור ההזמנה</string>
+    <string name="ui_advanced_connection">חיבור ידני (כתובת וקוד)</string>
+    <string name="ui_ready_title">נכנסת, %1$s!</string>
+    <string name="ui_ready_title_noname">הטלפון נקשר למשפחה</string>
+    <string name="ui_ready_sub">עוד שני דברים: לאפשר ל־Jar להשתמש במיקרופון ולשלוח תזכורות, ולבחור איך הוא נראה. אפשר לשנות את שניהם אחר כך בהגדרות.</string>
+    <string name="ui_allow_permissions">לאפשר מיקרופון ותזכורות</string>
+    <string name="ui_pick_look">לבחור מראה</string>
+    <string name="ui_start">מתחילים</string>
+    <string name="ui_message">ההודעה</string>
+    <string name="ui_invite_sub">Jar כותב להם הודעה אישית עם האפליקציה והקוד שלהם; אתם שולחים אותה בוואטסאפ.</string>
+    <string name="ui_update_title">Jar %1$s מוכן</string>
 </resources>

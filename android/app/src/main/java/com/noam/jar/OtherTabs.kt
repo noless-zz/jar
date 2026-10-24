@@ -389,7 +389,7 @@ fun SettingsScreen(data: HomeData, onBack: () -> Unit) {
             SettingsRow(JarIcons.Mic, ctx.getString(R.string.menu_memos), "") { actions.go(Sub.MEMOS) },
         )) }
         item { SettingsGroup(stringResource(R.string.ui_sec_family_s), buildList {
-            if (data.admin) add(SettingsRow(JarIcons.Family, ctx.getString(R.string.ui_set_invite), "") { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ACTION, "invite") } })
+            if (data.admin) add(SettingsRow(JarIcons.Family, ctx.getString(R.string.ui_set_invite), "") { actions.global("invite") })
             add(SettingsRow(JarIcons.Tasks, plain(ctx.getString(R.string.menu_areas)), "${data.areas.size}") { actions.go(Sub.AREAS) })
             add(SettingsRow(JarIcons.Repeat, plain(ctx.getString(R.string.menu_recurring)), "${data.series.size}") { actions.go(Sub.RECURRING) })
             add(SettingsRow(JarIcons.Undo, ctx.getString(R.string.ui_archive_title), "") { actions.go(Sub.ARCHIVE) })
@@ -400,8 +400,8 @@ fun SettingsScreen(data: HomeData, onBack: () -> Unit) {
         item { SettingsGroup(stringResource(R.string.ui_sec_device), listOf(
             SettingsRow(JarIcons.Gear, ctx.getString(R.string.menu_settings), "") { actions.open(MainActivity::class.java) },
             SettingsRow(JarIcons.Undo, ctx.getString(R.string.ui_set_about), ctx.getString(R.string.ui_version, BuildConfig.VERSION_NAME)) {
-                actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ACTION, "update") } },
-            SettingsRow(JarIcons.Chat, ctx.getString(R.string.share_app), "") { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ACTION, "share") } },
+                actions.global("about") },
+            SettingsRow(JarIcons.Chat, ctx.getString(R.string.share_app), "") { actions.shareApp() },
             SettingsRow(JarIcons.Back, ctx.getString(R.string.ui_menu_classic), "") { actions.backToClassic() },
         )) }
     }

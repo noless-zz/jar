@@ -68,10 +68,22 @@ android {
             resValue "string", "app_name", "Jar dev"
         }
         release {
-            minifyEnabled false
+            // R8: drops unused code and resources (Compose made the APK bigger). The emulator workflow
+            // starts the "qa" build below, which is shrunk the same way, before every release.
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (releaseStore) signingConfig signingConfigs.release
             resValue "string", "app_name", "Jar"
+        }
+        // The release build (shrunk by R8), signed with the debug key so the emulator can install it: a smoke test.
+        qa {
+            initWith release
+            applicationIdSuffix ".qa"
+            versionNameSuffix "-qa"
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+            resValue "string", "app_name", "Jar qa"
         }
     }
     compileOptions {

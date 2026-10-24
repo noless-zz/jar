@@ -59,6 +59,7 @@ public class TasksScreenTest {
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         context.getSharedPreferences("jar_prefs", Context.MODE_PRIVATE).edit().clear().commit();
         context.getSharedPreferences("jar_tasks", Context.MODE_PRIVATE).edit().clear().commit();
+        LookPrefs.setNewUi(context, false);      // these tests are about the classic screen
         Prefs prefs = new Prefs(context);
         prefs.setServerUrl("http://127.0.0.1:9");   // nothing listens there: the sync fails fast, the stored list stays
         prefs.setToken("emulator-test");

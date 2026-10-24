@@ -45,7 +45,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
 
       - name: Build the app and the tests
-        run: ./gradlew --no-configuration-cache assembleDebug assembleDebugAndroidTest
+        run: ./gradlew --no-configuration-cache assembleDebug assembleDebugAndroidTest assembleQa
 
       - name: Run the tests on the emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -65,6 +65,14 @@ jobs:
             ./gradlew --no-configuration-cache connectedDebugAndroidTest || ./gradlew --no-configuration-cache connectedDebugAndroidTest || touch tests-failed
             mkdir -p screenshots/api-${{ matrix.api-level }}
             adb pull /sdcard/Pictures/jar/. screenshots/api-${{ matrix.api-level }}/ || true
+            # The release build as R8 shrinks it (qa = release signed with the debug key): does it start and draw?
+            adb logcat -b crash -c || true
+            adb install -r app/build/outputs/apk/qa/app-qa.apk
+            adb shell am start -W -n com.noam.jar.qa/com.noam.jar.TasksActivity
+            sleep 8
+            adb exec-out screencap -p > screenshots/api-${{ matrix.api-level }}/90-qa-release-start.png || true
+            adb shell pidof com.noam.jar.qa || { echo "the shrunk release build is not running"; touch tests-failed; }
+            if adb logcat -d -b crash | grep -q "com.noam.jar.qa"; then adb logcat -d -b crash; echo "the shrunk release build crashed"; touch tests-failed; fi
             test ! -f tests-failed
 
       - name: Screenshots

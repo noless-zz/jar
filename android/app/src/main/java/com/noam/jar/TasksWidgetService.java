@@ -23,6 +23,7 @@ public final class TasksWidgetService extends RemoteViewsService {
         private List<Task> items = new ArrayList<>();
         private String me = "";
         private Map<String, String> names;
+        private WidgetLook look;
 
         Rows(Context c) {
             this.c = c;
@@ -36,6 +37,7 @@ public final class TasksWidgetService extends RemoteViewsService {
             me = cache.myId();
             names = cache.names();
             items = TasksWidget.items(c);
+            look = WidgetLook.of(c);
         }
 
         @Override public void onDestroy() { items.clear(); }
@@ -46,6 +48,8 @@ public final class TasksWidgetService extends RemoteViewsService {
         public RemoteViews getViewAt(int pos) {
             RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_task_item);
             if (pos >= items.size()) return v;
+            if (look == null) look = WidgetLook.of(c);
+            v.setTextColor(R.id.twi_title, look.getInk());
             Task t = items.get(pos);
             String title = t.title;
             String action;
@@ -71,6 +75,8 @@ public final class TasksWidgetService extends RemoteViewsService {
             if (TaskFormat.overdue(t)) meta = "⚠ " + meta;
             if (t.coins > 0 && !t.isMessage()) meta = meta.isEmpty() ? "🪙 " + t.coins : "🪙 " + t.coins + " · " + meta;
             v.setTextViewText(R.id.twi_meta, meta);
+            v.setTextColor(R.id.twi_meta, TaskFormat.overdue(t) ? look.getDanger() : look.getMuted());
+            v.setInt(R.id.twi_action, "setColorFilter", look.getAccent());
             v.setImageViewResource(R.id.twi_action, icon);
             v.setContentDescription(R.id.twi_action, c.getString("accept".equals(action) ? R.string.action_accept
                     : "send".equals(action) ? R.string.send_whatsapp : R.string.action_done));
