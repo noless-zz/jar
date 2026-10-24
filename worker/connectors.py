@@ -350,12 +350,14 @@ class FamilyGoogle(Google):
         return creds
 
     def account(self) -> str | None:
-        # gmail.send can't read the profile; the calendar's own id is the account's address.
+        # gmail.send can't read the profile, and calendar.events can't read calendars/primary (403).
+        # Listing events is allowed, and the listing's "summary" is the account's address.
         try:
             from google.auth.transport.requests import AuthorizedSession
             r = AuthorizedSession(self._creds()).get(
-                "https://www.googleapis.com/calendar/v3/calendars/primary", timeout=10)
-            return r.json().get("id") if r.ok else None
+                f"https://www.googleapis.com/calendar/v3/calendars/{self.calendar_id}/events",
+                params={"maxResults": 1}, timeout=10)
+            return r.json().get("summary") if r.ok else None
         except Exception:  # noqa: BLE001
             return None
 

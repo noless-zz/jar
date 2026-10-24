@@ -102,6 +102,12 @@ def start_detached(py: str) -> None:
     logs = ROOT / "data" / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     flags = (0x00000008 | NO_WINDOW) if WIN else 0            # DETACHED_PROCESS
+    if WIN:
+        # The .venv python.exe is a launcher whose real interpreter gets a console window of its own
+        # when started detached. pythonw.exe never opens one.
+        w = Path(py).with_name("pythonw.exe")
+        if Path(py).name.lower() == "python.exe" and w.exists():
+            py = str(w)
     with open(logs / "supervisor.err.log", "ab") as err:
         subprocess.Popen([py, "-m", "server.supervise"], cwd=ROOT, creationflags=flags, stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=err, start_new_session=not WIN)
@@ -409,6 +415,11 @@ class Supervisor:
     def pull(self) -> None:
         self.update = self.updater().pull()
         self.checked_at = time.time()
+        if self.update.startswith("can't reach GitHub"):
+            # Right after boot the network often isn't up yet: try again in a minute
+            # instead of showing the miss until the next regular check.
+            every = max(2, int(self.opt("pull_minutes", 10))) * 60
+            self.checked_at -= max(0, every - 60)
         self.code = self.code_version()
 
     def take_command(self) -> None:
