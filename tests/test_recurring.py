@@ -351,6 +351,38 @@ class VoiceTools(Base):
         n.add_task("לבשל", for_person="dana", also_for=["yoni"], repeat="daily", take_turns=True)
         self.assertEqual(self.store._read()["series"][1]["owners"], ["dana", "yoni"])
 
+    def test_turns_from_the_words_when_the_model_misses_them(self):
+        n = self.notes("dana")
+        n.transcript = "תורנות לפרוק את המדיח כל יום, יוני ומאיה"
+        n.add_task("לפרוק את המדיח - תורנות יוני ומאיה", repeat="daily")          # no people, no turns
+        s = self.store._read()["series"][0]
+        self.assertEqual((s["owners"], s["rotate"]), (["yoni", "maya"], True))
+        n.transcript = "תורנות לפנות את השולחן כל ערב שבת, ליוני ולמאיה"
+        n.add_task("לפנות את השולחן", for_person="yoni", also_for=["maya"], repeat="weekly:fri")   # turns missed
+        self.assertTrue(self.store._read()["series"][1]["rotate"])
+
+    def test_spoken_time_beats_the_model(self):
+        from worker.tools import spoken_times
+        self.assertEqual(spoken_times("להוציא את הזבל בשמונה בערב"), [(20, 0, "evening")])
+        self.assertEqual(spoken_times("בשבע וחצי בבוקר"), [(7, 30, "morning")])
+        self.assertEqual(spoken_times("תור ביום רביעי בעשר"), [(10, 0, "")])
+        self.assertEqual(spoken_times("בשבת בערב"), [])                       # a day, not a time
+        n = self.notes("dana")
+        n.transcript = "כל ראשון ורביעי יוני צריך להוציא את הזבל בשמונה בערב"
+        self.assertEqual(n._t("18:00"), "20:00")
+        n.transcript = "תור לרופא ביום רביעי בעשר"
+        self.assertEqual(n._t("22:00"), "22:00")          # no part of day said: the model's am/pm stands
+        self.assertEqual(n._t("09:00"), "10:00")          # but the hour is fixed
+        n.transcript = "בשש או בשבע"                       # two times: leave it to the model
+        self.assertEqual(n._t("18:00"), "18:00")
+
+    def test_same_task_twice_in_one_memo(self):
+        n = self.notes("dana")
+        n.add_task("להכין לוח שנה לסבתא")
+        out = n.add_task("להכין לוח שנה לסבתא")
+        self.assertIn("already made", out)
+        self.assertEqual(len(self.store._read()["tasks"]), 1)
+
     def test_bad_repeat_is_explained(self):
         from worker.tools import ToolError
         with self.assertRaises(ToolError):
@@ -444,3 +476,33 @@ class Api(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_same_rule_written_two_ways_is_one_series():
+    from worker.tools import _same_rule
+    assert _same_rule("weekly:mon", "weekly:Monday")
+    assert _same_rule("weekly:mon", "weekly: mon")
+    assert not _same_rule("weekly:mon", "weekly:tue")
+    assert not _same_rule("daily", "not a rule")
+
+
+
+class KeepDoneTest(Base):
+    def test_finished_tasks_are_kept_forever_unless_a_parent_sets_a_limit(self):
+        import json
+        path = self.tmp / "data" / "tasks.json"
+        parent, kid = self.p["avi"], next(x for x in self.p.values() if not x.is_parent)
+        t = self.store.add(parent, "old chore", parent, None)
+        self.store.act(parent, t["id"], "done")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for x in data["tasks"]:
+            x["updated_at"] = x["done_at"] = "2025-01-01T00:00:00Z"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual(self.store.purge_old(), 0)                                  # default: forever
+        self.assertEqual(self.store.snapshot(parent)["settings"], {"keep_done_days": 0})
+        with self.assertRaises(TaskError):
+            self.store.set_settings(kid, {"keep_done_days": 30})                    # parents only
+        with self.assertRaises(TaskError):
+            self.store.set_settings(parent, {"keep_done_days": 7})                  # only the offered choices
+        self.assertEqual(self.store.set_settings(parent, {"keep_done_days": 90}), {"keep_done_days": 90})
+        self.assertEqual(self.store.purge_old(), 1)

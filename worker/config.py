@@ -39,6 +39,8 @@ class Config:
     family: dict | None = None   # [family] table (see worker/family.py)
     contacts: dict | None = None  # [contacts] name = "+972…" for WhatsApp drafts
     points: dict | None = None    # [points] table (see worker/points.py)
+    whisper_vad: str = "default"  # [transcribe] vad: "default" | "gentle" | "off"
+    whisper_normalize: bool = False  # [transcribe] normalize: lift quiet recordings before transcribing
     family_account: dict | None = None   # [family_account]: the family's own Jar Gmail (docs/CONNECT.md, part C)
 
 
@@ -66,6 +68,8 @@ def load(path: Path | None = None, root: Path = ROOT) -> Config:
         whisper_compute=t.get("compute_type", "auto"),
         whisper_language=t.get("language", ""),
         vocabulary=t.get("vocabulary", ""),
+        whisper_vad=str(t.get("vad", "default")),
+        whisper_normalize=bool(t.get("normalize", False)),
         ollama_url=l.get("ollama_url", "http://localhost:11434").rstrip("/"),
         llm_model=l.get("model", "qwen3.5:9b"),
         temperature=float(l.get("temperature", 0.2)),

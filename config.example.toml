@@ -20,6 +20,11 @@ compute_type = "auto"      # auto = int8_float16 on GPU, int8 on CPU
 language = ""              # "" = detect per memo; or "he" / "en"
 # Words Whisper should spell right (names, places, jargon). Helps a lot with Hebrew.
 vocabulary = "Jar, Tailscale, Obsidian"
+# Voice detection: "gentle" keeps soft word starts/ends (quiet or hesitant speech, kids); "default" = faster-whisper's
+# own; "off" = transcribe everything. normalize = lift quiet recordings first. Compare on your own memos with the
+# ASR bench (data/eval/asr, see docs/DEVELOPING.md). ivrit-ai models always run with language "he".
+vad = "default"
+normalize = false
 
 [llm]
 ollama_url = "http://localhost:11434"

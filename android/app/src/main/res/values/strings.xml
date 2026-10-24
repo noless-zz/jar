@@ -52,8 +52,8 @@
     <string name="test_ok_home">Connected over the home network (%1$s) · token accepted</string>
     <string name="test_ok_tailscale">Connected over Tailscale (%1$s) · token accepted</string>
     <string name="test_ok_public">Connected over the internet, encrypted (%1$s) · token accepted</string>
-    <string name="test_unreachable">None of the %1$d saved addresses answered (%2$s). Jar's PC can't be reached right now (off, or no internet). Memos wait on the phone and go by themselves later.</string>
-    <string name="ts_off">Tailscale is installed but off. That's fine: Jar works without it, at home and over its public address.</string>
+    <string name="test_unreachable">None of the %1$d saved addresses answered (%2$s). Jar\'s PC can\'t be reached right now (off, or no internet). Memos wait on the phone and go by themselves later.</string>
+    <string name="ts_off">Tailscale is installed but off. That\'s fine: Jar works without it, at home and over its public address.</string>
     <string name="ts_connected">Tailscale is connected: memos reach the PC from anywhere.</string>
     <string name="ts_open">Open Tailscale</string>
     <plurals name="pair_info_paired">
@@ -422,4 +422,15 @@
     <string name="handover_accept_short">Take it</string>
     <string name="handover_decline_short">Not now</string>
     <string name="notif_handover">%1$s asks to move this to your area</string>
+    <string name="header_done_today">✅ Done in the last 24 hours</string>
+    <string name="header_done_week">Done this week</string>
+    <string name="archive_button">🗄️ Archive (%1$d)</string>
+    <string name="archive_sub">Done more than a week ago</string>
+    <string name="archive_title">Archive · %1$d done</string>
+    <string name="menu_keep_done">Keep finished tasks</string>
+    <string name="keep_forever">Forever</string>
+    <plurals name="keep_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
 </resources>

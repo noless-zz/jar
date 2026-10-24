@@ -87,6 +87,16 @@ public final class TaskCache {
         }
     }
 
+    /** Days finished tasks stay before the PC removes them (a parent's choice); 0 = forever. */
+    public synchronized int keepDoneDays() {
+        try {
+            JSONObject s = new JSONObject(sp.getString("tasks", "{}")).optJSONObject("settings");
+            return s == null ? 0 : s.optInt("keep_done_days", 0);
+        } catch (JSONException e) {
+            return 0;
+        }
+    }
+
     /** The recurring tasks from the last sync. */
     public synchronized List<Series> series() {
         try {

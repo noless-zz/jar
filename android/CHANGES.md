@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+1.5.0 | משימות שבוצעו: ״בוצעו ב־24 השעות האחרונות״ לבדיקה, ״בוצעו השבוע״, ומה שישן משבוע בארכיון 🗄️; משימה של ״כל אחד״ נשארת למעלה עד שכולם סיימו; הורים בוחרים כמה זמן לשמור משימות שבוצעו (ברירת מחדל: לתמיד) | Done tasks: "done in the last 24 hours" to review, "done this week", and anything older in the Archive 🗄️; an "each of us" task stays on top until everyone has done it; parents choose how long finished tasks are kept (default: forever)
 1.4.1 | הודעה ברורה כשהמחשב של Jar לא זמין: לא צריך Tailscale | A clear message when Jar's PC can't be reached: Tailscale isn't needed
 1.4.0 | תחומי אחריות 🧭: לכל אחד תחום (מטבח, רצפות, כביסה, אוכל וקניות) עם משימות חוזרות; משימה מתחום של מישהו אחר מציעה להעביר אליו, והוא או הורה מאשרים | Areas of responsibility 🧭: everyone has an area (kitchen, floors, laundry, food & shopping) with recurring tasks; a task in someone else's area offers to move to them, and they or a parent approve
 1.3.1 | כל משימה אפשר להפוך לחוזרת: לוחצים עליה ← 🔁 להפוך למשימה חוזרת (או בעריכה) | Any task can become a recurring one: tap it → 🔁 Make it repeat (or in Edit)

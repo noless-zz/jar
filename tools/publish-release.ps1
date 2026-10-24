@@ -41,6 +41,6 @@ if ($LASTEXITCODE -ne 0) { Write-Host "commit failed" -ForegroundColor Red; exit
 & git push origin HEAD
 if ($LASTEXITCODE -ne 0) { Write-Host "git push failed" -ForegroundColor Red; exit 1 }
 Write-Host ""
-Write-Host "Pushed $tag. GitHub is building it now (about 5 minutes):" -ForegroundColor Green
+Write-Host "Pushed $tag. GitHub tests it on Android emulators, then builds it (about 15 minutes):" -ForegroundColor Green
 Write-Host "  https://github.com/noless-zz/jar/actions"
 Write-Host "When it's done the APK is at https://github.com/noless-zz/jar/releases/latest"

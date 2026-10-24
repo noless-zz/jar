@@ -190,6 +190,48 @@ public final class TaskLists {
         return out;
     }
 
+    // ---------------------------------------------------------------- done and archive
+
+    /** Where a finished task sits on its tab. */
+    public static final int OPEN = 0, DONE_TODAY = 1, DONE_WEEK = 2, ARCHIVED = 3;
+    static final long DAY_MS = 24L * 3600 * 1000;
+
+    /**
+     * Open (or still mine to do), done in the last 24 hours (to review), done in the last week, or archived
+     * (done more than a week ago). {@code me} null: done for everyone. Declined counts as finished.
+     */
+    public static int doneBucket(Task t, String me, long now) {
+        boolean finished = (me == null ? t.isDone() : t.doneFor(me)) || "declined".equals(t.status);
+        if (!finished) return OPEN;
+        long at = utcMillis(doneWhen(t));
+        if (at < 0) return DONE_TODAY;                 // unknown time: keep it in sight
+        long age = now - at;
+        return age <= DAY_MS ? DONE_TODAY : age <= 7 * DAY_MS ? DONE_WEEK : ARCHIVED;
+    }
+
+    /** When it was finished: done_at, or the last change (my part of an "each of us" task, a decline). */
+    public static String doneWhen(Task t) {
+        return t.isDone() && t.doneAt != null && !t.doneAt.isEmpty() ? t.doneAt : t.updatedAt;
+    }
+
+    /** Most recently finished first. */
+    public static final Comparator<Task> NEWEST_DONE = (a, b) -> doneWhen(b).compareTo(doneWhen(a));
+
+    /** Epoch millis of the server's UTC "yyyy-MM-ddTHH:mm:ss[Z]", or -1. */
+    public static long utcMillis(String iso) {
+        if (iso == null || iso.length() < 16) return -1;
+        try {
+            Calendar c = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+            c.clear();
+            c.set(Integer.parseInt(iso.substring(0, 4)), Integer.parseInt(iso.substring(5, 7)) - 1,
+                    Integer.parseInt(iso.substring(8, 10)), Integer.parseInt(iso.substring(11, 13)),
+                    Integer.parseInt(iso.substring(14, 16)), iso.length() >= 19 ? Integer.parseInt(iso.substring(17, 19)) : 0);
+            return c.getTimeInMillis();
+        } catch (NumberFormatException | StringIndexOutOfBoundsException e) {
+            return -1;
+        }
+    }
+
     // ---------------------------------------------------------------- time
 
     /** Epoch millis of a local "yyyy-MM-dd[THH:mm]" (date only = 08:00), or -1 if unreadable. */

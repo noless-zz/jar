@@ -34,6 +34,33 @@ def _add_cuda_dlls() -> None:
                 os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
 
 
+# Voice-activity detection presets ([transcribe] vad). faster-whisper's own default drops soft word onsets and
+# endings (threshold 0.5, 400 ms padding) — quiet or hesitant speech, a child far from the mic.
+VAD = {
+    "default": {},
+    "gentle": {"threshold": 0.3, "min_silence_duration_ms": 1000, "speech_pad_ms": 800},
+}
+
+
+def normalize(audio):
+    """Remove DC and lift a quiet recording toward a 0.9 peak, at most 10x (20 dB). Loud audio is left alone."""
+    import numpy as np
+    if not isinstance(audio, np.ndarray) or audio.size == 0:
+        return audio
+    audio = audio - float(np.mean(audio))
+    peak = float(np.max(np.abs(audio)))
+    if 0 < peak < 0.5:
+        audio = audio * min(0.9 / peak, 10.0)
+    return audio.astype(np.float32)
+
+
+def language_for(model: str, language: str) -> str | None:
+    """ivrit-ai's Hebrew models weakened language detection on purpose: they must run with "he"."""
+    if not language and "ivrit" in (model or "").lower():
+        return "he"
+    return language or None
+
+
 def load_audio(wav: Path):
     """Memos are always 16 kHz mono 16-bit WAV (pendant and phone app), so read them with the
     standard library instead of faster-whisper's PyAV decoder — one less version to break.
@@ -53,9 +80,11 @@ def load_audio(wav: Path):
 
 class Transcriber:
     def __init__(self, model: str, device: str = "auto", compute_type: str = "auto",
-                 language: str = "", vocabulary: str = ""):
+                 language: str = "", vocabulary: str = "", vad: str = "default", normalize: bool = False):
         self.model_name = model
-        self.language = language or None
+        self.language = language_for(model, language)
+        self.vad = vad if vad in ("default", "gentle", "off") else "default"
+        self.normalize = bool(normalize)
         self.vocabulary = vocabulary or None
         self.device, self.compute_type = self._pick(device, compute_type)
         self._model = None
@@ -82,6 +111,12 @@ class Transcriber:
         self._model = WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
         log.info("Whisper ready in %.1f s", time.monotonic() - t0)
 
+    def close(self) -> None:
+        """Free the model (the ASR bench loads one candidate at a time)."""
+        self._model = None
+        import gc
+        gc.collect()
+
     def transcribe(self, wav: Path) -> Transcript:
         if self._model is None:
             self._load()
@@ -98,12 +133,16 @@ class Transcriber:
             return self._run(wav, time.monotonic())
 
     def _run(self, wav: Path, t0: float) -> Transcript:
+        audio = load_audio(wav)
+        if self.normalize:
+            audio = normalize(audio)
         segments, info = self._model.transcribe(
-            load_audio(wav),
+            audio,
             language=self.language,
             initial_prompt=self.vocabulary,
             beam_size=5,
-            vad_filter=True,               # skip silence, avoids hallucinated text on quiet memos
+            vad_filter=self.vad != "off",  # skip silence, avoids hallucinated text on quiet memos
+            vad_parameters=VAD.get(self.vad) or None,
             condition_on_previous_text=False,
         )
         text = " ".join(s.text.strip() for s in segments).strip()

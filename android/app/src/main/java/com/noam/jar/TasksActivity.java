@@ -149,6 +149,8 @@ public final class TasksActivity extends AppCompatActivity {
                 showSeriesList();
             } else if (id == R.id.menu_areas) {
                 showAreas();
+            } else if (id == R.id.menu_keep_done) {
+                showKeepDone();
             } else if (id == R.id.menu_memos) {
                 startActivity(new Intent(this, MemosActivity.class));
             } else if (id == R.id.menu_invite) {
@@ -432,6 +434,7 @@ public final class TasksActivity extends AppCompatActivity {
         toolbar.setTitle(name.isEmpty() ? getString(R.string.tasks_title) : getString(R.string.tasks_title_for, name));
         toolbar.getMenu().findItem(R.id.menu_dashboard).setVisible(cache.iAmAdmin());
         toolbar.getMenu().findItem(R.id.menu_invite).setVisible(cache.iAmAdmin());
+        toolbar.getMenu().findItem(R.id.menu_keep_done).setVisible(cache.iAmParent());
         toolbar.getMenu().findItem(R.id.menu_update).setTitle(getString(R.string.menu_update_version,
                 BuildConfig.VERSION_NAME));
         TabLayout.Tab familyTab = tabs.getTabAt(TAB_FAMILY);
@@ -463,9 +466,9 @@ public final class TasksActivity extends AppCompatActivity {
                 for (Task t : ok) rows.add(Row.task(t));
                 rows.add(Row.header(getString(R.string.header_mine)));
             }
-            for (Task t : TaskLists.mine(all, me)) rows.add(Row.task(t));
+            addWithDone(rows, TaskLists.mine(all, me), null);   // mine stays up until everyone did it
         } else if (tab == TAB_ASKED) {
-            for (Task t : TaskLists.asked(all, me)) rows.add(Row.task(t));
+            addWithDone(rows, TaskLists.asked(all, me), null);
         } else if (tab == TAB_BOARD) {
             rows.addAll(boardRows(parent));
         } else if (tab == TAB_IDEAS) {
@@ -478,7 +481,13 @@ public final class TasksActivity extends AppCompatActivity {
             java.util.function.Function<Task, String> group = x -> x.isShared() ? "~shared" : x.assignee;
             fam.sort((a, b) -> group.apply(a).equals(group.apply(b)) ? TaskLists.ORDER.compare(a, b)
                     : group.apply(a).compareTo(group.apply(b)));
+            List<Task> finished = new ArrayList<>();
+            long now = System.currentTimeMillis();
             for (Task t : fam) {
+                if (TaskLists.doneBucket(t, null, now) != TaskLists.OPEN) {
+                    finished.add(t);               // done ones go to the review / week / archive sections
+                    continue;
+                }
                 if (!group.apply(t).equals(current)) {
                     current = group.apply(t);
                     rows.add(Row.header(t.isShared() ? getString(R.string.header_shared)
@@ -486,6 +495,7 @@ public final class TasksActivity extends AppCompatActivity {
                 }
                 rows.add(Row.task(t));
             }
+            addWithDone(rows, finished, null);
         }
         adapter.set(rows);
         boolean none = rows.isEmpty();
@@ -493,6 +503,73 @@ public final class TasksActivity extends AppCompatActivity {
         emptyButton.setVisibility(View.GONE);
         emptyText.setText(tab == TAB_MINE ? R.string.empty_mine : tab == TAB_ASKED ? R.string.empty_asked
                 : tab == TAB_IDEAS ? R.string.empty_ideas : R.string.empty_family);
+    }
+
+    /**
+     * Open tasks in their order, then "done in the last 24 hours" (to review) and "done this week";
+     * anything done more than a week ago sits behind an Archive line at the bottom.
+     */
+    private void addWithDone(List<Row> rows, List<Task> list, String me) {
+        long now = System.currentTimeMillis();
+        List<Task> today = new ArrayList<>(), week = new ArrayList<>(), old = new ArrayList<>();
+        for (Task t : list) {
+            int b = TaskLists.doneBucket(t, me, now);
+            if (b == TaskLists.OPEN) rows.add(Row.task(t));
+            else (b == TaskLists.DONE_TODAY ? today : b == TaskLists.DONE_WEEK ? week : old).add(t);
+        }
+        today.sort(TaskLists.NEWEST_DONE);
+        week.sort(TaskLists.NEWEST_DONE);
+        old.sort(TaskLists.NEWEST_DONE);
+        if (!today.isEmpty()) {
+            rows.add(Row.header(getString(R.string.header_done_today)));
+            for (Task t : today) rows.add(Row.task(t));
+        }
+        if (!week.isEmpty()) {
+            rows.add(Row.header(getString(R.string.header_done_week)));
+            for (Task t : week) rows.add(Row.task(t));
+        }
+        if (!old.isEmpty()) {
+            rows.add(Row.line(getString(R.string.archive_button, old.size()), getString(R.string.archive_sub),
+                    "›", () -> showArchive(old)));
+        }
+    }
+
+    /** Parents: how long finished tasks stay in the archive before the PC removes them (default forever). */
+    private void showKeepDone() {
+        final int[] days = {0, 30, 90, 180, 365};
+        String[] labels = new String[days.length];
+        int current = 0;
+        for (int i = 0; i < days.length; i++) {
+            labels[i] = days[i] == 0 ? getString(R.string.keep_forever)
+                    : getResources().getQuantityString(R.plurals.keep_days, days[i], days[i]);
+            if (days[i] == cache.keepDoneDays()) current = i;
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.menu_keep_done)
+                .setSingleChoiceItems(labels, current, (d, which) -> {
+                    d.dismiss();
+                    areaCall(() -> TaskApi.setSettings(prefs, new org.json.JSONObject().put("keep_done_days", days[which])));
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    /** Done more than a week ago, newest first; tap one for its menu (reopen, notes …). */
+    private void showArchive(List<Task> old) {
+        Map<String, String> names = cache.names();
+        String[] items = new String[old.size()];
+        for (int i = 0; i < old.size(); i++) {
+            Task t = old.get(i);
+            long at = TaskLists.utcMillis(TaskLists.doneWhen(t));
+            String day = at < 0 ? "" : TaskFormat.shortDay(TaskLists.day(at, java.util.TimeZone.getDefault()));
+            items[i] = t.title + "\n" + ("declined".equals(t.status) ? "✖ " : "✅ ") + day
+                    + " · " + TaskFormat.people(names, t.owners());
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.archive_title, old.size()))
+                .setItems(items, (d, which) -> showTaskMenu(old.get(which)))
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private void refreshRecord() {

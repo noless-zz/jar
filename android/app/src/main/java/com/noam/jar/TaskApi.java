@@ -402,6 +402,11 @@ public final class TaskApi {
         return call(prefs, "POST", "/v1/areas/" + areaId + "/edit", fields);
     }
 
+    /** A parent's family settings: {"keep_done_days": 0 (forever) | 30 | 90 | 180 | 365}. */
+    public static JSONObject setSettings(Prefs prefs, JSONObject fields) throws IOException {
+        return call(prefs, "POST", "/v1/settings", fields);
+    }
+
     public static JSONObject deleteArea(Prefs prefs, String areaId) throws IOException {
         return call(prefs, "POST", "/v1/areas/" + areaId + "/delete", new JSONObject());
     }

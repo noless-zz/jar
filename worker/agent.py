@@ -264,7 +264,7 @@ class Agent:
                     raise          # nothing filed yet: safe to retry the whole memo later
                 # Something is already filed; retrying would file it twice. Keep what we have.
                 log.warning("  model failed after filing (%s); keeping the %d action(s)", e, len(notes.actions))
-                summary = "Filed; the model stopped before its closing summary."
+                summary = "נשמר."  # the model stopped before its closing summary (Hebrew: the family reads it)
                 break
             calls = msg.get("tool_calls") or _calls_in_text(msg.get("content", ""), tools)
             if not calls:

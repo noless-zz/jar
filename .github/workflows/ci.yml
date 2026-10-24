@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install test dependencies
-        run: pip install fastapi httpx qrcode tzdata
+        run: pip install fastapi httpx qrcode tzdata numpy
       - name: Server and worker tests
         run: python -m unittest discover -s tests -t . -v
 
