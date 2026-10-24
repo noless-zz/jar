@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -249,7 +250,7 @@ class HomeScreenTest {
             compose.onNodeWithText(s(R.string.add_when)).assertDoesNotExist()      // a repeating task has its own time
             shot("40-add-$tag")
         }
-        compose.onNodeWithTag("add_save").performClick()                           // no PC here: a toast, and the sheet closes
+        compose.onNodeWithTag("add_save").performScrollTo().performClick()                           // no PC here: a toast, and the sheet closes
         compose.waitForIdle()
         compose.onNodeWithTag("edit_sheet").assertDoesNotExist()
     }
@@ -352,6 +353,22 @@ class HomeScreenTest {
     }
 
     @Test
+    fun thread_inEachStyle() {
+        for ((style, mode, tag) in styles) {
+            scenario?.close()
+            launch(style, mode, me = "livne")
+            compose.onNodeWithText("Tidy your desk").performClick()
+            compose.onNodeWithText(s(R.string.ui_reply)).performClick()
+            compose.onNodeWithTag("thread").assertExists()
+            compose.onNodeWithText("Yes, after my homework").assertExists()
+            compose.onNodeWithText(s(R.string.thread_ask_name, "Noam")).assertExists()   // ask whoever gave it to you
+            shot("50-thread-$tag")
+            compose.onNodeWithTag("back").performClick()
+            compose.onNodeWithTag("thread").assertDoesNotExist()
+        }
+    }
+
+    @Test
     fun board_lessonForAChild() {
         seed("livne")
         scenario = ActivityScenario.launch(HomeActivity::class.java)
@@ -378,7 +395,10 @@ class HomeScreenTest {
             .put(task("t6", "Clean the room together", "noam", "open", null, now - HOUR, null)
                 .put("assignees", JSONArray().put("noam").put("livne")).put("mode", "all")
                 .put("done_parts", JSONObject().put("noam", utc(now - HOUR))))
-            .put(task("t9", "Tidy your desk", "livne", "open", null, now - HOUR, local(now, "18:00")).put("created_by", "noam"))
+            .put(task("t9", "Tidy your desk", "livne", "open", null, now - HOUR, local(now, "18:00")).put("created_by", "noam")
+                .put("thread", JSONArray()
+                    .put(JSONObject().put("id", 1).put("by", "noam").put("text", "Can you do it before dinner?").put("at", utc(now - 3 * HOUR)).put("ask", true))
+                    .put(JSONObject().put("id", 2).put("by", "livne").put("text", "Yes, after my homework").put("at", utc(now - 2 * HOUR)))))
             .put(task("i1", "Night mode", "noam", "requested", null, now - HOUR, null).put("kind", "idea").put("created_by", "livne"))
         val series = JSONArray()
             .put(JSONObject().put("id", "s1").put("title", "Water the plants").put("created_by", "noam").put("owners", JSONArray().put("noam").put("livne"))

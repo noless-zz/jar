@@ -61,6 +61,8 @@ class HomeActivity : ComponentActivity() {
     val stack = mutableStateListOf<Sub>()
     /** The add / edit sheet, when open. */
     val editing = mutableStateOf<EditReq?>(null)
+    /** The task whose notes [Sub.THREAD] shows. */
+    val threadId = mutableStateOf("")
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val receiver = object : BroadcastReceiver() {
@@ -83,7 +85,7 @@ class HomeActivity : ComponentActivity() {
             JarThemed(look) {
                 SystemBars()
                 androidx.compose.runtime.CompositionLocalProvider(LocalActions provides actions) {
-                    HomeScreen(cache, v, recording.value, memo.value, moment.value, stack.lastOrNull(), editing.value)
+                    HomeScreen(cache, v, recording.value, memo.value, moment.value, stack.lastOrNull(), editing.value, threadId.value)
                 }
             }
         }
@@ -172,7 +174,9 @@ class HomeActivity : ComponentActivity() {
         }
 
         override fun thread(t: Task) {
-            startActivity(Intent(this@HomeActivity, TaskThreadActivity::class.java).putExtra(TaskThreadActivity.EXTRA_ID, t.id))
+            threadId.value = t.id
+            go(Sub.THREAD)
+            TaskSync.now(this@HomeActivity)     // fetch the newest notes
         }
 
         override fun open(c: Class<*>) {
@@ -240,7 +244,7 @@ interface HomeActions {
 }
 
 /** The screens that open over the tabs. */
-enum class Sub { SETTINGS, RECURRING, AREAS, ARCHIVE, MEMOS }
+enum class Sub { SETTINGS, RECURRING, AREAS, ARCHIVE, MEMOS, THREAD }
 
 /** Open the add / edit sheet: a new task ([task] null), an edit, or "make it repeat" ([repeat]). */
 data class EditReq(val task: Task?, val repeat: Boolean = false)
@@ -251,7 +255,7 @@ enum class Tab { TASKS, FAMILY, BOARD, IDEAS }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo: JSONObject?, moment: DoneMoment?, sub: Sub?, editing: EditReq?) {
+private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo: JSONObject?, moment: DoneMoment?, sub: Sub?, editing: EditReq?, threadId: String) {
     val c = LocalJar.current.colors
     val ctx = LocalContext.current
     val actions = LocalActions.current
@@ -274,6 +278,7 @@ private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo:
                 Sub.AREAS -> AreasScreen(data)
                 Sub.ARCHIVE -> ArchiveScreen(data, onOpen = { sheet = it })
                 Sub.MEMOS -> MemosScreen()
+                Sub.THREAD -> ThreadScreen(threadId, data)
             }
         } else {
             when (tab) {

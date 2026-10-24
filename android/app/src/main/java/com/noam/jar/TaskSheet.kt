@@ -4,6 +4,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,7 +71,8 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
     val edit = { onClose(); actions.edit(EditReq(t)) }
     val repeat = { onClose(); actions.edit(EditReq(t, repeat = true)) }
     val act = { a: String, until: String? -> actions.act(t, a, until); onClose() }
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (jar.style == JarStyle.NIGHT && t.createdBy.isNotEmpty())
                 Text(ctx.getString(R.string.ui_from, TaskLists.name(data.names, t.createdBy)), color = c.muted, fontSize = 13.sp, fontFamily = jar.font)

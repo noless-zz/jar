@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -214,7 +217,8 @@ fun ActionRow(icon: ImageVector, label: String, danger: Boolean = false, tag: St
 /** Sheet content padding and spacing, shared by every sheet. */
 @Composable
 fun SheetColumn(tag: String? = null, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp).then(if (tag != null) Modifier.testTag(tag) else Modifier),
+    Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp)
+        .then(if (tag != null) Modifier.testTag(tag) else Modifier),
         verticalArrangement = Arrangement.spacedBy(16.dp)) { content() }
 }
 
