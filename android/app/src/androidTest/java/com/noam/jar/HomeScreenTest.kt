@@ -467,7 +467,7 @@ class HomeScreenTest {
                 compose.onNodeWithText("Pay the electricity").performClick()
                 compose.onNodeWithText(s(R.string.action_done)).performClick()
                 compose.waitForIdle()
-                val node = compose.onNodeWithTag("coin_amount")
+                val node = compose.onNodeWithTag("coin_amount", useUnmergedTree = true)
                 node.assertTextEquals("+$coins")
                 val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
                 node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
