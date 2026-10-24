@@ -544,4 +544,8 @@
     <string name="ui_message">The message</string>
     <string name="ui_invite_sub">Jar writes them a personal message with the app and their code; you send it in WhatsApp.</string>
     <string name="ui_update_title">Jar %1$s is ready</string>
+    <string name="w_today">today</string>
+    <string name="w_done_of">%1$d of %2$d done today</string>
+    <string name="w_nothing_today">Nothing for today</string>
+    <string name="w_add">Task</string>
 </resources>

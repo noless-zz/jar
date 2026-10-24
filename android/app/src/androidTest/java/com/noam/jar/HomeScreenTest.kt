@@ -451,6 +451,62 @@ class HomeScreenTest {
         shot("49-lesson-playful")
     }
 
+    // ---------------------------------------------------------------- the home-screen widget
+
+    /** The widget at three sizes on a wallpaper, drawn exactly as the launcher would (RemoteViews.apply). */
+    private fun showWidgets(name: String): android.widget.LinearLayout {
+        var column: android.widget.LinearLayout? = null
+        scenario!!.onActivity { a ->
+            val d = a.resources.displayMetrics.density
+            val col = android.widget.LinearLayout(a).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding((16 * d).toInt(), (40 * d).toInt(), (16 * d).toInt(), 0)
+                background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(0xFF7C93B8.toInt(), 0xFF35465F.toInt()))
+            }
+            for ((w, h) in listOf(340 to 330, 340 to 190, 230 to 110)) {
+                val view = WidgetBuilder.build(a, w, h).apply(a, col)
+                col.addView(view, android.widget.LinearLayout.LayoutParams((w * d).toInt(), (h * d).toInt()).apply { bottomMargin = (14 * d).toInt() })
+            }
+            a.addContentView(col, android.view.ViewGroup.LayoutParams(-1, -1))
+            column = col
+        }
+        shot("70-widget-$name")
+        return column!!
+    }
+
+    @Test
+    fun widget_inEachStyle() {
+        for ((look, name) in listOf(Look(JarStyle.CALM, JarMode.LIGHT, 0, 0) to "calm", Look(JarStyle.CALM, JarMode.DARK, 6, 0) to "calm-dark",
+            Look(JarStyle.NIGHT, JarMode.DARK, 1, 0) to "night", Look(JarStyle.NIGHT, JarMode.LIGHT, 4, 0) to "night-light",
+            Look(JarStyle.PLAYFUL, JarMode.LIGHT, 0, 1) to "playful")) {
+            scenario?.close()
+            seed(if (look.style == JarStyle.PLAYFUL) "livne" else "noam")
+            LookPrefs.save(context, look)
+            scenario = ActivityScenario.launch(HomeActivity::class.java)
+            compose.waitForIdle()
+            showWidgets(name)
+        }
+    }
+
+    @Test
+    fun widget_tickFinishesTheTask() {
+        launch(JarStyle.CALM, JarMode.LIGHT)
+        compose.waitForIdle()
+        val col = showWidgets("tick")
+        val cache = TaskCache(context)
+        val items = com.noam.jar.core.TaskLists.forWidget(cache.tasks(), "noam", true, 10)
+        val i = items.indexOfFirst { !it.isMessage && !it.isRequested && !it.waitingOn("noam") }
+        val id = items[i].id
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val rows = col.getChildAt(0).findViewById<android.view.ViewGroup>(R.id.w_rows)
+            rows.getChildAt(i).findViewById<android.view.View>(R.id.r_tick).performClick()
+        }
+        val deadline = System.currentTimeMillis() + 8_000
+        while (System.currentTimeMillis() < deadline && TaskCache(context).find(id)?.doneFor("noam") != true) Thread.sleep(200)
+        assertEquals(true, TaskCache(context).find(id)?.doneFor("noam"))
+    }
+
     // ---------------------------------------------------------------- the stored task list
 
     private fun seed(me: String) {

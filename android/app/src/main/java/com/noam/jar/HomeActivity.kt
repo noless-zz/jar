@@ -128,6 +128,7 @@ class HomeActivity : ComponentActivity() {
             i.removeExtra(TasksActivity.EXTRA_SEND)
             cache.find(id)?.takeIf { it.isMessage }?.let { actions.sendWhatsApp(it) }
         }
+        if (i.getBooleanExtra(TasksActivity.EXTRA_ADD, false)) { i.removeExtra(TasksActivity.EXTRA_ADD); editing.value = EditReq(null) }
         if (i.getBooleanExtra(TasksActivity.EXTRA_INVITE, false)) { i.removeExtra(TasksActivity.EXTRA_INVITE); global.value = "invite" }
         i.getStringExtra(EXTRA_SUB)?.let { name -> i.removeExtra(EXTRA_SUB); runCatching { Sub.valueOf(name) }.getOrNull()?.let { actions.go(it) } }
     }

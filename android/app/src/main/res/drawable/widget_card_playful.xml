@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An ink-outlined card with the offset shadow, like Playful's cards in the app. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:left="3dp" android:top="3dp">
+        <shape><solid android:color="#23201A" /><corners android:radius="18dp" /></shape>
+    </item>
+    <item android:right="3dp" android:bottom="3dp">
+        <shape><solid android:color="#FFFFFF" /><corners android:radius="18dp" /><stroke android:width="2dp" android:color="#23201A" /></shape>
+    </item>
+</layer-list>

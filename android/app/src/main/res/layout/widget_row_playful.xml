@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="6dp"
+    android:background="@drawable/widget_card_playful" android:gravity="center_vertical" android:minHeight="52dp"
+    android:orientation="horizontal" android:paddingStart="6dp" android:paddingEnd="14dp" android:paddingBottom="3dp">
+    <ImageView android:id="@+id/r_tick" android:layout_width="46dp" android:layout_height="46dp" android:padding="9dp" />
+    <LinearLayout android:id="@+id/r_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+        android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <TextView android:id="@+id/r_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:ellipsize="end" android:fontFamily="@font/varela_round" android:maxLines="1" android:textSize="15sp" />
+        <TextView android:id="@+id/r_meta" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:ellipsize="end" android:fontFamily="@font/varela_round" android:maxLines="1" android:textSize="12sp" />
+    </LinearLayout>
+    <TextView android:id="@+id/r_coins" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:fontFamily="@font/rubik" android:textSize="14sp" android:textStyle="bold" />
+</LinearLayout>
