@@ -138,10 +138,15 @@ object WidgetBuilder {
         }
 
         // ---- rows: as many as fit
+        // Measured on the emulator: header + paddings, one row, and the footer line.
         val compact = heightDp < 150
-        val head = when (style) { JarStyle.CALM -> 118; JarStyle.NIGHT -> 92; JarStyle.PLAYFUL -> 120 }
-        val rowH = when (style) { JarStyle.CALM -> 48; JarStyle.NIGHT -> 52; JarStyle.PLAYFUL -> 60 }
-        val fit = if (compact) 0 else ((heightDp - head - 24) / rowH).coerceIn(0, 6)
+        val head = when (style) { JarStyle.CALM -> 124; JarStyle.NIGHT -> 100; JarStyle.PLAYFUL -> 132 }
+        val rowH = when (style) { JarStyle.CALM -> 48; JarStyle.NIGHT -> 56; JarStyle.PLAYFUL -> 64 }
+        val space = heightDp - head
+        var fit = if (compact) 0 else ((space - 26) / rowH).coerceIn(0, 6)
+        if (!compact && fit == 0 && space >= rowH) fit = 1                  // one task rather than the footer
+        val roomForFooter = !compact && space - fit * rowH >= 26
+        val anything = paired && TaskLists.forWidget(all, me, parent, 1).isNotEmpty()
         val items = if (paired) TaskLists.forWidget(all, me, parent, fit) else emptyList()
         val names = cache.names()
         v.removeAllViews(R.id.w_rows)
@@ -149,7 +154,7 @@ object WidgetBuilder {
             if (col.dark) R.drawable.widget_card_calm_dark else R.drawable.widget_card_calm_light)
         items.forEachIndexed { i, task -> v.addView(R.id.w_rows, row(c, task, style, me, names, i, ink, muted, accent, danger, coin, col.dark)) }
         v.setViewVisibility(R.id.w_rows, if (items.isEmpty()) View.GONE else View.VISIBLE)
-        val showEmpty = !compact && items.isEmpty()
+        val showEmpty = !compact && !anything && space >= 40
         v.setViewVisibility(R.id.w_empty, if (showEmpty) View.VISIBLE else View.GONE)
         if (showEmpty) {
             v.setTextViewText(R.id.w_empty, c.getString(if (!paired) R.string.widget_not_paired else R.string.widget_nothing))
@@ -168,7 +173,9 @@ object WidgetBuilder {
         }
         v.setTextViewText(R.id.w_footer, footer)
         v.setTextColor(R.id.w_footer, muted)
-        v.setViewVisibility(R.id.w_footer, if (compact || footer.isEmpty()) View.GONE else View.VISIBLE)
+        v.setViewVisibility(R.id.w_footer, if (!roomForFooter || footer.isEmpty()) View.GONE else View.VISIBLE)
+        if (style == JarStyle.PLAYFUL) v.setViewVisibility(R.id.w_progress_row, if (compact) View.GONE else View.VISIBLE)
+        if (style == JarStyle.CALM && widthDp < 260 && name.isNotEmpty()) v.setTextViewText(R.id.w_title, name)
         v.setViewVisibility(R.id.w_add, if (widthDp < 230 && style != JarStyle.NIGHT) View.GONE else View.VISIBLE)
 
         // ---- taps
