@@ -103,6 +103,33 @@ _HE_WEEKDAY = {"ראשון": 6, "שני": 0, "שלישי": 1, "רביעי": 2, "
 _HE_WEEKDAY_RE = re.compile(r"(?:(?:כל|יום|ימי|בימי|ביום|ימים)\s+|[וב])(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)(?![א-ת])")
 
 
+HE_HOURS = {"אחת": 1, "שתיים": 2, "שתים": 2, "שלוש": 3, "ארבע": 4, "חמש": 5, "שש": 6, "שבע": 7, "שמונה": 8,
+            "תשע": 9, "עשר": 10, "אחת עשרה": 11, "אחת-עשרה": 11, "שתים עשרה": 12, "שתים-עשרה": 12}
+_HOUR_WORDS = "|".join(sorted(map(re.escape, HE_HOURS), key=len, reverse=True))
+_SPOKEN_TIME_RE = re.compile(r"(?<![א-ת])ב(" + _HOUR_WORDS + r")(?![א-ת])( וחצי| ורבע| ועשרה| ועשרים)?"
+                             r"(?: (בבוקר|בערב|בלילה|אחר הצהריים|אחרי הצהריים|בצהריים))?")
+
+
+def spoken_times(text: str) -> list[tuple[int, int, str]]:
+    """Clock times said in Hebrew words: "בשמונה בערב" -> (20, 0, "evening"), "בעשר" -> (10, 0, "")."""
+    out = []
+    for m in _SPOKEN_TIME_RE.finditer(text or ""):
+        hour = HE_HOURS[m.group(1)]
+        minute = {" וחצי": 30, " ורבע": 15, " ועשרה": 10, " ועשרים": 20}.get(m.group(2) or "", 0)
+        part = m.group(3) or ""
+        if part == "בבוקר":
+            hour, part = hour % 12, "morning"
+        elif part in ("בערב", "אחר הצהריים", "אחרי הצהריים") or (part == "בלילה" and hour >= 7):
+            hour, part = hour % 12 + 12, "evening"
+        elif part == "בלילה":
+            hour, part = hour % 12, "night"
+        elif part == "בצהריים":
+            hour, part = (12 if hour == 12 else hour % 12 + 12 if hour <= 3 else hour), "noon"
+        out.append((hour, minute, part))
+    return out
+
+
+TURNS_RE = re.compile(r"(תורנות|בתורות|בתור\b|פעם זה פעם זה|פעם אחד פעם השני|take turns|taking turns)", re.I)
 STOP_FOR_GOOD_RE = re.compile(r"(תפסיק|להפסיק|תפסיקי|כבר לא צריך|לא צריך יותר|יותר לא|אין צורך יותר|"
                               r"\bstop\b|no longer|not anymore|any more)", re.I)
 ONLY_THIS_TIME_RE = re.compile(r"(רק היום|רק הפעם|היום לא|הפעם לא|just today|only today|this time)", re.I)
@@ -119,6 +146,18 @@ def spoken_weekdays(text: str) -> set[int]:
             continue                                       # "שני ימים" = two days
         found.add(_HE_WEEKDAY[m.group(1)])
     return found
+
+
+
+def _same_rule(a: str | None, b: str | None) -> bool:
+    """Two ways of writing the same repeat ("every Monday" / "weekly:mon") count as one."""
+    from . import recurring
+    if a == b:
+        return True
+    try:
+        return recurring.parse(a or "").text() == recurring.parse(b or "").text()
+    except recurring.RuleError:
+        return False
 
 
 class ToolError(Exception):
@@ -162,11 +201,14 @@ class Notes:
     family_account: object = None   # FamilyGoogle: the family's own Jar Gmail (sends to family only), or None
 
     def _day(self, value: str | None):
-        """A date for a tool call. If the model gave YYYY-MM-DD but the memo names exactly one weekday and the
-        date falls on another weekday, trust the words (models miscount weekdays)."""
+        """A date for a tool call. If the model gave YYYY-MM-DD or a weekday name but the memo names exactly one
+        weekday and the date falls on another weekday, trust the words (models miscount weekdays, and sometimes
+        pass the wrong weekday name: "יום חמישי" for a memo that said "ביום רביעי")."""
         today = self.ctx.recorded_local.date()
         d = _date(value, today)
-        if d is None or not value or not re.match(r"^\s*\d{4}-\d{2}-\d{2}", value) or not self.transcript:
+        bare = re.sub(r"^(ו?ב?יום|ב|ה|ו)\s*", "", (value or "").casefold().strip(" ,."))
+        if d is None or not value or not self.transcript or not (
+                re.match(r"^\s*\d{4}-\d{2}-\d{2}", value) or bare in (*HE_WEEKDAYS, *EN_WEEKDAYS)):
             return d
         said = {_date(w, today) for w in re.findall(r"\S+", self.transcript)
                 if _date(w, today) is not None and not re.match(r"^\d{4}-", w)
@@ -176,6 +218,21 @@ class Notes:
             if want.weekday() != d.weekday() and abs((want - d).days) < 7:
                 return want
         return d
+
+    def _t(self, value: str | None) -> str | None:
+        """A time for a tool call, checked against the one clock time the memo says in words ("בשמונה בערב"):
+        models sometimes turn "eight in the evening" into 18:00."""
+        tm = _time(value)
+        said = spoken_times(self.transcript or "")
+        if len(said) != 1:
+            return tm
+        hour, minute, part = said[0]
+        if part:                                   # בבוקר / בערב / בלילה / אחר הצהריים: the words decide
+            return f"{hour:02d}:{minute:02d}"
+        if tm and int(tm[:2]) % 12 != hour % 12:   # no part of day said: keep the model's am/pm, fix the hour
+            h = hour % 12 + (12 if int(tm[:2]) >= 12 else 0)
+            return f"{h:02d}:{minute:02d}"
+        return tm
 
     @property
     def restricted(self) -> bool:
@@ -234,7 +291,7 @@ class Notes:
                  take_turns: bool = False) -> str:
         if not title.strip():
             raise ToolError("title is required")
-        d, tm = self._day(due_date), _time(due_time)
+        d, tm = self._day(due_date), self._t(due_time)
         if due_date and not d:
             raise ToolError("due_date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
         if (repeat or "").strip():
@@ -283,6 +340,11 @@ class Notes:
         from . import recurring
         from .taskstore import TaskError
         people = self._task_people(for_person, also_for)
+        if TURNS_RE.search(self.transcript or ""):
+            named = self._named_people()
+            ids = {p.id for p in named} | {getattr(self.speaker, "id", "")}
+            if len(named) >= 2 and (len(people) < 2 or all(p.id in ids for p in people)):
+                people, take_turns = named, True  # "תורנות … ליבנה ואלונה": the model missed the turns or the names
         if take_turns and not (for_person or "").strip() and len(people) >= 3 and people[0] is self.speaker:
             people = people[1:]               # "תורנות … ליבנה ואלונה": the named ones take turns, not the speaker
         rule = repeat
@@ -298,7 +360,7 @@ class Notes:
             rule = recurring.settle(r, d).text()           # "every week" said with a day: that weekday
         same = next((x for x in self.store._read()["series"]
                      if x.get("memo_id") == self.ctx.memo_id and x.get("status") != "ended"
-                     and x.get("owners") == [p.id for p in people] and x.get("rule") == rule), None)
+                     and x.get("owners") == [p.id for p in people] and _same_rule(x.get("rule"), rule)), None)
         if same is not None:                 # the model asked twice (once per day said): one series is enough
             return f"ok: this memo already made that recurring task (“{same['title']}”, {same['rule']}); nothing more to do"
         try:
@@ -317,6 +379,18 @@ class Notes:
         self.actions.append({"tool": "add_task", "summary": summary, "task_id": t["id"],
                              "series_id": t["series_id"], "file": "Tasks.md"})
         return f"ok: {summary}"
+
+    def _named_people(self) -> list:
+        """Family members the memo names (names or aliases, with a Hebrew prefix letter allowed), in order said."""
+        text = self.transcript or ""
+        found = []
+        for p in self.family.people.values() if self.family is not None else []:
+            names = [p.name, p.id, *getattr(p, "aliases", [])]
+            pos = [m.start() for n in names if n and len(n) >= 2
+                   for m in re.finditer(r"(?<![א-תA-Za-z])[ולבהש]{0,2}" + re.escape(n) + r"(?![א-תA-Za-z])", text)]
+            if pos:
+                found.append((min(pos), p))
+        return [p for _, p in sorted(found, key=lambda x: x[0])]
 
     def suggest_idea(self, title: str, details: str = "") -> str:
         """An idea for Jar itself, for the admin to accept or decline."""
@@ -338,6 +412,11 @@ class Notes:
         from .taskstore import TaskError
         people = self._task_people(for_person, also_for)
         who = people[0]
+        same = next((t for t in self.store._read()["tasks"]
+                     if t.get("memo_id") == self.ctx.memo_id and t.get("status") in ("open", "requested")
+                     and t.get("title", "").strip() == title.strip() and t.get("assignee") == who.id), None)
+        if same is not None:                 # the model called add_task twice for the same thing
+            return f"ok: this memo already made that task (“{same['title']}”); nothing more to do"
         mode = "all" if together == "all" else "any"
         due = f"{d.isoformat()}T{tm}" if d and tm else (d.isoformat() if d else None)
         try:
@@ -484,7 +563,7 @@ class Notes:
                 if st in ("stop_repeating", "stop") or not rule:
                     raise ToolError("that task doesn't repeat (use an id of a 🔁 task from find_tasks)")
                 try:                                   # a one-time task from now on comes back
-                    out = self.store.make_recurring(self.speaker, t["id"], rule, _time(due_time) or "",
+                    out = self.store.make_recurring(self.speaker, t["id"], rule, self._t(due_time) or "",
                                                     bool(take_turns))
                 except TaskError as e:
                     raise ToolError(str(e)) from e
@@ -498,8 +577,8 @@ class Notes:
                     summary = f"recurring task “{t['title']}” stopped"
                 else:
                     f = {"rule": rule}
-                    if _time(due_time):
-                        f["time"] = _time(due_time)
+                    if self._t(due_time):
+                        f["time"] = self._t(due_time)
                     ser = self.store.series_act(self.speaker, t["series_id"], "edit", f)
                     summary = f"recurring task “{t['title']}” now 🔁 {ser['label_en']}"
             except TaskError as e:
@@ -510,7 +589,7 @@ class Notes:
         if title.strip():
             fields["title"] = title.strip()
             did.append(f"renamed to “{title.strip()}”")
-        d, tm = self._day(due_date), _time(due_time)
+        d, tm = self._day(due_date), self._t(due_time)
         if due_date and not d:
             raise ToolError("due_date: give the day as said (e.g. 'מחר', 'יום רביעי', 'Thursday') or YYYY-MM-DD")
         if tm and not d:
@@ -568,7 +647,7 @@ class Notes:
         invite (family members) or a memo from anyone but the admin: the family calendar, with invitations."""
         if self.family_account is not None and self.family is not None and (invite or self.restricted):
             return self.family_event(title, date, invite or [], start_time, duration_min, location, notes)
-        d, tm = self._day(date), _time(start_time)
+        d, tm = self._day(date), self._t(start_time)
         if not title.strip():
             raise ToolError("title is required")
         if not d:
@@ -687,7 +766,7 @@ class Notes:
                      location: str = "", notes: str = "") -> str:
         """A family event on the family calendar, with an invitation to each family member it involves
         (who empty = just the speaker; "all" = everyone)."""
-        d, tm = self._day(date), _time(start_time)
+        d, tm = self._day(date), self._t(start_time)
         if not title.strip():
             raise ToolError("title is required")
         if not d:

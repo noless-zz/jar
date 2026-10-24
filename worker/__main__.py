@@ -77,7 +77,7 @@ class Worker:
         self.cfg = cfg
         self.tz = ZoneInfo(cfg.timezone)
         self.transcriber = Transcriber(cfg.whisper_model, cfg.whisper_device, cfg.whisper_compute,
-                                       cfg.whisper_language, cfg.vocabulary)
+                                       cfg.whisper_language, cfg.vocabulary, cfg.whisper_vad, cfg.whisper_normalize)
         self.agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
                            about=cfg.about, think=cfg.think, num_ctx=cfg.num_ctx)
         from .accounts import build as build_accounts
@@ -300,19 +300,53 @@ class Worker:
                          f" · area {rating['area']}" if rating.get("area") else "")
         return n
 
+    def maybe_asr_bench(self) -> None:
+        """data/eval/asr-run exists: compare Whisper models on the real memos (worker/asr_bench.py) while idle."""
+        import json
+        flag = self.cfg.data_dir / "eval" / "asr-run"
+        if not flag.exists():
+            return
+        try:
+            txt = flag.read_text(encoding="utf-8", errors="ignore").strip()
+            flag.unlink()
+            args = json.loads(txt) if txt.startswith("{") else {}
+        except (OSError, ValueError):
+            args = {}
+        from . import asr_bench
+        self.heartbeat("comparing speech models")
+        log.info("ASR bench: comparing speech models on real memos")
+        self.transcriber.close()                     # free the GPU; it loads again for the next memo
+        try:
+            rep = asr_bench.run(self.cfg, limit=int(args.get("limit", 40)), person=str(args.get("person", "")),
+                                keys=args.get("candidates"))
+            log.info("ASR bench done in %s s: %s (data/eval/asr/report.md)", rep["seconds"], rep["recommendation"])
+        except Exception:  # noqa: BLE001
+            log.exception("ASR bench failed")
+
     def maybe_eval(self) -> None:
         """data/eval/run exists (VS Code task, or remotely): run the sample memos while idle."""
+        self.maybe_asr_bench()
         flag = self.cfg.data_dir / "eval" / "run"
         if not flag.exists():
             return
         try:
             txt = flag.read_text(encoding="utf-8", errors="ignore").strip()
-            repeats = int(txt) if txt.isdigit() else 1          # "3" in the file = run each memo 3 times
             flag.unlink()
         except OSError:
             return
         from . import evaluate
+        repeats, models = evaluate.parse_models(txt)      # "3" = each memo 3 times; "1 m1 m2/nothink" = compare
         self.heartbeat("testing the AI on sample memos")
+        if models:
+            log.info("AI test: comparing %s", ", ".join(m + ("" if t else "/nothink") for m, t in models))
+            try:
+                rep = evaluate.compare(self.cfg, models, repeats)
+                log.info("AI test compare: %s (data/eval/compare.md)", "; ".join(
+                    f"{r['model']} {r['passed']}/{r['total']}" if "passed" in r else f"{r['model']} {r['missing']}"
+                    for r in rep["rows"]))
+            except Exception:  # noqa: BLE001
+                log.exception("AI test compare failed")
+            return
         log.info("AI test: running the sample memos")
         try:
             rep = evaluate.run(self.cfg, repeats=repeats)
@@ -333,6 +367,9 @@ class Worker:
         try:
             if self.tasks is not None and self.tasks.roll():
                 log.info("recurring tasks: today's made")
+                n_old = self.tasks.purge_old()      # once a day, with the roll: the parents' archive setting
+                if n_old:
+                    log.info("archive: removed %d finished task(s) past the parents' keep setting", n_old)
         except Exception:  # noqa: BLE001 — never stops memos
             log.exception("rolling recurring tasks failed")
         try:

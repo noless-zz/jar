@@ -456,6 +456,17 @@ def task_repeat(task_id: str, request: Request, body: dict = Body(...), authoriz
         _task_error(e)
 
 
+@app.post("/v1/settings")
+def family_settings(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+                    x_device_id: str = Header("")):
+    """A parent changes the family settings: {"keep_done_days": 0 (forever) | 30 | 90 | 180 | 365}."""
+    p = check_auth(authorization, request, x_device_id)
+    try:
+        return TASKS.set_settings(p, body)
+    except TaskError as e:
+        _task_error(e)
+
+
 @app.post("/v1/areas", status_code=201)
 def new_area(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
              x_device_id: str = Header("")):

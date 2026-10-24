@@ -1,0 +1,83 @@
+# Installs the app on Android emulators and runs the tests in android/app/src/androidTest
+# (the task screen: done sections, archive, parents-only settings; the app starts at all).
+# Screenshots of every screen are attached to the run (Summary -> Artifacts).
+# Runs on Android changes, and before every release (android-release.yml calls it and only
+# publishes when it passes).
+name: Android emulator tests
+
+on:
+  pull_request:
+    paths: ["android/**", ".github/workflows/android-emulator.yml"]
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "!android/VERSION"        # a release push: android-release.yml runs these tests itself
+      - "!android/CHANGES.md"
+      - ".github/workflows/android-emulator.yml"
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [29, 34]   # Android 10 (the oldest Jar supports) and Android 14
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Enable KVM (hardware acceleration for the emulator)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Build the app and the tests
+        run: ./gradlew --no-configuration-cache assembleDebug assembleDebugAndroidTest
+
+      - name: Run the tests on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          working-directory: android
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          # A freshly booted emulator sometimes shows "System UI isn't responding" or is slow to
+          # give the app window focus: hide error dialogs, unlock, and retry the tests once.
+          script: |
+            adb shell settings put global hide_error_dialogs 1 || true
+            adb shell input keyevent 82 || true
+            ./gradlew --no-configuration-cache connectedDebugAndroidTest || ./gradlew --no-configuration-cache connectedDebugAndroidTest || touch tests-failed
+            mkdir -p screenshots/api-${{ matrix.api-level }}
+            adb pull /sdcard/Pictures/jar/. screenshots/api-${{ matrix.api-level }}/ || true
+            test ! -f tests-failed
+
+      - name: Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-api-${{ matrix.api-level }}
+          path: android/screenshots/
+          if-no-files-found: warn
+
+      - name: Test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-api-${{ matrix.api-level }}
+          path: android/app/build/reports/androidTests/

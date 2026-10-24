@@ -115,17 +115,42 @@ def take_over(data: Path) -> None:
     except (OSError, ValueError):
         return
     pids = [old.get("pid")] + list((old.get("children") or {}).values())
+    mine = _ancestors(os.getpid())
     for pid in pids:
         if not isinstance(pid, int) or pid == os.getpid() or not _is_python(pid):
             continue
         log.info("taking over: stopping old process %s", pid)
         if WIN:
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
+            # /T stops the whole tree. Never for a process this supervisor descends from (the server's watchdog
+            # or a worker launched it): that tree includes this supervisor, which then stopped itself.
+            tree = [] if pid in mine else ["/T"]
+            subprocess.run(["taskkill", "/PID", str(pid), *tree, "/F"], capture_output=True, creationflags=NO_WINDOW)
         else:
             try:
                 os.kill(pid, 15)
             except OSError:
                 pass
+
+
+def _ancestors(pid: int, depth: int = 8) -> set[int]:
+    """The parent, grandparent… of a process (Windows keeps the parent id even for a detached child)."""
+    out: set[int] = set()
+    for _ in range(depth):
+        try:
+            if WIN:
+                r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                                    f"(Get-CimInstance Win32_Process -Filter 'ProcessId={int(pid)}').ParentProcessId"],
+                                   capture_output=True, text=True, creationflags=NO_WINDOW, timeout=30)
+                parent = int((r.stdout or "0").strip() or 0)
+            else:
+                parent = int(Path(f"/proc/{pid}/stat").read_text().split(")")[1].split()[1])
+        except (OSError, ValueError, subprocess.TimeoutExpired, IndexError):
+            break
+        if parent <= 0 or parent in out:
+            break
+        out.add(parent)
+        pid = parent
+    return out
 
 
 def _is_python(pid: int) -> bool:

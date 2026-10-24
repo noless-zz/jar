@@ -38,6 +38,8 @@ android {
         versionName jarVersion
         // Where the app looks for updates (GitHub Releases of this repo).
         buildConfigField "String", "UPDATE_REPO", "\"noless-zz/jar\""
+        // Emulator tests (app/src/androidTest): .github/workflows/android-emulator.yml, before every release.
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
@@ -83,4 +85,9 @@ dependencies {
     implementation libs.work.runtime
     implementation libs.code.scanner     // QR scanning UI from Play services: no camera permission needed
     testImplementation libs.junit
+    androidTestImplementation libs.test.ext.junit
+    androidTestImplementation libs.test.runner
+    androidTestImplementation libs.test.rules
+    androidTestImplementation libs.espresso.core
+    androidTestImplementation libs.uiautomator
 }

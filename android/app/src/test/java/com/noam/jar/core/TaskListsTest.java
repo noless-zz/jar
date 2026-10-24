@@ -165,4 +165,26 @@ public class TaskListsTest {
         q.waitingOn = "";                                            // answered: back off the list
         org.junit.Assert.assertEquals(0, TaskLists.asked(java.util.Collections.singletonList(q), "dana").size());
     }
+
+    @Test
+    public void doneGoesToReviewThenWeekThenArchive() {
+        long now = TaskLists.utcMillis("2026-10-24T09:00:00Z");
+        Task open = t("open", "avi", "avi", "open", null);
+        Task fresh = t("fresh", "avi", "avi", "done", null);
+        fresh.doneAt = "2026-10-23T12:00:00Z";                     // 21 h ago
+        Task week = t("week", "avi", "avi", "done", null);
+        week.doneAt = "2026-10-20T09:00:00Z";                      // 4 days
+        Task old = t("old", "avi", "avi", "done", null);
+        old.doneAt = "2026-10-10T09:00:00Z";                       // 2 weeks
+        Task declined = t("declined", "avi", "maya", "declined", null);   // updated 10-10: archived
+        assertEquals(TaskLists.OPEN, TaskLists.doneBucket(open, "avi", now));
+        assertEquals(TaskLists.DONE_TODAY, TaskLists.doneBucket(fresh, "avi", now));
+        assertEquals(TaskLists.DONE_WEEK, TaskLists.doneBucket(week, "avi", now));
+        assertEquals(TaskLists.ARCHIVED, TaskLists.doneBucket(old, "avi", now));
+        assertEquals(TaskLists.ARCHIVED, TaskLists.doneBucket(declined, null, now));
+        List<Task> l = new java.util.ArrayList<>(Arrays.asList(old, fresh, week));
+        l.sort(TaskLists.NEWEST_DONE);
+        assertEquals(Arrays.asList("fresh", "week", "old"), ids(l));
+        assertEquals(-1, TaskLists.utcMillis("junk"));
+    }
 }

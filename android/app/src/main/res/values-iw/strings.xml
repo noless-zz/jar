@@ -429,4 +429,16 @@
     <string name="handover_accept_short">לקחת</string>
     <string name="handover_decline_short">לא עכשיו</string>
     <string name="notif_handover">%1$s מבקש/ת להעביר את זה לתחום שלך</string>
+    <string name="header_done_today">✅ בוצעו ב־24 השעות האחרונות</string>
+    <string name="header_done_week">בוצעו השבוע</string>
+    <string name="archive_button">🗄️ ארכיון (%1$d)</string>
+    <string name="archive_sub">בוצעו לפני יותר משבוע</string>
+    <string name="archive_title">ארכיון · %1$d בוצעו</string>
+    <string name="menu_keep_done">שמירת משימות שבוצעו</string>
+    <string name="keep_forever">לתמיד</string>
+    <plurals name="keep_days">
+        <item quantity="one">יום %1$d</item>
+        <item quantity="two">%1$d ימים</item>
+        <item quantity="other">%1$d ימים</item>
+    </plurals>
 </resources>

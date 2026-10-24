@@ -180,7 +180,8 @@ class TaskStore:
         tasks = self._decorate(tasks, p)
         series = [self._series_out(x) for x in data["series"]
                   if x.get("status") != "ended" and self._series_visible(x, p)]
-        return {"rev": data.get("rev", 0), "tasks": tasks, "series": series, "areas": data["areas"]}
+        return {"rev": data.get("rev", 0), "tasks": tasks, "series": series, "areas": data["areas"],
+                "settings": self._settings(data)}
 
     def _decorate(self, tasks: list[dict], viewer: Person | None = None) -> list[dict]:
         """Copies of the tasks with "coins": what a done task paid, or what an open one will pay
@@ -1085,8 +1086,39 @@ class TaskStore:
             self._write(data)
         return len(found)
 
-    def purge_old(self, days: int = 60) -> int:
-        """Drop done/declined/deleted tasks older than `days` from the JSON (Tasks.md keeps nothing old)."""
+    # ---- family settings (parents) ----
+    KEEP_DONE_CHOICES = (0, 30, 90, 180, 365)      # 0 = keep finished tasks forever (the default)
+
+    @staticmethod
+    def _settings(data: dict) -> dict:
+        s = data.get("settings") or {}
+        return {"keep_done_days": int(s.get("keep_done_days") or 0)}
+
+    def set_settings(self, actor: Person, fields: dict) -> dict:
+        """A parent sets {"keep_done_days": 0|30|90|180|365}: how long finished tasks stay in the archive."""
+        if not actor.is_parent:
+            raise TaskError(403, "parents change the family settings")
+        with self._locked():
+            data = self._read()
+            s = data.setdefault("settings", {})
+            if "keep_done_days" in fields:
+                try:
+                    days = int(fields["keep_done_days"])
+                except (TypeError, ValueError):
+                    raise TaskError(400, "keep_done_days must be a number of days") from None
+                if days not in self.KEEP_DONE_CHOICES:
+                    raise TaskError(400, f"keep_done_days must be one of {list(self.KEEP_DONE_CHOICES)}")
+                s["keep_done_days"] = days
+            self._write(data)
+            return self._settings(data)
+
+    def purge_old(self, days: int | None = None) -> int:
+        """Drop done/declined/deleted tasks older than `days` from the JSON (Tasks.md keeps nothing old).
+        `days` None: the parents' setting, where 0 (the default) keeps them forever."""
+        if days is None:
+            days = self._settings(self._read())["keep_done_days"]
+        if not days or days <= 0:
+            return 0
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with self._locked():
             data = self._read()

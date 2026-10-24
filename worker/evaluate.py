@@ -207,6 +207,30 @@ def cases(admin: str, fam: Family) -> list[Case]:
              "תוסיף לאפליקציה אפשרות לראות מי ניצח בשבוע שעבר",
              lambda r: _one_idea(r, admin, "ניצח"),
              speaker=daughter),
+        # Transcripts as they really arrive: words dropped, names misheard, Hebrew and English mixed, a kid's
+        # hesitations. Written for the test only — never quote them into the prompt.
+        Case("noisy: a dropped verb",
+             "תזכיר לליבנה את הכלב בשש בערב",
+             lambda r: _one_task(r, son, "כלב", "2026-10-12T18:00")),
+        Case("noisy: a misheard name",
+             "תגיד ללבני לסדר את החדר שלו",
+             lambda r: _one_task(r, son, "חדר")),
+        Case("noisy: Hebrew and English mixed",
+             "add to my list לקנות סוללות AA לשלט",
+             lambda r: _one_task(r, admin, "סוללות")),
+        Case("noisy: a child's hesitations",
+             "אממ אני צריכה ש... שאמא תקנה לי מחברת חדשה לחשבון",
+             lambda r: (_one_task(r, wife, "מחברת") or
+                        (None if r.new()[0]["status"] == "requested" else "not a request")),
+             speaker=daughter),
+        Case("noisy: a broken-off appointment",
+             "לקבוע תור ל... לרופא שיניים ביום רביעי בעשר",
+             lambda r: (f"no calendar event (tools: {r.tools()})" if "create_event" not in r.tools()
+                        else None if any("2026-10-14 10:00" in a["summary"] for a in r.actions)
+                        else f"wrong day/time: {[a['summary'] for a in r.actions]}")),
+        Case("noisy: stutter in a recurring chore",
+             "להוציא להוציא את הזבל כל כל יום שני",
+             lambda r: _one_series(r, [admin], "weekly:mon")),
         Case("lesson idea",
              "רעיון לשיעור: להשתמש בבינגו כדי לתרגל פונקציות רציונליות בכיתה י'",
              lambda r: None if "save_lesson_idea" in r.tools() else f"not a lesson idea (tools: {r.tools()})"),
@@ -308,6 +332,15 @@ def run_areas(cfg: config_mod.Config, real: Family) -> list[dict]:
     return out
 
 
+def reply_language_problem(memo: str, reply: str) -> str | None:
+    """A Hebrew memo gets its reply in Hebrew: the family reads it on the phone."""
+    he = lambda t: len(re.findall(r"[\u0590-\u05FF]", t or ""))
+    en = lambda t: len(re.findall(r"[A-Za-z]", t or ""))
+    if he(memo) > en(memo) and en(reply) > max(10, he(reply)):
+        return f"reply not in Hebrew: {reply[:80]}"
+    return None
+
+
 def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repeats: int = 1) -> dict:
     cfg = cfg or config_mod.load()
     tz = ZoneInfo(cfg.timezone)
@@ -343,7 +376,7 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
                 saved = json.loads((tmp / "tasks.json").read_text(encoding="utf-8")) \
                     if (tmp / "tasks.json").exists() else {}
                 res = Result(r.actions, saved.get("tasks", []), r.summary, fam, saved.get("series", []))
-                problem = c.check(res)
+                problem = c.check(res) or reply_language_problem(c.memo, r.summary)
                 summary = r.summary
             except Exception as e:  # noqa: BLE001
                 res, problem, summary = Result([], [], "", fam), f"{type(e).__name__}: {e}", ""
@@ -393,6 +426,61 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
         lines.append("")
     (out / "report.md").write_text("\n".join(lines), encoding="utf-8")
     return report
+
+
+def parse_models(text: str) -> tuple[int, list[tuple[str, bool]]]:
+    """data/eval/run: "2" = repeats; "1 qwen3.5:9b qwen3.5:35b-a3b qwen3.5:9b/nothink" = compare those models
+    (a "/nothink" suffix turns thinking off). Returns (repeats, [(model, think)]) — no models = just the configured one."""
+    parts = (text or "").split()
+    repeats = int(parts[0]) if parts and parts[0].isdigit() else 1
+    models = []
+    for p in parts[1 if parts and parts[0].isdigit() else 0:]:
+        name, _, flag = p.partition("/")
+        models.append((name, flag.lower() not in ("nothink", "no-think", "fast")))
+    return max(1, min(5, repeats)), models
+
+
+def pulled(ollama_url: str) -> set[str]:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(ollama_url.rstrip("/") + "/api/tags", timeout=10) as r:
+            names = [m["name"] for m in json.loads(r.read().decode()).get("models", [])]
+    except Exception:  # noqa: BLE001
+        return set()
+    return set(names) | {n.removesuffix(":latest") for n in names}
+
+
+def compare(cfg: config_mod.Config, models: list[tuple[str, bool]], repeats: int = 1) -> dict:
+    """The AI test for several models side by side → data/eval/<model>/report.md and data/eval/compare.md.
+    A model that isn't pulled is listed with the pull command — never pulled automatically (tens of GB)."""
+    have = pulled(cfg.ollama_url)
+    rows = []
+    for name, think in models:
+        tag = name + ("" if think else "/nothink")
+        if have and name not in have:
+            rows.append({"model": tag, "missing": f"not pulled: ollama pull {name}"})
+            continue
+        sub = replace(cfg, llm_model=name, think=think)
+        out = cfg.data_dir / "eval" / re.sub(r"[^\w.-]+", "_", tag)
+        rep = run(sub, out, repeats)
+        secs = sorted(r["seconds"] for r in rep["results"] if not r["case"].startswith(("rating:", "area:")))
+        rows.append({"model": tag, "passed": rep["passed"], "total": rep["total"],
+                     "median_s": secs[len(secs) // 2] if secs else None, "per_case": rep["per_case"]})
+    cases = sorted({c for r in rows for c in r.get("per_case", {})})
+    lines = ["# AI test: models side by side", f"{time.strftime('%Y-%m-%d %H:%M')}, {repeats} repeat(s)", "",
+             "| model | passed | median s per memo |", "|---|---|---|"]
+    for r in rows:
+        lines.append(f"| {r['model']} | {r['missing']} | |" if r.get("missing") else
+                     f"| {r['model']} | {r['passed']}/{r['total']} | {r['median_s']} |")
+    done = [r for r in rows if not r.get("missing")]
+    if done:
+        lines += ["", "| case | " + " | ".join(r["model"] for r in done) + " |",
+                  "|---|" + "---|" * len(done)]
+        for c in cases:
+            lines.append(f"| {c} | " + " | ".join(r["per_case"].get(c, "—") for r in done) + " |")
+    (cfg.data_dir / "eval").mkdir(parents=True, exist_ok=True)
+    (cfg.data_dir / "eval" / "compare.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {"rows": rows}
 
 
 def main() -> None:

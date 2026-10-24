@@ -1,7 +1,7 @@
 # Publishing a family release, either way:
 #   - change android/VERSION (e.g. 0.4.0) and push to main, or
 #   - push a tag like v0.4.0 (VS Code: "Android: Publish release").
-# This builds the signed APK and attaches it to a GitHub Release; the phones see it and offer "Update".
+# This runs the emulator tests, then builds the signed APK and attaches it to a GitHub Release; the phones see it and offer "Update".
 #
 # Needs four repository secrets (Settings -> Secrets and variables -> Actions), set once with
 # tools/set-github-secrets.ps1:
@@ -26,7 +26,12 @@ permissions:
   contents: write
 
 jobs:
+  # The app must pass the emulator tests (Android 10 and 14) before anything is published.
+  emulator:
+    uses: ./.github/workflows/android-emulator.yml
+
   release:
+    needs: emulator
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
