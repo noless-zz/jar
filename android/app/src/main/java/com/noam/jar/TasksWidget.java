@@ -1,13 +1,11 @@
 package com.noam.jar;
 
-import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
-import android.view.View;
+import android.os.Bundle;
 import android.widget.RemoteViews;
 
 import com.noam.jar.core.Task;
@@ -29,8 +27,13 @@ public final class TasksWidget extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context c, AppWidgetManager m, int[] ids) {
-        for (int id : ids) m.updateAppWidget(id, views(c, id));
-        m.notifyAppWidgetViewDataChanged(ids, R.id.tw_list);
+        for (int id : ids) m.updateAppWidget(id, views(c, m, id));
+    }
+
+    /** Resized on the home screen: as many rows as fit now. */
+    @Override
+    public void onAppWidgetOptionsChanged(Context c, AppWidgetManager m, int id, Bundle options) {
+        m.updateAppWidget(id, views(c, m, id));
     }
 
     @Override
@@ -45,9 +48,7 @@ public final class TasksWidget extends AppWidgetProvider {
     public static void updateAll(Context c) {
         AppWidgetManager m = AppWidgetManager.getInstance(c);
         int[] ids = m.getAppWidgetIds(new ComponentName(c, TasksWidget.class));
-        if (ids.length == 0) return;
-        for (int id : ids) m.updateAppWidget(id, views(c, id));
-        m.notifyAppWidgetViewDataChanged(ids, R.id.tw_list);
+        for (int id : ids) m.updateAppWidget(id, views(c, m, id));
     }
 
     static List<Task> items(Context c) {
@@ -55,69 +56,12 @@ public final class TasksWidget extends AppWidgetProvider {
         return TaskLists.forWidget(cache.tasks(), cache.myId(), cache.iAmParent(), MAX_ITEMS);
     }
 
-    private static RemoteViews views(Context c, int widgetId) {
-        RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_tasks);
-        TaskCache cache = new TaskCache(c);
-        Prefs prefs = new Prefs(c);
-        String me = cache.myId();
-        String name = cache.myName();
-        // In the person's look (Calm / Night / Playful, light or dark), like the app.
-        WidgetLook look = WidgetLook.of(c);
-        v.setInt(R.id.tw_root, "setBackgroundResource", look.getBackground());
-        v.setTextColor(R.id.tw_title, look.getInk());
-        for (int id : new int[] {R.id.tw_status, R.id.tw_empty, R.id.tw_board, R.id.tw_last_memo}) v.setTextColor(id, look.getMuted());
-        v.setInt(R.id.tw_refresh, "setColorFilter", look.getMuted());
-
-        int open = TaskLists.openCount(cache.tasks(), me);
-        v.setTextViewText(R.id.tw_title, name.isEmpty() ? c.getString(R.string.tasks_title)
-                : c.getString(R.string.widget_title_for, name, open));
-        String status = prefs.token().isEmpty() ? c.getString(R.string.widget_not_paired)
-                : !prefs.taskProblem().isEmpty() ? prefs.taskProblem()
-                : TaskFormat.syncedAgo(c, cache.syncedAt());
-        int queued = Jar.queue(c).readyCount();
-        if (queued > 0) status += " · " + c.getResources().getQuantityString(R.plurals.queued_count, queued, queued);
-        v.setTextViewText(R.id.tw_status, status);
-        v.setTextViewText(R.id.tw_last_memo, lastMemoLine(c, cache.lastMemo()));
-        v.setViewVisibility(R.id.tw_last_memo, cache.lastMemo().length() == 0 ? View.GONE : View.VISIBLE);
-
-        // Footer: who leads the week (hidden until someone has coins).
-        com.noam.jar.core.Board board = cache.board();
-        com.noam.jar.core.Board.Person lead = board.leader();
-        if (lead == null) {
-            v.setViewVisibility(R.id.tw_board, View.GONE);
-        } else {
-            boolean mine = lead.id.equals(me) || board.tied() && board.myWeek() == lead.week;
-            v.setTextViewText(R.id.tw_board, mine ? c.getString(R.string.widget_board_you, lead.week)
-                    : c.getString(R.string.widget_board_leads, lead.name, lead.week, board.myWeek()));
-            v.setViewVisibility(R.id.tw_board, View.VISIBLE);
-        }
-
-        // The list's rows come from TasksWidgetService; a different data URI per widget keeps them apart.
-        Intent svc = new Intent(c, TasksWidgetService.class)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
-        svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME)));
-        v.setRemoteAdapter(R.id.tw_list, svc);
-        v.setEmptyView(R.id.tw_list, R.id.tw_empty);
-
-        // Rows fill in which task and what to do; an invisible screen does it and closes.
-        Intent act = new Intent(c, WidgetActionActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-        v.setPendingIntentTemplate(R.id.tw_list, PendingIntent.getActivity(c, 1, act,
-                PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
-
-        Intent openApp = new Intent(c, TasksActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent openPi = PendingIntent.getActivity(c, 2, openApp,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        v.setOnClickPendingIntent(R.id.tw_title, openPi);
-        v.setOnClickPendingIntent(R.id.tw_empty, openPi);
-        Intent memos = (LookPrefs.INSTANCE.newUi(c) ? new Intent(c, HomeActivity.class).putExtra(HomeActivity.EXTRA_SUB, "MEMOS")
-                : new Intent(c, MemosActivity.class)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        v.setOnClickPendingIntent(R.id.tw_last_memo, PendingIntent.getActivity(c, 3, memos,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
-        Intent refresh = new Intent(c, TasksWidget.class).setAction(REFRESH);
-        v.setOnClickPendingIntent(R.id.tw_refresh, PendingIntent.getBroadcast(c, 4, refresh,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
-        return v;
+    /** Drawn in the person's look (WidgetBuilder), at the size it has on the home screen (portrait: min width, max height). */
+    private static RemoteViews views(Context c, AppWidgetManager m, int id) {
+        Bundle o = m.getAppWidgetOptions(id);
+        int w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+        int h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+        return WidgetBuilder.build(c, w > 0 ? w : 300, h > 0 ? h : 260);
     }
 
     /** "Last memo 12:40: task “call the plumber” · email draft …" */

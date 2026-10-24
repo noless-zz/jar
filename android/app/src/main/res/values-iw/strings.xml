@@ -552,4 +552,8 @@
     <string name="ui_message">ההודעה</string>
     <string name="ui_invite_sub">Jar כותב להם הודעה אישית עם האפליקציה והקוד שלהם; אתם שולחים אותה בוואטסאפ.</string>
     <string name="ui_update_title">Jar %1$s מוכן</string>
+    <string name="w_today">היום</string>
+    <string name="w_done_of">%1$d מתוך %2$d הושלמו היום</string>
+    <string name="w_nothing_today">אין משימות להיום</string>
+    <string name="w_add">משימה</string>
 </resources>
