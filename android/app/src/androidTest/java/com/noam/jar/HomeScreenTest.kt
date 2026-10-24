@@ -11,6 +11,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -61,6 +65,7 @@ class HomeScreenTest {
     @After
     fun tearDown() {
         scenario?.close()
+        MemoFeed.fake = null
     }
 
     private fun s(id: Int, vararg args: Any) = context.getString(id, *args)
@@ -218,6 +223,144 @@ class HomeScreenTest {
         compose.onNodeWithText("Buy milk").assertExists()
     }
 
+    // ---------------------------------------------------------------- step 3: the screens that were still classic
+
+    private val styles = listOf(Triple(JarStyle.CALM, JarMode.LIGHT, "calm"), Triple(JarStyle.NIGHT, JarMode.DARK, "night"),
+        Triple(JarStyle.PLAYFUL, JarMode.LIGHT, "playful"))
+
+    private fun back() {
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        compose.waitForIdle()
+    }
+
+    @Test
+    fun add_newTaskSheet_inEachStyle() {
+        for ((style, mode, tag) in styles) {
+            scenario?.close()
+            launch(style, mode)
+            compose.onNodeWithTag("add").performClick()
+            compose.onNodeWithTag("edit_sheet").assertExists()
+            compose.onNodeWithTag("add_title").performTextInput("Water the garden")
+            compose.onNodeWithTag("person_livne").performClick()                         // two people: who has to do it?
+            compose.onNodeWithText(s(R.string.add_mode_all)).assertExists()
+            compose.onNodeWithText(s(R.string.add_mode_turns)).assertDoesNotExist()   // only for repeating tasks
+            compose.onNodeWithText(s(R.string.repeat_daily)).performClick()
+            compose.onNodeWithText(s(R.string.add_mode_turns)).assertExists()
+            compose.onNodeWithText(s(R.string.add_when)).assertDoesNotExist()      // a repeating task has its own time
+            shot("40-add-$tag")
+        }
+        compose.onNodeWithTag("add_save").performClick()                           // no PC here: a toast, and the sheet closes
+        compose.waitForIdle()
+        compose.onNodeWithTag("edit_sheet").assertDoesNotExist()
+    }
+
+    @Test
+    fun edit_andAllActions_fromTheSheet() {
+        launch(JarStyle.CALM, JarMode.LIGHT)
+        compose.onNodeWithText("Buy milk").performClick()
+        compose.onNodeWithTag("all_actions").performClick()
+        compose.onNodeWithTag("more_actions").assertExists()
+        compose.onNodeWithTag("delete").assertExists()
+        compose.onNodeWithText(plain(s(R.string.snooze_pick))).assertExists()
+        shot("41-all-actions")
+        compose.onNodeWithText(s(R.string.ui_edit)).performClick()
+        compose.onNodeWithTag("edit_sheet").assertExists()
+        compose.onNodeWithTag("add_title").assertTextContains("Buy milk")
+        shot("41-edit")
+    }
+
+    private fun openFromSettings(label: String) {
+        compose.onNodeWithContentDescription(s(R.string.ui_settings)).performClick()
+        compose.onNodeWithText(s(R.string.ui_settings)).performClick()
+        compose.onNodeWithTag("settings").performScrollToNode(hasText(label))
+        compose.onNodeWithText(label).performClick()
+        compose.waitForIdle()
+    }
+
+    @Test
+    fun screens_inEachStyle() {
+        MemoFeed.fake = listOf(
+            JSONObject().put("id", "m1").put("recorded_at", utc(System.currentTimeMillis() - 2 * HOUR)).put("status", "done")
+                .put("transcript", "Buy bread and milk tomorrow, and remind Livne about the desk")
+                .put("actions", JSONArray().put("Added: Buy bread and milk").put("Reminder for Livne: Tidy your desk")),
+            JSONObject().put("id", "m2").put("recorded_at", utc(System.currentTimeMillis() - DAY)).put("status", "done")
+                .put("transcript", "Pay the electricity bill").put("actions", JSONArray().put("Added: Pay the electricity")),
+        )
+        for ((style, mode, tag) in styles) {
+            scenario?.close()
+            launch(style, mode)
+            openFromSettings(plain(s(R.string.menu_recurring)))
+            compose.onNodeWithTag("recurring").assertExists()
+            compose.onNodeWithText("Water the plants").assertExists()
+            shot("42-recurring-$tag")
+            compose.onNodeWithText("Water the plants").performClick()
+            compose.onNodeWithTag("series_sheet").assertExists()
+            back()
+            compose.onNodeWithTag("back").performClick()
+
+            compose.onNodeWithTag("settings").performScrollToNode(hasText(plain(s(R.string.menu_areas))))
+            compose.onNodeWithText(plain(s(R.string.menu_areas))).performClick()
+            compose.onNodeWithTag("areas").assertExists()
+            compose.onNodeWithText("Kitchen").assertExists()
+            shot("43-areas-$tag")
+            compose.onNodeWithText("Kitchen").performClick()
+            compose.onNodeWithTag("area_sheet").assertExists()
+            shot("44-area-$tag")
+            back()
+            compose.onNodeWithTag("back").performClick()
+
+            compose.onNodeWithTag("settings").performScrollToNode(hasText(s(R.string.ui_archive_title)))
+            compose.onNodeWithText(s(R.string.ui_archive_title)).performClick()
+            compose.onNodeWithTag("archive").assertExists()
+            compose.onNodeWithText("Fixed the bike").assertExists()
+            shot("45-archive-$tag")
+            compose.onNodeWithTag("back").performClick()
+
+            compose.onNodeWithTag("settings").performScrollToNode(hasText(s(R.string.menu_memos)))
+            compose.onNodeWithText(s(R.string.menu_memos)).performClick()
+            compose.onNodeWithTag("memos").assertExists()
+            compose.onNodeWithText("Pay the electricity bill").assertExists()
+            shot("46-memos-$tag")
+            compose.onNodeWithText("Pay the electricity bill").performClick()
+            compose.onNodeWithTag("refile").assertExists()
+            back()
+        }
+    }
+
+    @Test
+    fun archive_fromTheTaskList() {
+        launch(JarStyle.NIGHT, JarMode.DARK)
+        compose.onNodeWithTag("task_list").performScrollToNode(hasText(plain(s(R.string.archive_button, 1))))
+        compose.onNodeWithText(plain(s(R.string.archive_button, 1))).performClick()
+        compose.onNodeWithTag("archive").assertExists()
+        compose.onNodeWithText("Fixed the bike").performClick()
+        compose.onNodeWithText(s(R.string.action_reopen)).assertExists()     // an archived task can come back
+    }
+
+    @Test
+    fun ideas_newAndDecide() {
+        launch(JarStyle.NIGHT, JarMode.DARK)
+        tapTab(R.string.ui_nav_ideas)
+        compose.onNodeWithText(s(R.string.ui_new_idea)).performClick()
+        compose.onNodeWithTag("idea_new").assertExists()
+        shot("47-idea-new")
+        back()
+        compose.onNodeWithText("Night mode").performClick()
+        compose.onNodeWithTag("idea_sheet").assertExists()
+        compose.onNodeWithText(plain(s(R.string.idea_accept))).assertExists()   // the admin decides
+        shot("48-idea-sheet")
+    }
+
+    @Test
+    fun board_lessonForAChild() {
+        seed("livne")
+        scenario = ActivityScenario.launch(HomeActivity::class.java)
+        tapTab(R.string.ui_nav_board)
+        compose.onNodeWithText(s(R.string.ui_learned)).performClick()
+        compose.onNodeWithTag("lesson").assertExists()
+        shot("49-lesson-playful")
+    }
+
     // ---------------------------------------------------------------- the stored task list
 
     private fun seed(me: String) {
@@ -237,7 +380,17 @@ class HomeScreenTest {
                 .put("done_parts", JSONObject().put("noam", utc(now - HOUR))))
             .put(task("t9", "Tidy your desk", "livne", "open", null, now - HOUR, local(now, "18:00")).put("created_by", "noam"))
             .put(task("i1", "Night mode", "noam", "requested", null, now - HOUR, null).put("kind", "idea").put("created_by", "livne"))
-        cache.setTasks(JSONObject().put("rev", 1).put("tasks", tasks).put("series", JSONArray()).put("areas", JSONArray())
+        val series = JSONArray()
+            .put(JSONObject().put("id", "s1").put("title", "Water the plants").put("created_by", "noam").put("owners", JSONArray().put("noam").put("livne"))
+                .put("rule", "weekly:sun,wed").put("time", "18:00").put("label", "Every Sunday and Wednesday at 18:00").put("rotate", true)
+                .put("status", "active").put("next_turn", "livne"))
+            .put(JSONObject().put("id", "s2").put("title", "Take out the recycling").put("created_by", "noam").put("owners", JSONArray().put("noam"))
+                .put("rule", "weekly").put("label", "Every week").put("status", "paused"))
+        val areas = JSONArray()
+            .put(JSONObject().put("id", "a1").put("name", "Kitchen").put("emoji", "🍳").put("owner", "noam").put("keywords", JSONArray().put("dishes").put("fridge")))
+            .put(JSONObject().put("id", "a2").put("name", "Floors").put("emoji", "🧹").put("owner", "livne").put("keywords", JSONArray().put("floor")))
+            .put(JSONObject().put("id", "a3").put("name", "Garden").put("emoji", "🌿").put("owner", "noam").put("keywords", JSONArray()))
+        cache.setTasks(JSONObject().put("rev", 1).put("tasks", tasks).put("series", series).put("areas", areas)
             .put("settings", JSONObject().put("keep_done_days", 0)))
         cache.setPoints(JSONObject().put("me", me).put("week", JSONObject().put("start", local(now - 3 * DAY, "00:00").take(10)).put("end", local(now + 3 * DAY, "00:00").take(10)))
             .put("people", JSONArray()

@@ -22,7 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +62,12 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
     val now = System.currentTimeMillis()
     val tz = TimeZone.getDefault()
     val open = t.openFor(data.me)
-    val more = { onClose(); actions.classic(0) { it.putExtra(TasksActivity.EXTRA_OPEN, t.id) } }
+    var more by remember { mutableStateOf(false) }
+    val classic = { onClose(); actions.classic(0) { it.putExtra(TasksActivity.EXTRA_OPEN, t.id) } }
+    val editable = t.status != "declined" && !t.isMessage
+    val repeatable = data.canMakeRepeat(t)
+    val edit = { onClose(); actions.edit(EditReq(t)) }
+    val repeat = { onClose(); actions.edit(EditReq(t, repeat = true)) }
     val act = { a: String, until: String? -> actions.act(t, a, until); onClose() }
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -76,7 +84,8 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
                 if (open) OutlineAction(JarIcons.Clock, ctx.getString(R.string.ui_action_later), Modifier.weight(1f)) {
                     act("snooze", TaskLists.inAnHour(now, tz))
                 }
-                OutlineAction(JarIcons.Repeat, ctx.getString(R.string.ui_repeat), Modifier.weight(1f), more)
+                if (repeatable) OutlineAction(JarIcons.Repeat, ctx.getString(R.string.ui_repeat), Modifier.weight(1f), repeat)
+                else if (editable) OutlineAction(JarIcons.Edit, ctx.getString(R.string.ui_edit), Modifier.weight(1f), edit)
                 OutlineAction(JarIcons.Chat, ctx.getString(R.string.ui_ask), Modifier.weight(1f)) { onClose(); actions.thread(t) }
             }
         } else {
@@ -87,8 +96,8 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
                 } else if (t.isDone || t.doneFor(data.me)) {
                     BigAction(JarIcons.Undo, ctx.getString(R.string.action_reopen), true, Modifier.weight(1f)) { act("reopen", null) }
                 }
-                BigAction(JarIcons.Repeat, ctx.getString(R.string.ui_repeat), false, Modifier.weight(1f), more)
-                BigAction(JarIcons.Edit, ctx.getString(R.string.ui_edit), false, Modifier.weight(1f), more)
+                if (repeatable) BigAction(JarIcons.Repeat, ctx.getString(R.string.ui_repeat), false, Modifier.weight(1f), repeat)
+                if (editable) BigAction(JarIcons.Edit, ctx.getString(R.string.ui_edit), false, Modifier.weight(1f), edit)
             }
         }
         if (open) {
@@ -99,13 +108,15 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
             }
         }
         Notes(t, data) { onClose(); actions.thread(t) }
-        Text(stringResource(R.string.ui_open_in_classic), color = c.muted, fontSize = 13.sp, fontFamily = jar.font,
-            modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button, onClick = more).padding(vertical = 6.dp))
+        if (more) MoreActions(t, data, onClose)
+        else Text(stringResource(R.string.ui_open_in_classic), color = c.muted, fontSize = 14.sp, fontFamily = jar.font,
+            modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) { if (t.isMessage) { classic() } else { more = true } }
+                .padding(vertical = 8.dp).testTag("all_actions"))
     }
 }
 
 @Composable
-private fun SheetChips(t: Task, data: HomeData) {
+fun SheetChips(t: Task, data: HomeData) {
     val jar = LocalJar.current
     val c = jar.colors
     val ctx = LocalContext.current
@@ -127,7 +138,7 @@ private fun SheetChips(t: Task, data: HomeData) {
 
 /** The task's notes: the last two, and a way into the full thread. */
 @Composable
-private fun Notes(t: Task, data: HomeData, onThread: () -> Unit) {
+fun Notes(t: Task, data: HomeData, onThread: () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
