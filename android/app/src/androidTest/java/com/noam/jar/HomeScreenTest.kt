@@ -16,6 +16,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertTextEquals
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -451,6 +452,35 @@ class HomeScreenTest {
         shot("49-lesson-playful")
     }
 
+    /**
+     * Livne's bug on 1.9.0: "+15" on Playful's coin broke onto two overlapping lines (his phone has a bigger font).
+     * Two and four digits, with the system font at 130%: the amount stays on one line, inside the coin.
+     */
+    @Test
+    fun playful_bigCoinAmountsStayOnOneLine() {
+        shell("settings put system font_scale 1.3")
+        try {
+            for (coins in listOf(15, 1200)) {
+                scenario?.close()
+                seed("livne", coins)
+                scenario = ActivityScenario.launch(HomeActivity::class.java)
+                compose.onNodeWithText("Pay the electricity").performClick()
+                compose.onNodeWithText(s(R.string.action_done)).performClick()
+                compose.waitForIdle()
+                val node = compose.onNodeWithTag("coin_amount")
+                node.assertTextEquals("+$coins")
+                val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+                assertEquals("one line for +$coins", 1, layouts.first().lineCount)
+                assertEquals("nothing cut off for +$coins", false, layouts.first().hasVisualOverflow)
+                shot("23-playful-done-$coins")
+                compose.onNodeWithText(s(R.string.ui_yes)).performClick()
+            }
+        } finally {
+            shell("settings put system font_scale 1.0")
+        }
+    }
+
     // ---------------------------------------------------------------- the home-screen widget
 
     /** The widget at three sizes on a wallpaper, drawn exactly as the launcher would (RemoteViews.apply). */
@@ -509,7 +539,7 @@ class HomeScreenTest {
 
     // ---------------------------------------------------------------- the stored task list
 
-    private fun seed(me: String) {
+    private fun seed(me: String, coins: Int = 6) {
         val cache = TaskCache(context)
         val family = JSONArray().put(person("noam", "Noam", "parent", true)).put(person("livne", "Livne", "child", false))
         cache.setMe(JSONObject().put("person", family.getJSONObject(if (me == "noam") 0 else 1)).put("family", family))
@@ -520,7 +550,7 @@ class HomeScreenTest {
             .put(task("t3", "Washed the car", me, "done", now - 3 * DAY, now - 3 * DAY, null))
             .put(task("t4", "Fixed the bike", me, "done", now - 20 * DAY, now - 20 * DAY, null))
             .put(task("t7", "Call the vet", me, "open", null, now - HOUR, local(now + DAY, "10:00")))
-            .put(task("t8", "Pay the electricity", me, "open", null, now - HOUR, local(now - DAY, "09:00")).put("coins", 6))
+            .put(task("t8", "Pay the electricity", me, "open", null, now - HOUR, local(now - DAY, "09:00")).put("coins", coins))
             .put(task("t6", "Clean the room together", "noam", "open", null, now - HOUR, null)
                 .put("assignees", JSONArray().put("noam").put("livne")).put("mode", "all")
                 .put("done_parts", JSONObject().put("noam", utc(now - HOUR))))

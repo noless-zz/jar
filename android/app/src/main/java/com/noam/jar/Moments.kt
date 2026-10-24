@@ -209,7 +209,7 @@ private fun Snack(m: DoneMoment, modifier: Modifier, ring: Boolean) {
         .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp).testTag("done_moment"),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         if (ring && m.coins > 0) Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFF2C46B)), contentAlignment = Alignment.Center) {
-            Text("+${m.coins}", color = Color(0xFF4A2E00), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = jar.font)
+            CoinAmount(m.coins, Color(0xFF4A2E00), 13.sp, Modifier.fillMaxWidth().padding(horizontal = 3.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(text, color = if (night) c.ink else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = jar.font)
@@ -231,7 +231,7 @@ private fun NightRing(m: DoneMoment, modifier: Modifier) {
         Box(Modifier.size(170.dp).clip(CircleShape).border(2.dp, c.accent.copy(alpha = 0.25f), CircleShape))
         Box(Modifier.size(128.dp).clip(CircleShape).background(c.bg.copy(alpha = 0.92f)).border(2.dp, c.accent.copy(alpha = 0.6f), CircleShape),
             contentAlignment = Alignment.Center) {
-            if (m.coins > 0) Text("+${m.coins}", color = c.coin, fontSize = 36.sp, fontWeight = FontWeight.Bold, fontFamily = jar.display)
+            if (m.coins > 0) CoinAmount(m.coins, c.coin, 36.sp, Modifier.fillMaxWidth().padding(horizontal = 16.dp), FontWeight.Bold)
             else Icon(JarIcons.Check, null, tint = c.accent, modifier = Modifier.size(48.dp))
         }
     }
@@ -252,7 +252,8 @@ private fun PlayfulDone(m: DoneMoment) {
                 Box(Modifier.size(180.dp).offset(6.dp, 6.dp).clip(CircleShape).background(c.ink))
                 Column(Modifier.size(180.dp).clip(CircleShape).background(c.accent).border(4.dp, c.ink, CircleShape),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Text(if (m.coins > 0) "+${m.coins}" else "✓", color = c.ink, fontSize = 60.sp, fontWeight = FontWeight.ExtraBold, fontFamily = jar.display)
+                    if (m.coins > 0) CoinAmount(m.coins, c.ink, 60.sp, Modifier.fillMaxWidth().padding(horizontal = 24.dp))
+                    else Text("✓", color = c.ink, fontSize = 60.sp, fontWeight = FontWeight.ExtraBold, fontFamily = jar.display)
                     if (m.coins > 0) Text(stringResource(R.string.ui_coins, m.coins).replace("${m.coins}", "").trim(), color = c.ink, fontSize = 16.sp,
                         fontWeight = FontWeight.Bold, fontFamily = jar.display)
                 }
@@ -356,4 +357,21 @@ fun RecordOverlay(onStop: () -> Unit) {
                 fontWeight = FontWeight.SemiBold, fontFamily = jar.font)
         }
     }
+}
+
+/**
+ * "+15" on a coin: always one line, left to right (in Hebrew too), and as large as fits the space it has, so three or
+ * four digits or a big system font size never wrap it. Livne saw "+15" break onto two overlapping lines on 1.9.0.
+ */
+@Composable
+fun CoinAmount(coins: Int, color: Color, maxSize: androidx.compose.ui.unit.TextUnit, modifier: Modifier = Modifier,
+               weight: FontWeight = FontWeight.ExtraBold) {
+    val jar = LocalJar.current
+    androidx.compose.foundation.text.BasicText(
+        "+$coins", modifier.testTag("coin_amount"),
+        style = androidx.compose.ui.text.TextStyle(color = color, fontWeight = weight, fontFamily = jar.display, textAlign = TextAlign.Center,
+            textDirection = androidx.compose.ui.text.style.TextDirection.Ltr),
+        maxLines = 1, softWrap = false,
+        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = maxSize, stepSize = 1.sp),
+    )
 }
