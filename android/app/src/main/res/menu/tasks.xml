@@ -7,6 +7,10 @@
         android:title="@string/menu_refresh"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/menu_new_design"
+        android:title="@string/ui_new_design"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/menu_memos"
         android:title="@string/menu_memos"
         app:showAsAction="never" />

@@ -45,6 +45,15 @@
             </intent-filter>
         </activity>
 
+        <!-- The new design (Compose), opt-in while it is built: "New design (beta)" in the menu -->
+        <activity
+            android:name=".HomeActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".LookActivity"
+            android:exported="false" />
+
         <!-- My memos: see and correct what Jar heard -->
         <activity
             android:name=".MemosActivity"

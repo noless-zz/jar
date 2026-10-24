@@ -66,6 +66,9 @@ public final class TasksActivity extends AppCompatActivity {
     /** From a notification: open this WhatsApp draft right away. */
     static final String EXTRA_SEND = "send_message";
     static final String EXTRA_INVITE = "invite";
+    static final String EXTRA_CLASSIC = "classic";     // opened from the new design: don't send it back there
+    static final String EXTRA_TAB = "tab";             // 0 mine, 1 asked, 2 family, 3 board, 4 ideas
+    static final String EXTRA_ADD = "add_task";        // open the add-task dialog right away
     static final String EXTRA_OPEN = "open_task";       // from the tasks widget: show that task's actions
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -103,6 +106,14 @@ public final class TasksActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Intent start = getIntent();
+        boolean special = start != null && (start.getBooleanExtra(EXTRA_CLASSIC, false) || start.hasExtra(EXTRA_OPEN)
+                || start.hasExtra(EXTRA_SEND) || start.getBooleanExtra(EXTRA_INVITE, false));
+        if (!special && LookPrefs.INSTANCE.newUi(this)) {
+            startActivity(new Intent(this, HomeActivity.class));
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_tasks);
         prefs = new Prefs(this);
         cache = new TaskCache(this);
@@ -149,6 +160,10 @@ public final class TasksActivity extends AppCompatActivity {
                 showSeriesList();
             } else if (id == R.id.menu_areas) {
                 showAreas();
+            } else if (id == R.id.menu_new_design) {
+                LookPrefs.INSTANCE.setNewUi(this, true);
+                startActivity(new Intent(this, HomeActivity.class));
+                finish();
             } else if (id == R.id.menu_keep_done) {
                 showKeepDone();
             } else if (id == R.id.menu_memos) {
@@ -207,6 +222,16 @@ public final class TasksActivity extends AppCompatActivity {
     }
 
     private void handleSend(Intent intent) {
+        if (intent != null && intent.hasExtra(EXTRA_TAB)) {
+            int tab = intent.getIntExtra(EXTRA_TAB, TAB_MINE);
+            intent.removeExtra(EXTRA_TAB);
+            TabLayout.Tab t = tabs.getTabAt(tab);
+            if (t != null) tabs.selectTab(t);
+        }
+        if (intent != null && intent.getBooleanExtra(EXTRA_ADD, false)) {
+            intent.removeExtra(EXTRA_ADD);
+            showAddDialog();
+        }
         if (intent != null && intent.getBooleanExtra(EXTRA_INVITE, false)) {
             intent.removeExtra(EXTRA_INVITE);
             chooseInvite();

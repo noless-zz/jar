@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)       // Kotlin itself is built into AGP 9; this is the Compose compiler
 }
 
 // ---- Version: from the release tag (CI passes -PjarVersion=1.2.3), else the dev default below.
@@ -44,6 +45,7 @@ android {
 
     buildFeatures {
         buildConfig true
+        compose true
         resValues true
     }
 
@@ -83,6 +85,17 @@ dependencies {
     implementation libs.material
     implementation libs.activity
     implementation libs.work.runtime
+    implementation platform(libs.compose.bom)
+    implementation libs.compose.ui
+    implementation libs.compose.ui.graphics
+    implementation libs.compose.foundation
+    implementation libs.compose.material3
+    implementation libs.compose.ui.tooling.preview
+    implementation libs.activity.compose
+    debugImplementation libs.compose.ui.tooling
+    debugImplementation libs.compose.ui.test.manifest
+    androidTestImplementation platform(libs.compose.bom)
+    androidTestImplementation libs.compose.ui.test.junit4
     implementation libs.code.scanner     // QR scanning UI from Play services: no camera permission needed
     testImplementation libs.junit
     androidTestImplementation libs.test.ext.junit
