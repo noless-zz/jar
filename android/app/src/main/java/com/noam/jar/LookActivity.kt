@@ -52,6 +52,7 @@ class LookActivity : ComponentActivity() {
         setContent {
             var look by remember { mutableStateOf(LookPrefs.load(this, child)) }
             JarThemed(look) {
+                SystemBars()
                 LookScreen(look, onChange = { look = it }, onSave = { LookPrefs.save(this, look); finish() }, onBack = { finish() })
             }
         }

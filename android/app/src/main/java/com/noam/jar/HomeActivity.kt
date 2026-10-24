@@ -10,7 +10,10 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
@@ -110,6 +113,7 @@ class HomeActivity : ComponentActivity() {
             val cache = remember(v) { TaskCache(this) }
             val look = remember(v) { LookPrefs.load(this, !cache.iAmParent()) }
             JarThemed(look) {
+                SystemBars()
                 HomeScreen(
                     cache = cache, version = v, recording = recording.value, memo = memo.value,
                     onToggleRecord = ::toggleRecording,
@@ -252,7 +256,7 @@ private fun HomeScreen(
 
     Box(Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Column(Modifier.fillMaxSize()) {
-            Header(cache, colorOf[me] ?: c.accent, onClassic)
+            Header(cache, colorOf[me] ?: c.accent, onClassic) { onClassic(0) { it.putExtra(TasksActivity.EXTRA_ADD, true) } }
             Row(Modifier.padding(horizontal = 20.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(stringResource(R.string.ui_filter_mine, mine.count { TaskLists.doneBucket(it, null, System.currentTimeMillis()) == TaskLists.OPEN }),
                     filter == Filter.MINE) { filter = Filter.MINE }
@@ -291,9 +295,6 @@ private fun HomeScreen(
                 }
             }
         }
-        AddButton(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 100.dp)) {
-            onClassic(0) { it.putExtra(TasksActivity.EXTRA_ADD, true) }
-        }
         BottomBar(Modifier.align(Alignment.BottomCenter), parent, recording,
             onRecord = {
                 if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) onToggleRecord()
@@ -317,7 +318,7 @@ private fun personColors(ids: List<String>): Map<String, Color> =
     ids.mapIndexed { i, id -> id to PersonColors[i % PersonColors.size] }.toMap()
 
 @Composable
-private fun Header(cache: TaskCache, myColor: Color, onClassic: (Int, (Intent) -> Unit) -> Unit) {
+private fun Header(cache: TaskCache, myColor: Color, onClassic: (Int, (Intent) -> Unit) -> Unit, onAdd: () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val ctx = LocalContext.current
@@ -332,6 +333,7 @@ private fun Header(cache: TaskCache, myColor: Color, onClassic: (Int, (Intent) -
             Text(TaskFormat.syncedAgo(ctx, cache.syncedAt()), color = c.muted, fontSize = 13.sp, fontFamily = jar.font)
             Text(greet, color = c.ink, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = jar.display)
         }
+        AddButton(Modifier.padding(end = 10.dp), onAdd)
         Box {
             Avatar(name.take(1), myColor, 44.dp, Modifier.clickable(role = Role.Button) { menu = true }
                 .semantics { contentDescription = ctx.getString(R.string.ui_menu_look) })
@@ -614,6 +616,7 @@ private fun Chips(t: Task, me: String, names: Map<String, String>, colorOf: Map<
         } else if (me != t.createdBy && t.createdBy.isNotEmpty() && t.isFor(me)) {
             Chip(ctx.getString(R.string.ui_from, TaskLists.name(names, t.createdBy)), c.surface2, c.ink)
         }
+        if (jar.style == JarStyle.NIGHT && t.coins > 0 && !t.isMessage) Chip(ctx.getString(R.string.ui_coins, t.coins), c.coinSoft, c.coin)
         if (t.isRecurring && t.repeat.isNotEmpty()) Chip(t.repeat, c.surface2, c.ink)
         else TaskFormat.area(ctx, t.area)?.let { Chip(it.label(), c.surface2, c.ink) }
     }
@@ -702,9 +705,9 @@ private fun AddButton(modifier: Modifier, onClick: () -> Unit) {
     val c = jar.colors
     val shape = RoundedCornerShape(18.dp)
     Row(
-        modifier.height(52.dp).clip(shape).background(c.surface)
+        modifier.height(44.dp).clip(shape).background(c.surface)
             .border(if (jar.style == JarStyle.PLAYFUL) 2.dp else 1.dp, if (jar.style == JarStyle.PLAYFUL) c.ink else c.line, shape)
-            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 18.dp),
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(JarIcons.Plus, null, tint = c.ink, modifier = Modifier.size(20.dp))
@@ -767,5 +770,17 @@ private fun NavItem(icon: ImageVector, label: String, selected: Boolean, fg: Col
         }
         Text(label, color = if (selected && playful) c.bg else tint, fontSize = 12.sp, fontFamily = jar.font,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+    }
+}
+
+/** Status and navigation bars in the look's background, with icons that stay readable. */
+@Composable
+fun SystemBars() {
+    val c = LocalJar.current.colors
+    val activity = LocalContext.current as? ComponentActivity ?: return
+    LaunchedEffect(c.bg, c.dark) {
+        val argb = android.graphics.Color.argb(255, (c.bg.red * 255).toInt(), (c.bg.green * 255).toInt(), (c.bg.blue * 255).toInt())
+        val style = if (c.dark) SystemBarStyle.dark(argb) else SystemBarStyle.light(argb, argb)
+        activity.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
 }

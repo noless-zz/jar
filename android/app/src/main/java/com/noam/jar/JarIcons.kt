@@ -10,8 +10,8 @@ import androidx.compose.ui.unit.dp
 
 /** Line icons drawn on a 24×24 grid (the same ones as on the design canvas), tinted where used. */
 object JarIcons {
-    private fun line(name: String, vararg paths: String, width: Float = 2f): ImageVector {
-        val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
+    private fun line(name: String, vararg paths: String, width: Float = 2f, mirror: Boolean = false): ImageVector {
+        val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f, autoMirror = mirror)
         for (p in paths) {
             b.addPath(
                 pathData = addPathNodes(p), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = width,
@@ -40,7 +40,7 @@ object JarIcons {
     val Repeat = line("repeat", "M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3")
     val More = solid("more", "M10.2 5a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0-3.6 0", "M10.2 12a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0-3.6 0",
         "M10.2 19a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0-3.6 0")
-    val Back = line("back", "M9 6l6 6-6 6")
+    val Back = line("back", "M15 6l-6 6 6 6", mirror = true)     // points to the start: left in English, right in Hebrew
     val Close = line("close", "M6 6l12 12M18 6L6 18")
     val Undo = line("undo", "M4 12a8 8 0 1 0 3-6.2M4 4v4h4")
     val Chevron = line("chevron", "M15 6l-6 6 6 6")
