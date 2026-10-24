@@ -462,6 +462,7 @@ class HomeScreenTest {
         try {
             for (coins in listOf(15, 1200)) {
                 scenario?.close()
+                context.getSharedPreferences("jar_tasks", Context.MODE_PRIVATE).edit().clear().commit()   // forget the last round's "done"
                 seed("livne", coins)
                 scenario = ActivityScenario.launch(HomeActivity::class.java)
                 compose.onNodeWithText("Pay the electricity").performClick()
