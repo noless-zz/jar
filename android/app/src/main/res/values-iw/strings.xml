@@ -527,4 +527,15 @@
     <string name="ui_send_hint">לוחצים שוב כדי לשלוח ל־Jar</string>
     <string name="ui_looks_like">Jar ירשום את זה כשתסיימו</string>
     <string name="ui_hi">היי %1$s!</string>
+    <string name="ui_back">חזרה</string>
+    <string name="ui_delete_confirm">למחוק את „%1$s”?</string>
+    <string name="ui_keep_done_sub">אחרי הזמן הזה המחשב מוחק משימות שהסתיימו מהארכיון.</string>
+    <string name="ui_recurring_sub">משימות שחוזרות מעצמן</string>
+    <string name="ui_new_recurring">משימה חוזרת חדשה</string>
+    <string name="ui_areas_sub">מי אחראי על מה. משימה חדשה בתחום עוברת לאחראי עליו.</string>
+    <string name="ui_archive_title">ארכיון</string>
+    <string name="ui_archive_sub">%1$d הסתיימו לפני יותר משבוע</string>
+    <string name="ui_archive_empty">עדיין אין כלום בארכיון.</string>
+    <string name="ui_memos_sub">מה Jar שמע ומה הוא עשה. אפשר לגעת בהקלטה כדי לתקן מה שלא נשמע נכון.</string>
+    <string name="ui_jar_did">Jar עשה</string>
 </resources>

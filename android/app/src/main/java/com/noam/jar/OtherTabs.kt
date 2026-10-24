@@ -51,7 +51,7 @@ import com.noam.jar.core.Task
 import com.noam.jar.core.TaskLists
 
 @Composable
-private fun TabTitle(title: String, sub: String? = null) {
+fun TabTitle(title: String, sub: String? = null) {
     val jar = LocalJar.current
     val c = jar.colors
     Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 20.dp, top = 22.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -63,7 +63,7 @@ private fun TabTitle(title: String, sub: String? = null) {
 
 /** The surface a block sits on: soft in Calm, outlined in Night, ink-outlined with a shadow in Playful. */
 @Composable
-private fun Block(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun Block(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val shape = RoundedCornerShape(jar.shape.card)
@@ -148,6 +148,7 @@ fun BoardTab(data: HomeData) {
     val actions = LocalActions.current
     val b = data.board
     var ledger by remember { mutableStateOf<Board.Person?>(null) }
+    var lesson by remember { mutableStateOf(false) }
     val people = b.people
     val me = people.firstOrNull { it.id == data.me }
     val rank = people.indexOfFirst { it.id == data.me } + 1
@@ -207,7 +208,7 @@ fun BoardTab(data: HomeData) {
         item {
             val parent = data.parent
             ActionPill(if (parent) stringResource(R.string.ui_work_day) else stringResource(R.string.ui_learned)) {
-                actions.classic(3) { it.putExtra(TasksActivity.EXTRA_ACTION, if (parent) "work_day" else "lesson") }
+                if (parent) logWorkDay(actions, ctx) else lesson = true
             }
         }
         if (b.lessons.isNotEmpty()) {
@@ -224,10 +225,11 @@ fun BoardTab(data: HomeData) {
     if (p != null) {
         ModalBottomSheet(onDismissRequest = { ledger = null }, containerColor = c.bg) { Ledger(p, b, data) }
     }
+    if (lesson) ModalBottomSheet(onDismissRequest = { lesson = false }, containerColor = c.bg) { LessonSheet { lesson = false } }
 }
 
 @Composable
-private fun ActionPill(label: String, onClick: () -> Unit) {
+fun ActionPill(label: String, onClick: () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val playful = jar.style == JarStyle.PLAYFUL
@@ -316,17 +318,19 @@ private fun Ledger(p: Board.Person, b: Board, data: HomeData) {
 
 // ---------------------------------------------------------------- ideas
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IdeasTab(data: HomeData) {
+fun IdeasTab(data: HomeData, onOpen: (Task) -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val ctx = LocalContext.current
     val actions = LocalActions.current
     val ideas = remember(data) { TaskLists.ideas(data.all) }
+    var adding by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize().testTag("ideas"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { TabTitle(stringResource(R.string.ui_ideas_title), stringResource(R.string.ui_ideas_sub)) }
-        item { ActionPill(stringResource(R.string.ui_new_idea)) { actions.classic(4) { it.putExtra(TasksActivity.EXTRA_ACTION, "idea") } } }
+        item { ActionPill(stringResource(R.string.ui_new_idea)) { adding = true } }
         items(ideas, key = { it.id }) { t ->
             val (label, bg, fg) = when {
                 t.isRequested -> Triple(R.string.idea_status_new, c.coinSoft, c.coin)
@@ -334,7 +338,7 @@ fun IdeasTab(data: HomeData) {
                 t.isDone -> Triple(R.string.idea_status_shipped, c.accent, c.onAccent)
                 else -> Triple(R.string.idea_status_declined, c.surface2, c.muted)
             }
-            Block(Modifier.clickable { actions.classic(4) { it.putExtra(TasksActivity.EXTRA_OPEN, t.id) } }) {
+            Block(Modifier.clickable { onOpen(t) }) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Avatar(TaskLists.name(data.names, t.createdBy).take(1), data.color(t.createdBy), 30.dp)
@@ -346,18 +350,21 @@ fun IdeasTab(data: HomeData) {
             }
         }
     }
+    if (adding) ModalBottomSheet(onDismissRequest = { adding = false }, containerColor = c.bg) { NewIdeaSheet { adding = false } }
 }
 
 // ---------------------------------------------------------------- settings
 
 /** Settings, opened from the avatar: everyday things first, the technical ones at the bottom. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(data: HomeData, onBack: () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val ctx = LocalContext.current
     val actions = LocalActions.current
-    val keep = remember { TaskCache(ctx).keepDoneDays() }
+    val keep = data.keepDone
+    var keepSheet by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize().testTag("settings"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -379,15 +386,16 @@ fun SettingsScreen(data: HomeData, onBack: () -> Unit) {
         }
         item { SettingsGroup(stringResource(R.string.ui_sec_personal), listOf(
             SettingsRow(JarIcons.Palette, ctx.getString(R.string.ui_menu_look), styleName(ctx, jar.style)) { actions.open(LookActivity::class.java) },
-            SettingsRow(JarIcons.Mic, ctx.getString(R.string.menu_memos), "") { actions.open(MemosActivity::class.java) },
+            SettingsRow(JarIcons.Mic, ctx.getString(R.string.menu_memos), "") { actions.go(Sub.MEMOS) },
         )) }
         item { SettingsGroup(stringResource(R.string.ui_sec_family_s), buildList {
             if (data.admin) add(SettingsRow(JarIcons.Family, ctx.getString(R.string.ui_set_invite), "") { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ACTION, "invite") } })
-            add(SettingsRow(JarIcons.Tasks, ctx.getString(R.string.menu_areas), "") { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ACTION, "areas") } })
-            add(SettingsRow(JarIcons.Repeat, ctx.getString(R.string.menu_recurring), "") { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ACTION, "recurring") } })
+            add(SettingsRow(JarIcons.Tasks, plain(ctx.getString(R.string.menu_areas)), "${data.areas.size}") { actions.go(Sub.AREAS) })
+            add(SettingsRow(JarIcons.Repeat, plain(ctx.getString(R.string.menu_recurring)), "${data.series.size}") { actions.go(Sub.RECURRING) })
+            add(SettingsRow(JarIcons.Undo, ctx.getString(R.string.ui_archive_title), "") { actions.go(Sub.ARCHIVE) })
             if (data.parent) add(SettingsRow(JarIcons.Clock, ctx.getString(R.string.menu_keep_done),
                 if (keep == 0) ctx.getString(R.string.keep_forever) else ctx.resources.getQuantityString(R.plurals.keep_days, keep, keep)) {
-                actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ACTION, "keep_done") } })
+                keepSheet = true })
         }) }
         item { SettingsGroup(stringResource(R.string.ui_sec_device), listOf(
             SettingsRow(JarIcons.Gear, ctx.getString(R.string.menu_settings), "") { actions.open(MainActivity::class.java) },
@@ -397,6 +405,7 @@ fun SettingsScreen(data: HomeData, onBack: () -> Unit) {
             SettingsRow(JarIcons.Back, ctx.getString(R.string.ui_menu_classic), "") { actions.backToClassic() },
         )) }
     }
+    if (keepSheet) ModalBottomSheet(onDismissRequest = { keepSheet = false }, containerColor = c.bg) { KeepDoneSheet(keep) { keepSheet = false } }
 }
 
 private fun styleName(ctx: android.content.Context, s: JarStyle) = ctx.getString(when (s) {

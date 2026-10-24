@@ -155,7 +155,7 @@ fun TasksTab(data: HomeData, memo: JSONObject?, onOpen: (Task) -> Unit, onSettin
             }
             if (s.archived > 0) item(key = "archive") {
                 val actions = LocalActions.current
-                FoldLine(ctx.getString(R.string.archive_button, s.archived)) { actions.classic(0) }
+                FoldLine(plain(ctx.getString(R.string.archive_button, s.archived))) { actions.go(Sub.ARCHIVE) }
             }
         }
     }
@@ -194,7 +194,7 @@ private fun AvatarMenu(data: HomeData, onSettings: () -> Unit) {
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(stringResource(R.string.ui_settings)) }, onClick = { menu = false; onSettings() })
             DropdownMenuItem(text = { Text(stringResource(R.string.ui_menu_look)) }, onClick = { menu = false; actions.open(LookActivity::class.java) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.menu_memos)) }, onClick = { menu = false; actions.open(MemosActivity::class.java) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_memos)) }, onClick = { menu = false; actions.go(Sub.MEMOS) })
             DropdownMenuItem(text = { Text(stringResource(R.string.ui_menu_classic)) }, onClick = { menu = false; actions.backToClassic() })
         }
     }
@@ -235,7 +235,7 @@ private fun CalmHeader(data: HomeData, onSettings: () -> Unit) {
             Text(stringResource(greetingRes(), data.myName), color = c.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 fontFamily = jar.display, maxLines = 2, lineHeight = 26.sp, overflow = TextOverflow.Ellipsis)
         }
-        AddButton { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ADD, true) } }
+        AddButton { actions.edit(EditReq(null)) }
         Box(Modifier.width(10.dp))
         AvatarMenu(data, onSettings)
     }
@@ -260,7 +260,7 @@ private fun NightHeader(data: HomeData, s: Sections, questions: Int, onSettings:
                 fontFamily = jar.display, modifier = Modifier.testTag("night_count"))
             Text(summary, color = if (s.overdue.isNotEmpty()) c.danger else c.muted, fontSize = 14.sp, fontFamily = jar.font)
         }
-        AddButton { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ADD, true) } }
+        AddButton { actions.edit(EditReq(null)) }
         Box(Modifier.width(10.dp))
         AvatarMenu(data, onSettings)
     }
@@ -279,7 +279,7 @@ private fun PlayfulHeader(data: HomeData, onSettings: () -> Unit) {
             color = c.ink, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, fontFamily = jar.display, modifier = Modifier.weight(1f),
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         CoinSticker(week)
-        AddButton { actions.classic(0) { it.putExtra(TasksActivity.EXTRA_ADD, true) } }
+        AddButton { actions.edit(EditReq(null)) }
         AvatarMenu(data, onSettings)
     }
 }

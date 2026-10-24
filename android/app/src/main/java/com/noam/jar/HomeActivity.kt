@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,6 +38,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import android.widget.Toast
+import com.noam.jar.core.Area
+import com.noam.jar.core.Series
 import com.noam.jar.core.Task
 import com.noam.jar.core.TaskLists
 import org.json.JSONObject
@@ -53,6 +57,12 @@ class HomeActivity : ComponentActivity() {
     private val recording = mutableStateOf(false)
     private val memo = mutableStateOf<JSONObject?>(null)
     val moment = mutableStateOf<DoneMoment?>(null)
+    /** Screens on top of the tabs (settings, recurring, areas …), the top one showing. */
+    val stack = mutableStateListOf<Sub>()
+    /** The add / edit sheet, when open. */
+    val editing = mutableStateOf<EditReq?>(null)
+    /** The task whose notes [Sub.THREAD] shows. */
+    val threadId = mutableStateOf("")
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val receiver = object : BroadcastReceiver() {
@@ -75,7 +85,7 @@ class HomeActivity : ComponentActivity() {
             JarThemed(look) {
                 SystemBars()
                 androidx.compose.runtime.CompositionLocalProvider(LocalActions provides actions) {
-                    HomeScreen(cache, v, recording.value, memo.value, moment.value)
+                    HomeScreen(cache, v, recording.value, memo.value, moment.value, stack.lastOrNull(), editing.value, threadId.value)
                 }
             }
         }
@@ -164,11 +174,41 @@ class HomeActivity : ComponentActivity() {
         }
 
         override fun thread(t: Task) {
-            startActivity(Intent(this@HomeActivity, TaskThreadActivity::class.java).putExtra(TaskThreadActivity.EXTRA_ID, t.id))
+            threadId.value = t.id
+            go(Sub.THREAD)
+            TaskSync.now(this@HomeActivity)     // fetch the newest notes
         }
 
         override fun open(c: Class<*>) {
             startActivity(Intent(this@HomeActivity, c))
+        }
+
+        override fun go(s: Sub) {
+            stack.remove(s)
+            stack.add(s)
+        }
+
+        override fun back() {
+            if (stack.isNotEmpty()) stack.removeAt(stack.size - 1)
+        }
+
+        override fun edit(req: EditReq?) {
+            editing.value = req
+        }
+
+        override fun toast(msg: String) {
+            Toast.makeText(this@HomeActivity, msg, Toast.LENGTH_LONG).show()
+        }
+
+        override fun <T> background(work: () -> T, ok: (T) -> Unit, err: (Exception) -> Unit) {
+            io.execute {
+                try {
+                    val r = work()
+                    main.post { ok(r); TaskSync.now(this@HomeActivity) }
+                } catch (e: Exception) {
+                    main.post { err(e) }
+                }
+            }
         }
 
         override fun backToClassic() {
@@ -191,7 +231,23 @@ interface HomeActions {
     fun thread(t: Task)
     fun open(c: Class<*>)
     fun backToClassic()
+    fun go(s: Sub)
+    fun back()
+    fun edit(req: EditReq?)
+    fun toast(msg: String)
+    /** Off the main thread (a call to the PC), then [ok] on it and a sync; [err] when it failed. */
+    fun <T> background(work: () -> T, ok: (T) -> Unit, err: (Exception) -> Unit)
+
+    /** A call to the PC; on failure a toast from [fail] (a string with one %s for the reason). */
+    fun call(fail: Int, ctx: Context, ok: () -> Unit = {}, work: () -> Unit) =
+        background(work, { ok() }, { e -> toast(ctx.getString(fail, e.message ?: e.javaClass.simpleName)) })
 }
+
+/** The screens that open over the tabs. */
+enum class Sub { SETTINGS, RECURRING, AREAS, ARCHIVE, MEMOS, THREAD }
+
+/** Open the add / edit sheet: a new task ([task] null), an edit, or "make it repeat" ([repeat]). */
+data class EditReq(val task: Task?, val repeat: Boolean = false)
 
 val LocalActions = staticCompositionLocalOf<HomeActions> { error("no actions") }
 
@@ -199,12 +255,11 @@ enum class Tab { TASKS, FAMILY, BOARD, IDEAS }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo: JSONObject?, moment: DoneMoment?) {
+private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo: JSONObject?, moment: DoneMoment?, sub: Sub?, editing: EditReq?, threadId: String) {
     val c = LocalJar.current.colors
     val ctx = LocalContext.current
     val actions = LocalActions.current
     var tab by remember { mutableStateOf(Tab.TASKS) }
-    var settings by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<Task?>(null) }
     val parent = cache.iAmParent()
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) actions.record() }
@@ -212,18 +267,25 @@ private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo:
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) actions.record()
         else askMic.launch(Manifest.permission.RECORD_AUDIO)
     }
-    BackHandler(enabled = settings || tab != Tab.TASKS) { if (settings) settings = false else tab = Tab.TASKS }
+    BackHandler(enabled = sub != null || tab != Tab.TASKS) { if (sub != null) actions.back() else tab = Tab.TASKS }
 
     val data = remember(version) { HomeData.of(cache) }
     Box(Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        if (settings) {
-            SettingsScreen(data, onBack = { settings = false })
+        if (sub != null) {
+            when (sub) {
+                Sub.SETTINGS -> SettingsScreen(data, onBack = { actions.back() })
+                Sub.RECURRING -> RecurringScreen(data)
+                Sub.AREAS -> AreasScreen(data)
+                Sub.ARCHIVE -> ArchiveScreen(data, onOpen = { sheet = it })
+                Sub.MEMOS -> MemosScreen()
+                Sub.THREAD -> ThreadScreen(threadId, data)
+            }
         } else {
             when (tab) {
-                Tab.TASKS -> TasksTab(data, memo, onOpen = { sheet = it }, onSettings = { settings = true })
+                Tab.TASKS -> TasksTab(data, memo, onOpen = { sheet = it }, onSettings = { actions.go(Sub.SETTINGS) })
                 Tab.FAMILY -> FamilyTab(data, onOpen = { sheet = it })
                 Tab.BOARD -> BoardTab(data)
-                Tab.IDEAS -> IdeasTab(data)
+                Tab.IDEAS -> IdeasTab(data, onOpen = { sheet = it })
             }
             BottomBar(Modifier.align(Alignment.BottomCenter), tab, parent, recording, onTab = { tab = it }, onRecord = onRecord)
         }
@@ -233,7 +295,14 @@ private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo:
     val open = sheet?.let { s -> data.all.firstOrNull { it.id == s.id } ?: s }
     if (open != null) {
         ModalBottomSheet(onDismissRequest = { sheet = null }, containerColor = c.bg) {
-            TaskSheet(open, data, onClose = { sheet = null })
+            if (open.isIdea) IdeaSheet(open, data, onClose = { sheet = null })
+            else TaskSheet(open, data, onClose = { sheet = null })
+        }
+    }
+    if (editing != null) {
+        ModalBottomSheet(onDismissRequest = { actions.edit(null) }, containerColor = c.bg,
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            EditTaskSheet(editing, data, onClose = { actions.edit(null) })
         }
     }
 }
@@ -242,9 +311,21 @@ private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo:
 class HomeData(
     val me: String, val myName: String, val parent: Boolean, val admin: Boolean, val all: List<Task>,
     val names: Map<String, String>, val colors: Map<String, Color>, val board: com.noam.jar.core.Board, val syncedAt: Long,
-    val parents: Set<String>,
+    val parents: Set<String>, val areas: List<Area> = emptyList(), val series: List<Series> = emptyList(), val keepDone: Int = 0,
 ) {
     fun color(id: String): Color = colors[id] ?: PersonColors[0]
+
+    /** May I turn this one-time task into a recurring one? (the PC checks the same) */
+    fun canMakeRepeat(t: Task): Boolean {
+        if (t.isRecurring || t.isMessage || t.isIdea || t.isLesson || !(t.isOpen || t.isRequested)) return false
+        if (me == t.createdBy || admin) return true
+        if (!parent) return false
+        return t.owners().none { it in parents }
+    }
+
+    fun seriesOf(t: Task): Series? = if (t.isRecurring) series.firstOrNull { it.id == t.seriesId } else null
+
+    fun mayChange(s: Series) = s.canChange(me, admin, parent, parents)
 
     companion object {
         fun of(cache: TaskCache): HomeData {
@@ -252,7 +333,7 @@ class HomeData(
             TaskFormat.setAreas(cache.areas())
             return HomeData(cache.myId(), cache.myName(), cache.iAmParent(), cache.iAmAdmin(), cache.tasks(), names,
                 names.keys.mapIndexed { i, id -> id to PersonColors[i % PersonColors.size] }.toMap(), cache.board(),
-                cache.syncedAt(), cache.parents())
+                cache.syncedAt(), cache.parents(), cache.areas(), cache.series(), cache.keepDoneDays())
         }
     }
 }

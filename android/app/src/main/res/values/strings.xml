@@ -519,4 +519,15 @@
     <string name="ui_send_hint">Tap again to send it to Jar</string>
     <string name="ui_looks_like">Jar will file it when you stop</string>
     <string name="ui_hi">Hi %1$s!</string>
+    <string name="ui_back">Back</string>
+    <string name="ui_delete_confirm">Delete “%1$s”?</string>
+    <string name="ui_keep_done_sub">After this, the PC removes finished tasks from the archive.</string>
+    <string name="ui_recurring_sub">Tasks that come back by themselves</string>
+    <string name="ui_new_recurring">New recurring task</string>
+    <string name="ui_areas_sub">Who is in charge of what. A new task in an area goes to whoever is in charge.</string>
+    <string name="ui_archive_title">Archive</string>
+    <string name="ui_archive_sub">%1$d done more than a week ago</string>
+    <string name="ui_archive_empty">Nothing in the archive yet.</string>
+    <string name="ui_memos_sub">What Jar heard and what it did. Tap one to fix a mishearing.</string>
+    <string name="ui_jar_did">Jar did</string>
 </resources>
