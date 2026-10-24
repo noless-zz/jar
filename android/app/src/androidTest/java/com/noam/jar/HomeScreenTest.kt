@@ -268,7 +268,7 @@ class HomeScreenTest {
         compose.onNodeWithTag("settings").performScrollToNode(hasText(s(R.string.ui_set_about)))
         compose.onNodeWithText(s(R.string.ui_set_about)).performClick()
         compose.onNodeWithTag("about").assertExists()
-        compose.onNodeWithText(s(R.string.share_app)).assertExists()
+        compose.onNodeWithText(s(R.string.update_open_page)).assertExists()
         shot("53-about")
     }
 
