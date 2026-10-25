@@ -345,6 +345,51 @@ class Api(Base):
         self.assertEqual(self.c.post("/v1/memos/1111111111111111/refile", headers=self.h("yoni"),
                                      json={"transcript": "  "}).status_code, 400)
 
+    def test_delete_what_a_memo_made(self):
+        """My memos → delete one item: the task and the note go now, the family event is left to the worker."""
+        import json as _j
+        from types import SimpleNamespace
+        from worker.__main__ import Worker
+        notes = self.tmp / "notes"
+        self.server.NOTES_DIR = notes
+        tid = self.c.post("/v1/tasks", headers=self.h("dana"), json={"title": "לקנות חלב", "assignee": "dana"}).json()["id"]
+        note = notes / "Family" / "דנה" / "Inbox" / "2026-10-10 1000 רעיון.md"
+        note.parent.mkdir(parents=True)
+        note.write_text("x", encoding="utf-8")
+        day = self.server.DATA_DIR / "2026-10-11"
+        day.mkdir(parents=True, exist_ok=True)
+        mid = "3333333333333333"
+        acts = [{"tool": "add_task", "summary": "task", "task_id": tid, "file": "Tasks.md"},
+                {"tool": "save_note", "summary": "note", "file": "Inbox/2026-10-10 1000 רעיון.md"},
+                {"tool": "family_event", "summary": "event", "file": "Calendar.md", "event_id": "ev1"},
+                {"tool": "update_task", "summary": "moved", "task_id": tid}]
+        (day / f"{mid}.json").write_text(_j.dumps({"id": mid, "person": "dana", "status": "done", "actions": acts,
+                                                    "recorded_at": "2026-10-11T10:00:00Z"}), encoding="utf-8")
+        memo = next(m for m in self.c.get("/v1/memos", headers=self.h("dana")).json()["memos"] if m["id"] == mid)
+        self.assertEqual([i["deletable"] for i in memo["items"]], [True, True, True, False])
+        self.assertEqual(memo["actions"], ["task", "note", "event", "moved"])       # older apps still get the lines
+
+        r = self.c.post(f"/v1/memos/{mid}/items/0/delete", headers=self.h("dana"))
+        self.assertTrue(r.json()["items"][0]["removed"], r.text)
+        self.assertNotIn(tid, [t["id"] for t in self.c.get("/v1/tasks", headers=self.h("dana")).json()["tasks"]])
+        self.c.post(f"/v1/memos/{mid}/items/1/delete", headers=self.h("dana"))
+        self.assertFalse(note.exists())
+        r = self.c.post(f"/v1/memos/{mid}/items/2/delete", headers=self.h("dana")).json()["items"][2]
+        self.assertEqual((r["removing"], r["removed"]), (True, False))
+        self.assertEqual(self.c.post(f"/v1/memos/{mid}/items/3/delete", headers=self.h("dana")).status_code, 409)
+        self.assertEqual(self.c.post(f"/v1/memos/{mid}/items/0/delete", headers=self.h("yoni")).status_code, 404)
+
+        # The worker removes the event from the family calendar and marks it.
+        gone = []
+        fake = SimpleNamespace(cfg=SimpleNamespace(data_dir=self.server.DATA_ROOT), accounts={},
+                               family_account=SimpleNamespace(delete_family_event=gone.append))
+        self.assertEqual(Worker.memo_item_deletes(fake), 1)
+        self.assertEqual(gone, ["ev1"])
+        m = _j.loads((day / f"{mid}.json").read_text(encoding="utf-8"))
+        self.assertTrue(m["actions"][2]["removed"])
+        self.assertNotIn("removing", m["actions"][2])
+        self.assertFalse(list((self.server.DATA_ROOT / "deletes").glob("*.json")))
+
     def test_dashboard_login_only_for_admin(self):
         self.assertEqual(self.c.post("/v1/dashboard-login", headers=self.h("dana")).status_code, 403)
         r = self.c.post("/v1/dashboard-login", headers=self.h("avi"))

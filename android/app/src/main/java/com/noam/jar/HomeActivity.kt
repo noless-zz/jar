@@ -157,7 +157,7 @@ class HomeActivity : ComponentActivity() {
         }
         if (RecorderService.isRecording()) main.post(ticker)
         if (Updater.enabled()) io.execute {
-            runCatching { Updater.check(this, false) }
+            runCatching { Updater.checkOnOpen(this) }
             main.post { refresh() }
         }
     }

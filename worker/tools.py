@@ -666,7 +666,10 @@ class Notes:
                 p = self._append("Calendar.md", f"- {when} · {title.strip()} → {r.summary}"
                                  f"{' ([open](' + r.link + '))' if r.link else ''} ({self._link()})\n",
                                  "# Calendar")
-                return self._record("create_event", f"event “{title.strip()}” {when} in {r.summary}", p, r.link)
+                out = self._record("create_event", f"event “{title.strip()}” {when} in {r.summary}", p, r.link)
+                if r.id:      # so the memo screen can delete it again
+                    self.actions[-1].update(event_id=r.id, account=(account or "personal").strip().lower())
+                return out
             except NotConnected as e:
                 why_local = str(e)
             except Exception as e:  # noqa: BLE001 — the memo must not be lost because an API failed
@@ -863,6 +866,8 @@ class Notes:
                                  "# Email drafts")
                 who = f" to {', '.join(recipients)}" if recipients else " (add the recipient)"
                 out = self._record("draft_email", f"email draft “{subject.strip()}”{who} in {r.summary}", p, r.link)
+                if r.id:      # so the memo screen can delete it again
+                    self.actions[-1].update(draft_id=r.id, account=(account or "personal").strip().lower())
                 return out + self._send_reminder(subject.strip(), recipients, r.summary, r.link)
             except NotConnected as e:
                 why_local = str(e)

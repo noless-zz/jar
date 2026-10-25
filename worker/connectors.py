@@ -189,11 +189,23 @@ class Outlook:
 
     def create_event(self, title, day, start_time, duration_min, location="", notes="") -> Result:
         r = self._post("/me/events", graph_event(title, day, start_time, duration_min, self.tz, location, notes))
-        return Result("Outlook calendar", r.get("webLink", ""))
+        return Result("Outlook calendar", r.get("webLink", ""), r.get("id", ""))
 
     def create_draft(self, to, subject, body) -> Result:
         r = self._post("/me/messages", graph_draft(to, subject, body))
-        return Result("Outlook drafts", r.get("webLink", ""))
+        return Result("Outlook drafts", r.get("webLink", ""), r.get("id", ""))
+
+    def delete(self, kind: str, item_id: str) -> bool:
+        """Remove an event ("event") or a draft ("draft") Jar made. True = gone (also when it already was)."""
+        path = ("/me/events/" if kind == "event" else "/me/messages/") + urllib.parse.quote(item_id, safe="")
+        req = urllib.request.Request(GRAPH + path, method="DELETE", headers={"Authorization": "Bearer " + self._token()})
+        try:
+            with urllib.request.urlopen(req, timeout=20):
+                return True
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):
+                return True
+            raise RuntimeError(f"Graph {e.code}: {e.read().decode(errors='replace')[:300]}") from e
 
 
 # ---------------------------------------------------------------- Google Workspace (school)
@@ -300,13 +312,24 @@ class Google:
     def create_event(self, title, day, start_time, duration_min, location="", notes="") -> Result:
         url = f"https://www.googleapis.com/calendar/v3/calendars/{self.calendar_id}/events"
         r = self._post(url, google_event(title, day, start_time, duration_min, self.tz, location, notes))
-        return Result("Google calendar (school)", r.get("htmlLink", ""))
+        return Result("Google calendar (school)", r.get("htmlLink", ""), r.get("id", ""))
 
     def create_draft(self, to, subject, body) -> Result:
         r = self._post("https://gmail.googleapis.com/gmail/v1/users/me/drafts", gmail_draft(to, subject, body))
         msg_id = (r.get("message") or {}).get("id", "")
         return Result("Gmail drafts (school)",
-                      f"https://mail.google.com/mail/u/0/#drafts?compose={msg_id}" if msg_id else "")
+                      f"https://mail.google.com/mail/u/0/#drafts?compose={msg_id}" if msg_id else "", r.get("id", ""))
+
+    def delete(self, kind: str, item_id: str) -> bool:
+        """Remove an event ("event") or a draft ("draft") Jar made. True = gone (also when it already was)."""
+        from google.auth.transport.requests import AuthorizedSession
+        q = urllib.parse.quote(item_id, safe="")
+        url = (f"https://www.googleapis.com/calendar/v3/calendars/{self.calendar_id}/events/{q}" if kind == "event"
+               else f"https://gmail.googleapis.com/gmail/v1/users/me/drafts/{q}")
+        r = AuthorizedSession(self._creds()).delete(url, timeout=20)
+        if r.status_code in (200, 204, 404, 410):
+            return True
+        raise RuntimeError(f"Google {r.status_code}: {r.text[:300]}")
 
 
 class NotFamily(Exception):

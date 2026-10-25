@@ -16,6 +16,8 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -58,7 +60,7 @@ class HomeScreenTest {
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
-        for (f in listOf("jar_prefs", "jar_tasks", "jar_look")) context.getSharedPreferences(f, Context.MODE_PRIVATE).edit().clear().commit()
+        for (f in listOf("jar_prefs", "jar_tasks", "jar_look", "jar_update")) context.getSharedPreferences(f, Context.MODE_PRIVATE).edit().clear().commit()
         val prefs = Prefs(context)
         prefs.setServerUrl("http://127.0.0.1:9")   // nothing listens there: the sync fails fast, the stored list stays
         prefs.setToken("emulator-test")
@@ -68,6 +70,7 @@ class HomeScreenTest {
     fun tearDown() {
         scenario?.close()
         MemoFeed.fake = null
+        Updater.testEnabled = false
     }
 
     private fun s(id: Int, vararg args: Any) = context.getString(id, *args)
@@ -357,7 +360,11 @@ class HomeScreenTest {
         MemoFeed.fake = listOf(
             JSONObject().put("id", "m1").put("recorded_at", utc(System.currentTimeMillis() - 2 * HOUR)).put("status", "done")
                 .put("transcript", "Buy bread and milk tomorrow, and remind Livne about the desk")
-                .put("actions", JSONArray().put("Added: Buy bread and milk").put("Reminder for Livne: Tidy your desk")),
+                .put("actions", JSONArray().put("Added: Buy bread and milk").put("Reminder for Livne: Tidy your desk"))
+                .put("items", JSONArray()
+                    .put(JSONObject().put("summary", "Added: Buy bread and milk").put("tool", "add_task").put("deletable", true))
+                    .put(JSONObject().put("summary", "Family event: Parents' evening, Tuesday 18:00").put("tool", "family_event").put("deletable", true))
+                    .put(JSONObject().put("summary", "Reminder for Livne: Tidy your desk").put("tool", "note_on_task").put("deletable", false))),
             JSONObject().put("id", "m2").put("recorded_at", utc(System.currentTimeMillis() - DAY)).put("status", "done")
                 .put("transcript", "Pay the electricity bill").put("actions", JSONArray().put("Added: Pay the electricity")),
         )
@@ -479,6 +486,48 @@ class HomeScreenTest {
             }
         } finally {
             shell("settings put system font_scale 1.0")
+        }
+    }
+
+    /** Noam's idea: take back one thing a memo made, from My memos. */
+    @Test
+    fun memos_deleteOneThingAMemoMade() {
+        MemoFeed.fake = listOf(JSONObject().put("id", "m1").put("recorded_at", utc(System.currentTimeMillis() - HOUR)).put("status", "done")
+            .put("transcript", "Buy bread and milk, and put parents' evening on Tuesday at six")
+            .put("actions", JSONArray().put("Added: Buy bread and milk").put("Family event: Parents' evening"))
+            .put("items", JSONArray()
+                .put(JSONObject().put("summary", "Added: Buy bread and milk").put("tool", "add_task").put("deletable", true))
+                .put(JSONObject().put("summary", "Family event: Parents' evening").put("tool", "family_event").put("deletable", true))))
+        for ((style, mode, tag) in styles) {
+            scenario?.close()
+            MemoFeed.fake!![0].getJSONArray("items").getJSONObject(1).put("removed", false).put("deletable", true)
+            launch(style, mode)
+            openFromSettings(s(R.string.menu_memos))
+            compose.onNodeWithTag("memos").assertExists()
+            compose.onAllNodesWithTag("memo_item_delete")[1].performClick()        // the event
+            compose.onNodeWithText(s(R.string.ui_memo_del_event), substring = true).assertExists()
+            shot("46-memo-delete-$tag")
+            compose.onNodeWithTag("confirm").performClick()
+            compose.waitUntil(5_000) { runCatching { compose.onNodeWithText(s(R.string.ui_memo_removed)).assertExists() }.isSuccess }
+            compose.onAllNodesWithTag("memo_item_delete").assertCountEquals(1)  // the task can still go; the event is gone
+            shot("46-memo-deleted-$tag")
+        }
+    }
+
+    /** The update banner at the top of the task list, as on the classic screen before. */
+    @Test
+    fun updateBanner_onTheTaskList() {
+        Updater.testEnabled = true
+        context.getSharedPreferences("jar_update", Context.MODE_PRIVATE).edit()
+            .putString("tag", "v99.0.0").putString("apk", "https://example.invalid/jar.apk")
+            .putLong("checked_at", System.currentTimeMillis())
+            .putString("notes", "99.0.0 | משהו חדש | Something new").commit()
+        for ((style, mode, tag) in styles) {
+            scenario?.close()
+            launch(style, mode)
+            compose.onNodeWithTag("update_banner").assertExists()
+            compose.onNodeWithText(s(R.string.ui_update_title, "v99.0.0")).assertExists()
+            shot("24-update-banner-$tag")
         }
     }
 

@@ -548,4 +548,12 @@
     <string name="w_done_of">%1$d of %2$d done today</string>
     <string name="w_nothing_today">Nothing for today</string>
     <string name="w_add">Task</string>
+    <string name="ui_memo_del_confirm">Delete “%1$s”?\n%2$s</string>
+    <string name="ui_memo_del_task">The task goes from the list.</string>
+    <string name="ui_memo_del_event">It comes off the calendar (anyone invited gets a cancellation).</string>
+    <string name="ui_memo_del_draft">The draft is deleted.</string>
+    <string name="ui_memo_del_note">The note is deleted.</string>
+    <string name="ui_memo_removed">Deleted</string>
+    <string name="ui_memo_removing">Removing…</string>
+    <string name="ui_memo_remove_failed">Couldn\'t remove it: %1$s</string>
 </resources>

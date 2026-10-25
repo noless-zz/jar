@@ -556,4 +556,12 @@
     <string name="w_done_of">%1$d מתוך %2$d הושלמו היום</string>
     <string name="w_nothing_today">אין משימות להיום</string>
     <string name="w_add">משימה</string>
+    <string name="ui_memo_del_confirm">למחוק את „%1$s”?\n%2$s</string>
+    <string name="ui_memo_del_task">המשימה יורדת מהרשימה.</string>
+    <string name="ui_memo_del_event">האירוע יורד מהיומן (מי שהוזמן מקבל ביטול).</string>
+    <string name="ui_memo_del_draft">הטיוטה נמחקת.</string>
+    <string name="ui_memo_del_note">ההערה נמחקת.</string>
+    <string name="ui_memo_removed">נמחק</string>
+    <string name="ui_memo_removing">מוחק…</string>
+    <string name="ui_memo_remove_failed">לא הצלחתי למחוק: %1$s</string>
 </resources>
