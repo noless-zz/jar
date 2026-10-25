@@ -765,7 +765,21 @@ def dashboard_login(request: Request, authorization: str | None = Header(None), 
     p = check_auth(authorization, request, x_device_id)
     if not p.admin:
         raise HTTPException(403, "the dashboard is only for " + FAMILY.admin.name)
+    if request.headers.get("tailscale-funnel-request"):
+        # Away from home the public address serves only /v1, so the dashboard itself can't open: the same one-time
+        # code opens the Home Assistant link page instead (docs/HOME_ASSISTANT.md).
+        return {"path": "v1/home/pair?n=" + LOGINS.issue()}
     return {"path": "login?n=" + LOGINS.issue()}
+
+
+@app.get("/v1/home/pair", response_class=HTMLResponse)
+def home_pair_page(n: str = ""):
+    """The Home Assistant link, opened once with a dashboard login code from the admin's phone."""
+    from .dashboard import home_assistant_html
+    if not LOGINS.redeem(n):
+        raise HTTPException(403, "this link was used or expired; tap Open dashboard in the app again")
+    return HTMLResponse(home_assistant_html(FAMILY, int(_cfg.get("port", 8080)), away=True),
+                        headers={"Cache-Control": "no-store"})
 
 
 app.include_router(make_router(DATA_ROOT, _ollama_url(), REJECTED, TOKEN, int(_cfg.get("port", 8080)),

@@ -91,6 +91,41 @@ class LoginLinks:
         return bool(cookie) and hmac.compare_digest(cookie, self.cookie_value)
 
 
+def home_assistant_html(family, port: int, renew: bool = False, renewed: bool = False, away: bool = False) -> str:
+    """The page with the link to paste into Home Assistant's Jar integration (docs/HOME_ASSISTANT.md).
+    away: opened from outside home through the public address (server /v1/home/pair): no buttons back to the
+    dashboard, which only opens at home or over Tailscale."""
+    import html as h
+
+    from . import pairing
+    tok = family.home_token(renew=renew)
+    urls = pairing.pairing_urls(pairing.discover(), port)
+    link = pairing.pairing_link(tok, urls)
+    note = ('<p class="ok">New link made. The old one no longer works: paste this one into Home Assistant '
+            '(Settings → Devices &amp; services → Jar → Reconfigure).</p>') if renewed else ""
+    linked = (family.tokens_path.parent / "home_assistant.json").exists()
+    renew_form = "" if away else ('<form method="post" style="display:inline" onsubmit="return confirm(\'Make a new link? '
+                                  'The current one stops working.\')"><button>New link</button></form>')
+    tail = ('<p class="small">You opened this away from home. The full dashboard opens on the PC, or over '
+            'Tailscale at home. This page works once; tap Open dashboard again for a new one.</p>') if away \
+        else '<p class="small"><a href="./">Back</a></p>'
+    return f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jar · Home Assistant</title>
+<style>body{{font:15px system-ui,sans-serif;max-width:640px;margin:32px auto;padding:0 16px;color:#222}}
+textarea{{width:100%;height:110px;font:13px monospace}}button{{font:inherit;padding:6px 14px;margin:8px 8px 0 0}}
+.ok{{color:#176b2c}}.small{{color:#666;font-size:13px}}</style>
+<h1>Connect Home Assistant</h1>
+<p>In Home Assistant: <b>Settings → Devices &amp; services → Add integration → Jar</b>, and paste this link.
+Home Assistant then sees the family's household tasks (not anyone's private to-dos), can tick them for
+whoever they belong to and add new ones. It gets no coins and isn't on the leaderboard.</p>
+{note}<textarea id="l" readonly>{h.escape(link)}</textarea>
+<button onclick="navigator.clipboard.writeText(document.getElementById('l').value);this.textContent='Copied'">Copy</button>
+{renew_form}
+<p class="small">The link is a password for Jar: paste it only into your own Home Assistant.
+Voice control of the house: {"on (Home Assistant gave Jar its address)" if linked else "not yet (it turns on when the Jar integration is set up)"}.</p>
+{tail}"""
+
+
 def make_router(data_dir: Path, ollama_url: str, rejected=(), token: str = "", port: int = 8080,
                 tailscale: bool = True, family=None, logins: LoginLinks | None = None, tasks=None) -> APIRouter:
     logins = logins or LoginLinks(token)
@@ -314,32 +349,9 @@ def make_router(data_dir: Path, ollama_url: str, rejected=(), token: str = "", p
         return RedirectResponse("home-assistant?renewed=1", status_code=303)
 
     def home_page(renew: bool, renewed: bool = False) -> str:
-        import html as h
-
-        from . import pairing
         if family is None:
             raise HTTPException(500, "no [family] in config.toml")
-        tok = family.home_token(renew=renew)
-        urls = pairing.pairing_urls(pairing.discover(), port)
-        link = pairing.pairing_link(tok, urls)
-        note = ('<p class="ok">New link made. The old one no longer works: paste this one into Home Assistant '
-                '(Settings → Devices &amp; services → Jar → Reconfigure).</p>') if renewed else ""
-        return f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Jar · Home Assistant</title>
-<style>body{{font:15px system-ui,sans-serif;max-width:640px;margin:32px auto;padding:0 16px;color:#222}}
-textarea{{width:100%;height:96px;font:13px monospace}}button{{font:inherit;padding:6px 14px;margin:8px 8px 0 0}}
-.ok{{color:#176b2c}}.small{{color:#666;font-size:13px}}</style>
-<h1>Connect Home Assistant</h1>
-<p>In Home Assistant: <b>Settings → Devices &amp; services → Add integration → Jar</b>, and paste this link.
-Home Assistant then sees the family's household tasks (not anyone's private to-dos), can tick them for
-whoever they belong to and add new ones. It gets no coins and isn't on the leaderboard.</p>
-{note}<textarea id="l" readonly>{h.escape(link)}</textarea>
-<button onclick="navigator.clipboard.writeText(document.getElementById('l').value);this.textContent='Copied'">Copy</button>
-<form method="post" style="display:inline" onsubmit="return confirm('Make a new link? The current one stops working.')">
-<button>New link</button></form>
-<p class="small">The link is a password for Jar: paste it only into your own Home Assistant.
-Voice control of the house: {"on (Home Assistant gave Jar its address)" if (family.tokens_path.parent / "home_assistant.json").exists() else "not yet (it turns on when the Jar integration is set up)"}.
-<a href="./">Back</a></p>"""
+        return home_assistant_html(family, port, renew=renew, renewed=renewed)
 
     outer.include_router(r)
     return outer

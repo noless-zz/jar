@@ -129,6 +129,22 @@ class Api(Base):
         self.assertEqual((r.status_code, r.json()["done_by"]), (200, "maya"))
         self.assertEqual(self.c.post(f"/v1/tasks/{tid}/delete", headers=self.h, json={}).status_code, 403)
 
+    def test_away_from_home_open_dashboard_shows_the_link(self):
+        from unittest import mock
+        admin = {"Authorization": "Bearer admin-token-123", "X-Device-Id": "p"}
+        r = self.c.post("/v1/dashboard-login", headers={**admin, "Tailscale-Funnel-Request": "?1"})
+        path = r.json()["path"]
+        self.assertTrue(path.startswith("v1/home/pair?n="), path)
+        with mock.patch("server.pairing.discover") as disc:
+            from server.pairing import Addresses, Tailscale
+            disc.return_value = Addresses(lan=[], tailscale=Tailscale())
+            page = self.c.get("/" + path)
+            self.assertEqual(page.status_code, 200, page.text)
+            self.assertIn("jar://pair", page.text)
+            self.assertEqual(self.c.get("/" + path).status_code, 403)          # once
+        r = self.c.post("/v1/dashboard-login", headers=admin)                 # at home: the dashboard as before
+        self.assertTrue(r.json()["path"].startswith("login?n="))
+
     def test_link(self):
         bad = self.c.post("/v1/home/link", headers=self.h, json={"url": "nope", "token": "x"})
         self.assertEqual(bad.status_code, 400)
