@@ -54,6 +54,13 @@
             android:name=".LookActivity"
             android:exported="false" />
 
+        <!-- Shopping lists: what each family member will buy (both designs open it from the menu) -->
+        <activity
+            android:name=".ShoppingActivity"
+            android:exported="false"
+            android:parentActivityName=".TasksActivity"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- My memos: see and correct what Jar heard -->
         <activity
             android:name=".MemosActivity"

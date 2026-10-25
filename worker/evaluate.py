@@ -45,6 +45,7 @@ class Result:
     summary: str
     fam: Family
     series: list[dict] = field(default_factory=list)
+    shopping: list[dict] = field(default_factory=list)
 
     def tools(self) -> list[str]:
         return [a["tool"] for a in self.actions]
@@ -112,6 +113,27 @@ def _one_idea(r: Result, admin: str, must: str) -> str | None:
     return None
 
 
+def _shop(r: Result, buyer: str, *must: str, by: str = "") -> str | None:
+    """Items on `buyer`'s shopping list that mention each of `must` (and, with by, asked for by that person)."""
+    items = [i for i in r.shopping if i["status"] == "open" and not i.get("seeded")]
+    for m in must:
+        hit = [i for i in items if m in i["title"]]
+        if not hit:
+            return f"no shopping item with “{m}” (items: {[i['title'] for i in items]}, tools: {r.tools()})"
+        if hit[0]["buyer"] != buyer:
+            return f"“{m}” is on {hit[0]['buyer']}'s list, should be {buyer}'s"
+        if by and hit[0]["requested_by"] != by:
+            return f"“{m}” asked for by {hit[0]['requested_by']}, should be {by}"
+    return None
+
+
+def _task_or_item(r: Result, task_check, buyer: str, must: str, by: str = "") -> str | None:
+    """Buying something can be a to-do or a shopping list item: either is right."""
+    if any(not i.get("seeded") for i in r.shopping):
+        return _shop(r, buyer, must, by=by) or (f"also made {len(r.new())} tasks" if r.new() else None)
+    return task_check()
+
+
 def _seeded(r: Result, title: str) -> dict:
     return next(t for t in r.tasks if t.get("seeded") and t["title"] == title)
 
@@ -158,12 +180,25 @@ def cases(admin: str, fam: Family) -> list[Case]:
                         else f"wrong day/time: {[a['summary'] for a in r.actions]}")),
         Case("a child asking a parent makes a request",
              "תזכיר לאבא לקנות לי מחברת חשבון",
-             lambda r: (_one_task(r, admin, "מחברת") or
-                        (None if r.new()[0]["status"] == "requested" else "not a request")),
+             lambda r: _task_or_item(r, lambda: (_one_task(r, admin, "מחברת") or
+                                                 (None if r.new()[0]["status"] == "requested" else "not a request")),
+                                     admin, "מחברת", by=son),
              speaker=son),
         Case("an action without 'remind me' is a task",
              "לקנות סוללות לשלט של המזגן",
-             lambda r: _one_task(r, admin, "סוללות")),
+             lambda r: _task_or_item(r, lambda: _one_task(r, admin, "סוללות"), admin, "סוללות")),
+        Case("groceries go on the shopper's list",
+             "נגמר החלב וצריך גם ביצים",
+             lambda r: _shop(r, son, "חלב", "ביצ") or (f"also made {len(r.new())} tasks" if r.new() else None)),
+        Case("a child asks a parent to buy something",
+             "אבא, תקנה לי אפוקסי לפרויקט",
+             lambda r: _shop(r, admin, "אפוקסי", by=son) or (f"also made {len(r.new())} tasks" if r.new() else None),
+             speaker=son),
+        Case("ticking off what was bought",
+             "קניתי את האפוקסי",
+             lambda r: (None if next(i for i in r.shopping if i.get("seeded"))["status"] == "bought"
+                        else f"item not ticked (tools: {r.tools()})"),
+             seed=[{"shop": "אפוקסי"}]),
         Case("a child's to-do is a task they can see",
              "להכין לוח שנה לסבתא",
              lambda r: _one_task(r, son, "לוח שנה"),
@@ -347,6 +382,7 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
     agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
                   about=cfg.about, think=cfg.think, num_ctx=cfg.num_ctx)
     real = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
+    son = next((p.id for n in ("livne", "ליבנה") if (p := real.resolve(n))), "livne")   # the family's shopper here
     results, t_all = [], time.monotonic()
     for c in [c for c in cases(real.admin.id, real) for _ in range(max(1, repeats))]:
         with tempfile.TemporaryDirectory() as tmp:
@@ -354,7 +390,14 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
             fam = Family.from_config(cfg.family or {}, "eval-token", tmp, cfg.contacts)
             store = TaskStore(tmp / "tasks.json", fam)
             speaker = fam.get(c.speaker) or fam.admin
-            for sd in c.seed:
+            from .shopping import ShoppingStore
+            shop = ShoppingStore(tmp / "shopping.json", fam, lambda: son)     # the son does the family shopping
+            for sd in [x for x in c.seed if x.get("shop")]:
+                [item] = shop.add(fam.get(son) or speaker, sd["shop"], speaker)
+                data = json.loads((tmp / "shopping.json").read_text(encoding="utf-8"))
+                next(i for i in data["items"] if i["id"] == item["id"])["seeded"] = True
+                (tmp / "shopping.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            for sd in [x for x in c.seed if not x.get("shop")]:
                 who = fam.get(sd.get("assignee", "")) or speaker
                 if sd.get("repeat"):
                     t = store.add_series(speaker, sd["title"], [who], sd["repeat"], now=datetime(*WHEN, tzinfo=tz))
@@ -366,7 +409,7 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
                         x["seeded"] = True
                 (tmp / "tasks.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
             notes = Notes(tmp / "notes", tz, MemoContext("e" * 16, datetime(*WHEN, tzinfo=tz)), accounts={},
-                          store=store, family=fam, speaker=speaker,
+                          store=store, family=fam, speaker=speaker, shopping=shop,
                           join_info=lambda who: {"download": "https://github.com/noless-zz/jar/releases/latest",
                                                  "pair_link": f"jar://pair?v=1&t=EXAMPLE-{who.id}&u=http%3A%2F%2Fpc%3A8080"
                                                  if who else ""})
@@ -375,7 +418,8 @@ def run(cfg: config_mod.Config | None = None, out_dir: Path | None = None, repea
                 r = agent.run(c.memo, notes, datetime(*WHEN, tzinfo=tz), cfg.timezone, {})
                 saved = json.loads((tmp / "tasks.json").read_text(encoding="utf-8")) \
                     if (tmp / "tasks.json").exists() else {}
-                res = Result(r.actions, saved.get("tasks", []), r.summary, fam, saved.get("series", []))
+                res = Result(r.actions, saved.get("tasks", []), r.summary, fam, saved.get("series", []),
+                             shop._read()["items"])
                 problem = c.check(res) or reply_language_problem(c.memo, r.summary)
                 summary = r.summary
             except Exception as e:  # noqa: BLE001

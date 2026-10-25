@@ -155,6 +155,8 @@ public final class TasksActivity extends AppCompatActivity {
             if (id == R.id.menu_refresh) {
                 syncStatus.setText(R.string.syncing);
                 TaskSync.now(this);
+            } else if (id == R.id.menu_shopping) {
+                startActivity(new Intent(this, ShoppingActivity.class));
             } else if (id == R.id.menu_dashboard) {
                 openDashboard();
             } else if (id == R.id.menu_update) {

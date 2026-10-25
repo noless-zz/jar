@@ -565,4 +565,19 @@
     <string name="ui_memo_removed">נמחק</string>
     <string name="ui_memo_removing">מוחק…</string>
     <string name="ui_memo_remove_failed">לא הצלחתי למחוק: %1$s</string>
+    <string name="shop_title">🛒 קניות</string>
+    <string name="shop_hint">רשימת הקניות של כל אחד. אפשר להוסיף לכל אחד, ולסמן מה קנית.</string>
+    <string name="shop_add_hint">מה לקנות? (כמה: חלב, ביצים)</string>
+    <string name="shop_add">הוספה</string>
+    <string name="shop_who_buys">מי קונה?</string>
+    <string name="shop_whoever">מי שעושה את הקניות</string>
+    <string name="shop_me">אני</string>
+    <string name="shop_mine">הרשימה שלי</string>
+    <string name="shop_of">הרשימה של %1$s</string>
+    <string name="shop_empty">אין מה לקנות</string>
+    <string name="shop_asked_by">ביקש/ה: %1$s</string>
+    <string name="shop_remove">הסרה</string>
+    <string name="shop_offline">אין חיבור למחשב כרגע</string>
+    <string name="shop_failed">לא עבר, נסו שוב</string>
+    <string name="menu_shopping">🛒 קניות</string>
 </resources>

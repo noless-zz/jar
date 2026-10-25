@@ -91,5 +91,14 @@ class JarApi:
     async def act(self, task_id: str, action: str, person: str) -> dict:
         return await self._request("POST", f"/v1/tasks/{task_id}/{action}", {"as": person})
 
+    async def shopping(self) -> dict:
+        return await self._request("GET", "/v1/shopping")
+
+    async def shop_add(self, titles: list[str], buyer: str, notes: str = "") -> dict:
+        return await self._request("POST", "/v1/shopping", {"items": titles, "buyer": buyer, "notes": notes})
+
+    async def shop_act(self, item_id: str, action: str, person: str = "") -> dict:
+        return await self._request("POST", f"/v1/shopping/{item_id}/{action}", {"as": person})
+
     async def link_home(self, url: str, token: str) -> dict:
         return await self._request("POST", "/v1/home/link", {"url": url, "token": token})

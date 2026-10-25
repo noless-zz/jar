@@ -142,6 +142,32 @@ async def test_todo_tick_and_create(hass: HomeAssistant, jar) -> None:
     assert mine["id"] not in {x["id"] for x in tasks.snapshot(fam.home)["tasks"]}
 
 
+async def test_shopping_lists(hass: HomeAssistant, jar) -> None:
+    from custom_components.jar.api import parse_link
+    from worker.shopping import ShoppingStore
+    fam = jar["fam"]
+    shop = ShoppingStore(Path(tempfile.mkdtemp()) / "shopping.json", fam, lambda: "yoni")
+    jar["server"].SHOPPING = shop
+    shop.add(fam.people["yoni"], "Epoxy", fam.people["avi"])
+    token, urls = parse_link(link(jar))
+    entry = MockConfigEntry(domain="jar", unique_id="jar", data={"token": token, "urls": urls, "allow_control": False})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("todo.jar_avi_shopping").state == "1"
+    items = await hass.services.async_call(TODO, "get_items", {}, target={"entity_id": "todo.jar_avi_shopping"},
+                                           blocking=True, return_response=True)
+    [it] = items["todo.jar_avi_shopping"]["items"]
+    assert it["summary"] == "Epoxy" and "Yoni" in it["description"]
+    await hass.services.async_call(TODO, "update_item", {"item": it["uid"], "status": "completed"},
+                                   target={"entity_id": "todo.jar_avi_shopping"}, blocking=True)
+    assert shop.snapshot()["items"][0]["bought_by"] == "avi"
+    await hass.services.async_call(TODO, "add_item", {"item": "Milk"},
+                                   target={"entity_id": "todo.jar_maya_shopping"}, blocking=True)
+    milk = next(i for i in shop.snapshot()["items"] if i["title"] == "Milk")
+    assert (milk["buyer"], milk["requested_by"]) == ("maya", "home")
+
+
 async def test_control_links_a_jar_user(hass: HomeAssistant, jar, hass_owner_user) -> None:
     from custom_components.jar.api import parse_link
     await hass.config.async_update(external_url="https://ha.example.ts.net")

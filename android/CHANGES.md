@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+1.11.0 | רשימות קניות 🛒: לכל אחד רשימה של מה שהוא קונה; אפשר להוסיף לכל אחד ("אבא, תקנה אפוקסי"), בהקלטה, באפליקציה (תפריט ← 🛒 קניות) ובלוח המשפחתי של Home Assistant | Shopping lists 🛒: everyone has a list of what they buy; add for anyone ("Dad, buy epoxy") by memo, in the app (menu → 🛒 Shopping) or on the Home Assistant family panel
 1.10.0 | חיבור ל-Home Assistant: המשימות של הבית בלוח המשפחתי ושליטה בבית בהקלטה ("תכבה את האור במטבח") | Home Assistant: the household tasks on the family panel, and control the house by memo ("turn off the kitchen light")
 1.9.5 | אפשר למחוק מ'ההקלטות שלי' דבר אחד שהקלטה יצרה (משימה, הערה, אירוע או טיוטה), ובאנר העדכון מופיע מהר יותר | Delete one thing a memo made (a task, note, event or draft) from My memos, and the update banner shows sooner
 1.9.2 | תיקון: מספר המטבעות ב'כל הכבוד' (למשל +15) נשאר בשורה אחת גם בגופן גדול | Fix: the coin amount on "Well done" (like +15) stays on one line, even with a big font

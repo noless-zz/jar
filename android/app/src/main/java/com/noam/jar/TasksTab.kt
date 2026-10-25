@@ -195,6 +195,7 @@ private fun AvatarMenu(data: HomeData, onSettings: () -> Unit) {
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(stringResource(R.string.ui_settings)) }, onClick = { menu = false; onSettings() })
             DropdownMenuItem(text = { Text(stringResource(R.string.ui_menu_look)) }, onClick = { menu = false; actions.open(LookActivity::class.java) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_shopping)) }, onClick = { menu = false; actions.open(ShoppingActivity::class.java) })
             DropdownMenuItem(text = { Text(stringResource(R.string.menu_memos)) }, onClick = { menu = false; actions.go(Sub.MEMOS) })
             DropdownMenuItem(text = { Text(stringResource(R.string.ui_menu_classic)) }, onClick = { menu = false; actions.backToClassic() })
         }

@@ -9,6 +9,7 @@ Jar's tasks on the family's Home Assistant (a wall panel, automations), and memo
 | `todo.jar_<id>` per family member | that person's **household** tasks. Ticking one ticks it in Jar *for that person*: their coins, their part of an "each of them" task. Unticking undoes it. A new item becomes a Jar task for that person (it pops up on their phone). Titles are changed in the Jar app. |
 | `sensor.jar_<id>_coins_week` | the leaderboard: coins this week, with all-time, tasks this week, streak and rank as attributes |
 | `sensor.jar_<id>_open_tasks` | how many tasks are open for that person; attribute `next` = the 3 most urgent (overdue first, then by due; area chores included) with title, due, overdue, coins, area |
+| `todo.jar_<id>_shopping` per family member | what that person is going to buy (docs/FAMILY.md, shopping lists). Ticking = bought; a new item lands on their list |
 | action `jar.add_task` | add a task from an automation: `title`, `people` (ids or names), optional `due`, `notes`, `each_of_them` |
 | events `jar_task_new`, `jar_task_done` | for automations (announce a finished chore, flash a light…) |
 | **voice control** (optional) | a memo like "תכבה את האור במטבח" switches it now, through Home Assistant's Assist |
@@ -50,4 +51,5 @@ nothing about the house is in Jar's prompt.
 All with the Home Assistant token (`Authorization: Bearer …`):
 `GET /v1/tasks`, `GET /v1/points`, `GET /v1/me`, `POST /v1/tasks` (needs `assignee`/`assignees`),
 `POST /v1/tasks/{id}/done|reopen` with `{"as": "<person id>"}` (optional when the task has one person),
+`GET /v1/shopping`, `POST /v1/shopping {"items", "buyer"}`, `POST /v1/shopping/{id}/bought|unbought`,
 `GET /v1/home`, `POST /v1/home/link {"url", "token"}` (both empty = forget).

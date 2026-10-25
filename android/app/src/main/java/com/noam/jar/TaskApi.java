@@ -291,6 +291,51 @@ public final class TaskApi {
         return call(prefs, "POST", "/v1/points/work-day", new JSONObject());
     }
 
+    // ---------------------------------------------------------------- shopping lists (core/Shopping)
+
+    /** Everyone's shopping lists, and who buys when nobody is named ("default_buyer"). */
+    public static java.util.List<com.noam.jar.core.Shopping.Item> shopping(Prefs prefs, String[] defaultBuyer)
+            throws IOException {
+        JSONObject r = call(prefs, "GET", "/v1/shopping", null);
+        if (defaultBuyer != null && defaultBuyer.length > 0) defaultBuyer[0] = r.optString("default_buyer", "");
+        java.util.List<com.noam.jar.core.Shopping.Item> out = new java.util.ArrayList<>();
+        JSONArray a = r.optJSONArray("items");
+        if (a == null) return out;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o == null) continue;
+            com.noam.jar.core.Shopping.Item it = new com.noam.jar.core.Shopping.Item();
+            it.id = o.optString("id");
+            it.title = o.optString("title");
+            it.notes = o.optString("notes");
+            it.buyer = o.optString("buyer");
+            it.requestedBy = o.optString("requested_by");
+            it.bought = "bought".equals(o.optString("status"));
+            it.createdAt = o.optString("created_at");
+            out.add(it);
+        }
+        return out;
+    }
+
+    /** Things to buy on someone's list (empty buyer = whoever does the family shopping). */
+    public static void shoppingAdd(Prefs prefs, java.util.List<String> titles, String buyer, String notes)
+            throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("items", new JSONArray(titles));
+            if (buyer != null && !buyer.isEmpty()) body.put("buyer", buyer);
+            if (notes != null && !notes.isEmpty()) body.put("notes", notes);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        call(prefs, "POST", "/v1/shopping", body);
+    }
+
+    /** bought | unbought | delete. */
+    public static void shoppingAct(Prefs prefs, String id, String action) throws IOException {
+        call(prefs, "POST", "/v1/shopping/" + id + "/" + action, new JSONObject());
+    }
+
     /** One-time link that logs this phone's browser into the dashboard (admin only). */
     public static String dashboardLink(Prefs prefs) throws IOException {
         JSONObject r = call(prefs, "POST", "/v1/dashboard-login", new JSONObject());

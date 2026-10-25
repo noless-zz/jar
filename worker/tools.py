@@ -200,6 +200,7 @@ class Notes:
     transcript: str = ""        # what was said: lets day words in the memo correct a miscomputed date
     family_account: object = None   # FamilyGoogle: the family's own Jar Gmail (sends to family only), or None
     home: object = None             # worker.home.HomeAssistant once Home Assistant is linked, else None
+    shopping: object = None         # worker.shopping.ShoppingStore (everyone's shopping lists), or None
 
     def _day(self, value: str | None):
         """A date for a tool call. If the model gave YYYY-MM-DD or a weekday name but the memo names exactly one
@@ -830,6 +831,42 @@ class Notes:
                      f"{body.strip()}\n\nSource: {self._link()}\n", encoding="utf-8", newline="\n")
         return self._record("email_family", f"family email “{subject.strip()}” NOT sent, saved as a note ({why})", p)
 
+    def shopping_list(self, add=None, bought=None, buyer: str = "", notes: str = "") -> str:
+        """Add things to someone's shopping list, or tick off what the speaker bought (worker/shopping.py)."""
+        add = [str(x).strip() for x in (add or []) if str(x).strip()] if isinstance(add, list) else (
+            [add.strip()] if isinstance(add, str) and add.strip() else [])
+        bought = [str(x).strip() for x in (bought or []) if str(x).strip()] if isinstance(bought, list) else (
+            [bought.strip()] if isinstance(bought, str) and bought.strip() else [])
+        if not add and not bought:
+            raise ToolError("give items in add (to buy) or bought (already bought)")
+        if self.shopping is None:
+            raise ToolError("there is no shopping list here")
+        who = None
+        if buyer:
+            who = self.family.resolve(buyer) or self.family.get(buyer)
+            if who is None:
+                raise ToolError(f"no family member '{buyer}'")
+        out, lines = [], []
+        if add:
+            items = self.shopping.add(self.speaker, add, who, notes, self.ctx.memo_id)
+            name = self.family.get(items[0]["buyer"]).name
+            out.append(f"🛒 on {name}'s list: " + ", ".join(i["title"] for i in items))
+            lines += [f"- {self.ctx.recorded_local:%Y-%m-%d %H:%M} · {getattr(self.speaker, 'name', '')} → {name}: "
+                      + ", ".join(i["title"] for i in items) + f" ({self._link()})\n"]
+        for b in bought:
+            mine = self.shopping.find(b, getattr(self.speaker, "id", None)) or self.shopping.find(b)
+            if not mine:
+                out.append(f"“{b}” is not on any list")
+                continue
+            self.shopping.act(self.speaker, mine[0]["id"], "bought")
+            out.append(f"✓ bought: {mine[0]['title']}")
+            lines.append(f"- {self.ctx.recorded_local:%Y-%m-%d %H:%M} · {getattr(self.speaker, 'name', '')} bought "
+                         f"{mine[0]['title']} ({self._link()})\n")
+        if lines:
+            p = self._append("Shopping.md", "".join(lines), "# Shopping lists")
+            self._record("shopping", "; ".join(out), p)
+        return "ok: " + "; ".join(out)
+
     def control_home(self, command: str) -> str:
         """Lights, AC, boiler, vacuum: Home Assistant's Assist does it now (worker/home.py)."""
         command = (command or "").strip()
@@ -940,10 +977,12 @@ def registry(notes: Notes) -> dict[str, Tool]:
         tools.pop("email_family", None)
     if notes.home is None:
         tools.pop("home", None)
+    if notes.shopping is None or notes.family is None:
+        tools.pop("shopping", None)
     if notes.restricted:
         tools = {k: v for k, v in tools.items()
                  if k in ("save_note", "add_task", "find_tasks", "update_task", "note_on_task", "draft_whatsapp",
-                          "draft_join_instructions", "search_notes", "email_family", "suggest_idea", "home")
+                          "draft_join_instructions", "search_notes", "email_family", "suggest_idea", "home", "shopping")
                  or (k == "create_event" and family_on)}      # family members' events: the family calendar
     return tools
 
@@ -1059,6 +1098,14 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   who={**IDS, "description": "empty = everyone"}),
               "required": ["subject", "body"]},
              "internal", notes.email_family),
+        Tool("shopping", "Shopping lists: things to buy ('צריך חלב', 'אבא, תקנה אפוקסי') -> add; things the speaker "
+             "bought ('קניתי את החלב') -> bought. Not add_task.",
+             {**s(add={"type": "array", "items": {"type": "string"}, "description": "items to buy, each short"},
+                  buyer={**WHO, "description": "who buys: the one asked to; the speaker for 'I need to buy' / 'לקנות X'; "
+                                               "empty = the family's shopper ('נגמר החלב', 'צריך ביצים')"},
+                  bought={"type": "array", "items": {"type": "string"}, "description": "items already bought"},
+                  notes=string("optional details (size, brand)"))},
+             "internal", notes.shopping_list),
         Tool("home", "Do it now in the house via Home Assistant: lights, AC, boiler, vacuum, or ask a device's state "
              "('תכבה את האור במטבח', 'is the boiler on?'). Not for reminders.",
              {**s(command=string("the request in short plain English, e.g. 'turn off the kitchen lights', "

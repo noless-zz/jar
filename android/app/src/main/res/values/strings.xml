@@ -557,4 +557,19 @@
     <string name="ui_memo_removed">Deleted</string>
     <string name="ui_memo_removing">Removing…</string>
     <string name="ui_memo_remove_failed">Couldn\'t remove it: %1$s</string>
+    <string name="shop_title">🛒 Shopping</string>
+    <string name="shop_hint">Everyone\'s list of things to buy. Add for anyone; tick what you bought.</string>
+    <string name="shop_add_hint">What to buy? (several: milk, eggs)</string>
+    <string name="shop_add">Add</string>
+    <string name="shop_who_buys">Who buys it?</string>
+    <string name="shop_whoever">Whoever does the shopping</string>
+    <string name="shop_me">Me</string>
+    <string name="shop_mine">My list</string>
+    <string name="shop_of">%1$s\'s list</string>
+    <string name="shop_empty">Nothing to buy</string>
+    <string name="shop_asked_by">asked by %1$s</string>
+    <string name="shop_remove">Remove</string>
+    <string name="shop_offline">Can\'t reach the PC right now</string>
+    <string name="shop_failed">Didn\'t go through, try again</string>
+    <string name="menu_shopping">🛒 Shopping</string>
 </resources>

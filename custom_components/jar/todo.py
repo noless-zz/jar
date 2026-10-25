@@ -26,7 +26,8 @@ KEEP_DONE = timedelta(hours=18)     # ticked tasks stay visible (crossed out) fo
 async def async_setup_entry(hass: HomeAssistant, entry: JarConfigEntry,
                             async_add_entities: AddConfigEntryEntitiesCallback) -> None:
     coord = entry.runtime_data
-    async_add_entities(JarTodo(coord, p) for p in coord.data.family)
+    async_add_entities([JarTodo(coord, p) for p in coord.data.family]
+                       + [JarShopping(coord, p) for p in coord.data.family])
 
 
 def _due(value: str | None) -> date | datetime | None:
@@ -130,6 +131,77 @@ class JarTodo(CoordinatorEntity[JarCoordinator], TodoListEntity):
         action = "done" if item.status == TodoItemStatus.COMPLETED else "reopen"
         try:
             await self.coordinator.api.act(item.uid, action, self.pid)
+        except JarError as e:
+            raise HomeAssistantError(f"Jar: {e}") from e
+        await self.coordinator.async_request_refresh()
+
+
+class JarShopping(CoordinatorEntity[JarCoordinator], TodoListEntity):
+    """What this family member is going to buy (worker/shopping.py). Ticking = bought; a new item lands on
+    their list, asked for by Home Assistant."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:cart-outline"
+    _attr_supported_features = TodoListEntityFeature.CREATE_TODO_ITEM | TodoListEntityFeature.UPDATE_TODO_ITEM
+
+    def __init__(self, coord: JarCoordinator, person: dict) -> None:
+        super().__init__(coord)
+        self.pid = person["id"]
+        self._attr_unique_id = f"{coord.config_entry.entry_id}_{self.pid}_shopping"
+        self.entity_id = f"todo.jar_{self.pid}_shopping"
+        self._attr_name = f"🛒 {person['name']}"
+        self._attr_device_info = {"identifiers": {(DOMAIN, coord.config_entry.entry_id)}, "name": "Jar",
+                                  "manufacturer": "Jar", "entry_type": "service"}
+        self._items: list[TodoItem] = []
+
+    def _build(self) -> list[TodoItem]:
+        out = []
+        for i in self.coordinator.data.shopping:
+            if i.get("buyer") != self.pid:
+                continue
+            notes = []
+            if i.get("requested_by") and i["requested_by"] != self.pid:
+                notes.append("ביקש/ה: " + self.coordinator.data.name(i["requested_by"]))
+            if i.get("notes"):
+                notes.append(i["notes"])
+            out.append(TodoItem(summary=i.get("title", ""), uid=i["id"],
+                                status=TodoItemStatus.COMPLETED if i.get("status") == "bought"
+                                else TodoItemStatus.NEEDS_ACTION,
+                                description=" · ".join(notes) or None))
+        out.sort(key=lambda x: x.status == TodoItemStatus.COMPLETED)
+        return out
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._items = self._build()
+        super()._handle_coordinator_update()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._items = self._build()
+
+    @property
+    def todo_items(self) -> list[TodoItem]:
+        return self._items
+
+    async def async_create_todo_item(self, item: TodoItem) -> None:
+        try:
+            await self.coordinator.api.shop_add([item.summary or ""], self.pid, item.description or "")
+        except JarError as e:
+            raise HomeAssistantError(f"Jar: {e}") from e
+        await self.coordinator.async_request_refresh()
+
+    async def async_update_todo_item(self, item: TodoItem) -> None:
+        current = next((i for i in self._items if i.uid == item.uid), None)
+        if current is None:
+            raise ServiceValidationError("no such item in Jar")
+        if item.summary != current.summary:
+            raise ServiceValidationError("change the item in the Jar app; here you can only tick it")
+        if item.status == current.status:
+            return
+        try:
+            await self.coordinator.api.shop_act(
+                item.uid, "bought" if item.status == TodoItemStatus.COMPLETED else "unbought")
         except JarError as e:
             raise HomeAssistantError(f"Jar: {e}") from e
         await self.coordinator.async_request_refresh()

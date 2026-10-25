@@ -147,3 +147,15 @@ Personal tokens live in `data/secrets/family_tokens.json`. Deleting someone's li
 ## Dashboard on the admin's phone
 
 Open the menu (⋮) and tap **Open dashboard**. That logs the phone's browser in for 30 days. Other family phones on Tailscale get "forbidden".
+
+## Shopping lists 🛒
+
+Everyone has a shopping list: the things *they* are going to buy. Anyone adds to anyone's list, and anyone ticks
+what they bought (menu → 🛒 Shopping in the app, Home Assistant's family panel, or a memo).
+
+- "אבא, תקנה לי אפוקסי" from Livne → on Noam's list, "asked by Livne".
+- "נגמר החלב, צריך גם ביצים" (nobody named) → the list of whoever owns the 🛒 food & shopping area.
+- "אני צריך לקנות סוללות" → the speaker's own list. "קניתי את האפוקסי" ticks it off.
+- No coins for items; a shopping trip that is a task ("לעשות קניות בסופר") earns as any task.
+- Bought items stay crossed out for two days, then disappear (the server keeps them two weeks).
+

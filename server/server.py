@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from worker import effort, memo_items
 from worker.family import Family, Person
 from worker.points import PointsConfig, PointsStore
+from worker.shopping import ShoppingError, ShoppingStore
 from worker.taskstore import TaskError, TaskStore
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,6 +56,8 @@ TIMEZONE = _raw.get("notes", {}).get("timezone", "Asia/Jerusalem")
 FAMILY = Family.from_config(_raw.get("family", {}), TOKEN, DATA_ROOT, _raw.get("contacts", {}))
 POINTS = PointsStore(DATA_ROOT / "points.json", FAMILY, TIMEZONE, PointsConfig.from_raw(_raw.get("points")))
 TASKS = TaskStore(DATA_ROOT / "tasks.json", FAMILY, NOTES_DIR / "Tasks.md", POINTS)
+SHOPPING = ShoppingStore(DATA_ROOT / "shopping.json", FAMILY,
+                         lambda: next((a.get("owner") for a in TASKS.areas() if a.get("id") == "food"), None))
 
 app = FastAPI(title="Jar server", version="0.3")
 
@@ -101,7 +104,8 @@ log = logging.getLogger("uvicorn.error")
 
 # Home Assistant's token (worker/family.py, "home") reaches only these: the wall panel's tasks, ticks and the
 # leaderboard, and /v1/home (docs/HOME_ASSISTANT.md).
-HOME_PATHS = re.compile(r"^/v1/(auth|me|time|points|tasks|tasks/[0-9a-f]+/(done|reopen)|home(/link)?)$")
+HOME_PATHS = re.compile(r"^/v1/(auth|me|time|points|tasks|tasks/[0-9a-f]+/(done|reopen)|home(/link)?"
+                        r"|shopping|shopping/[0-9a-f]+/(bought|unbought))$")
 HOME_LINK = FAMILY.tokens_path.parent / "home_assistant.json"
 
 
@@ -578,6 +582,45 @@ def task_action(task_id: str, action: str, request: Request, body: dict | None =
         return TASKS.act(p, task_id, action, body.get("until"), body)
     except TaskError as e:
         _task_error(e)
+
+
+# ---------------------------------------------------------------- shopping lists (worker/shopping.py)
+
+@app.get("/v1/shopping")
+def shopping_list(request: Request, authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """Everyone's shopping lists: {"items": [...], "default_buyer"}."""
+    p = check_auth(authorization, request, x_device_id)
+    return SHOPPING.snapshot(p)
+
+
+@app.post("/v1/shopping", status_code=201)
+def shopping_add(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+                 x_device_id: str = Header("")):
+    """{"items": ["חלב", "אפוקסי"] (or "title"), "buyer": id (empty = whoever does the shopping), "notes"}."""
+    p = check_auth(authorization, request, x_device_id)
+    titles = body.get("items") or ([body["title"]] if body.get("title") else [])
+    buyer = FAMILY.get(str(body.get("buyer") or "")) if body.get("buyer") else None
+    if body.get("buyer") and buyer is None:
+        raise HTTPException(400, "no such family member: " + str(body.get("buyer")))
+    try:
+        return {"items": SHOPPING.add(p, [str(t) for t in titles] if isinstance(titles, list) else [str(titles)],
+                                      buyer, str(body.get("notes") or ""))}
+    except ShoppingError as e:
+        raise HTTPException(e.status, str(e)) from None
+
+
+@app.post("/v1/shopping/{item_id}/{action}")
+def shopping_act(item_id: str, action: str, request: Request, body: dict | None = Body(None),
+                 authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """bought | unbought | delete | edit {"title", "notes", "buyer"}. Home Assistant: bought/unbought, {"as"}."""
+    p = check_auth(authorization, request, x_device_id)
+    body = body or {}
+    try:
+        if p.is_home:
+            return SHOPPING.act_for(item_id, action, str(body.get("as") or ""))
+        return SHOPPING.act(p, item_id, action, body)
+    except ShoppingError as e:
+        raise HTTPException(e.status, str(e)) from None
 
 
 # ---------------------------------------------------------------- Home Assistant (docs/HOME_ASSISTANT.md)

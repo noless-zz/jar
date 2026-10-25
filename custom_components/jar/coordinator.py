@@ -30,6 +30,7 @@ class JarData:
     tasks: list[dict] = field(default_factory=list)
     points: dict = field(default_factory=dict)              # person id -> leaderboard row
     areas: dict = field(default_factory=dict)               # area id -> {"name", "emoji", "owner"}
+    shopping: list[dict] = field(default_factory=list)      # worker/shopping.py items (open + bought lately)
 
     def name(self, pid: str) -> str:
         return next((p["name"] for p in self.family if p["id"] == pid), pid)
@@ -54,13 +55,20 @@ class JarCoordinator(DataUpdateCoordinator[JarData]):
             self._family_rounds += 1
             snap = await self.api.tasks()
             board = await self.api.points()
+            try:
+                shop = await self.api.shopping()
+            except JarError as e:                 # a Jar from before shopping lists: no lists, not a failure
+                if "404" not in str(e) and "Not Found" not in str(e):
+                    raise
+                shop = {}
         except JarAuthError as e:
             raise ConfigEntryAuthFailed(str(e)) from e
         except JarError as e:
             raise UpdateFailed(str(e)) from e
         data = JarData(self._family, snap.get("tasks", []),
                        {row["id"]: row for row in board.get("people", [])},
-                       {a["id"]: a for a in snap.get("areas", []) if isinstance(a, dict) and a.get("id")})
+                       {a["id"]: a for a in snap.get("areas", []) if isinstance(a, dict) and a.get("id")},
+                       shop.get("items", []))
         self._fire_events(data)
         return data
 
