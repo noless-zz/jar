@@ -135,6 +135,10 @@ async def test_todo_tick_and_create(hass: HomeAssistant, jar) -> None:
     t = next(x for x in tasks.snapshot(p["avi"])["tasks"] if x["id"] == r["id"])
     assert t["assignees"] == ["yoni", "maya"]
     assert hass.states.get("sensor.jar_yoni_coins_week") is not None
+    await entry.runtime_data.async_refresh()
+    nxt = hass.states.get("sensor.jar_yoni_open_tasks").attributes["next"]
+    assert [x["title"] for x in nxt] == ["Tidy the room", "Take out the trash"]   # laundry is done
+    assert nxt[0]["shared"] is True
     assert mine["id"] not in {x["id"] for x in tasks.snapshot(fam.home)["tasks"]}
 
 

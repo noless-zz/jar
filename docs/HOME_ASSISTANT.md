@@ -6,9 +6,9 @@ Jar's tasks on the family's Home Assistant (a wall panel, automations), and memo
 
 | In Home Assistant | What it does |
 |---|---|
-| `todo.<name>` per family member | that person's **household** tasks. Ticking one ticks it in Jar *for that person*: their coins, their part of an "each of them" task. Unticking undoes it. A new item becomes a Jar task for that person (it pops up on their phone). Titles are changed in the Jar app. |
-| `sensor.<name>_coins_this_week` | the leaderboard: coins this week, with all-time, tasks this week, streak and rank as attributes |
-| `sensor.<name>_open_tasks` | how many tasks are open for that person |
+| `todo.jar_<id>` per family member | that person's **household** tasks. Ticking one ticks it in Jar *for that person*: their coins, their part of an "each of them" task. Unticking undoes it. A new item becomes a Jar task for that person (it pops up on their phone). Titles are changed in the Jar app. |
+| `sensor.jar_<id>_coins_week` | the leaderboard: coins this week, with all-time, tasks this week, streak and rank as attributes |
+| `sensor.jar_<id>_open_tasks` | how many tasks are open for that person; attribute `next` = the 3 most urgent (overdue first, then by due; area chores included) with title, due, overdue, coins, area |
 | action `jar.add_task` | add a task from an automation: `title`, `people` (ids or names), optional `due`, `notes`, `each_of_them` |
 | events `jar_task_new`, `jar_task_done` | for automations (announce a finished chore, flash a light…) |
 | **voice control** (optional) | a memo like "תכבה את האור במטבח" switches it now, through Home Assistant's Assist |

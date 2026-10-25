@@ -29,6 +29,7 @@ class JarData:
     family: list[dict] = field(default_factory=list)       # [{"id", "name", "role", "admin"}]
     tasks: list[dict] = field(default_factory=list)
     points: dict = field(default_factory=dict)              # person id -> leaderboard row
+    areas: dict = field(default_factory=dict)               # area id -> {"name", "emoji", "owner"}
 
     def name(self, pid: str) -> str:
         return next((p["name"] for p in self.family if p["id"] == pid), pid)
@@ -58,7 +59,8 @@ class JarCoordinator(DataUpdateCoordinator[JarData]):
         except JarError as e:
             raise UpdateFailed(str(e)) from e
         data = JarData(self._family, snap.get("tasks", []),
-                       {row["id"]: row for row in board.get("people", [])})
+                       {row["id"]: row for row in board.get("people", [])},
+                       {a["id"]: a for a in snap.get("areas", []) if isinstance(a, dict) and a.get("id")})
         self._fire_events(data)
         return data
 
