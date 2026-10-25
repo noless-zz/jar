@@ -1,0 +1,80 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "חיבור Jar",
+        "description": "במחשב של Jar פתחו את הלוח ← Home Assistant (או מאפליקציית Jar: תפריט ← פתיחת לוח ← Home Assistant), העתיקו את הקישור והדביקו כאן.",
+        "data": {
+          "link": "קישור Jar (jar://pair…)",
+          "allow_control": "לאפשר להקלטות של Jar לשלוט בבית"
+        },
+        "data_description": {
+          "allow_control": "יוצר משתמש Home Assistant בשם \"Jar\" (לא מנהל). הקלטות יוכלו להפעיל כל מה שחשוף ל-Assist."
+        }
+      },
+      "reconfigure": {
+        "title": "קישור Jar חדש",
+        "data": {
+          "link": "קישור Jar (jar://pair…)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Jar דחה את הקישור",
+        "description": "נוצר קישור חדש בלוח של Jar. הדביקו אותו כאן.",
+        "data": {
+          "link": "קישור Jar (jar://pair…)"
+        }
+      }
+    },
+    "error": {
+      "bad_link": "זה לא קישור של Jar (הוא מתחיל ב-jar://pair).",
+      "bad_token": "Jar כבר לא מקבל את הקישור הזה; העתיקו קישור חדש מהלוח.",
+      "not_home_link": "זה קישור של טלפון. השתמשו בקישור מעמוד Home Assistant בלוח.",
+      "cannot_connect": "Jar לא ענה באף אחת מהכתובות. המחשב של Jar דולק?",
+      "unknown": "Jar ענה בשגיאה."
+    },
+    "abort": {
+      "already_configured": "Jar כבר מחובר.",
+      "reconfigure_successful": "הקישור של Jar עודכן.",
+      "reauth_successful": "הקישור של Jar עודכן."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Jar",
+        "data": {
+          "allow_control": "לאפשר להקלטות של Jar לשלוט בבית"
+        }
+      }
+    }
+  },
+  "services": {
+    "add_task": {
+      "name": "הוספת משימה ב-Jar",
+      "description": "מוסיף משימה לרשימה המשפחתית של Jar (קופצת להם בטלפון).",
+      "fields": {
+        "title": {
+          "name": "כותרת",
+          "description": "המשימה, בקצרה."
+        },
+        "people": {
+          "name": "בשביל",
+          "description": "מזהים או שמות של בני המשפחה."
+        },
+        "due": {
+          "name": "מועד",
+          "description": "YYYY-MM-DD או YYYY-MM-DDTHH:MM (לא חובה)."
+        },
+        "notes": {
+          "name": "הערות",
+          "description": "פרטים נוספים (לא חובה)."
+        },
+        "each_of_them": {
+          "name": "כל אחד",
+          "description": "מופעל: כל אחד עושה; כבוי: מספיק שאחד יעשה."
+        }
+      }
+    }
+  }
+}

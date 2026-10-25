@@ -1,0 +1,80 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Jar",
+        "description": "On the PC running Jar open the dashboard → Home Assistant (or from the Jar app: menu → Open dashboard → Home Assistant), copy the link and paste it here.",
+        "data": {
+          "link": "Jar link (jar://pair…)",
+          "allow_control": "Let Jar's memos control the house"
+        },
+        "data_description": {
+          "allow_control": "Makes a Home Assistant user \"Jar\" (not an admin). Memos can then switch whatever is exposed to Assist."
+        }
+      },
+      "reconfigure": {
+        "title": "New Jar link",
+        "data": {
+          "link": "Jar link (jar://pair…)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Jar refused the link",
+        "description": "A new link was made on the Jar dashboard. Paste it here.",
+        "data": {
+          "link": "Jar link (jar://pair…)"
+        }
+      }
+    },
+    "error": {
+      "bad_link": "That isn't a Jar link (it starts with jar://pair).",
+      "bad_token": "Jar doesn't accept this link any more; copy a fresh one from the dashboard.",
+      "not_home_link": "This is a phone's link. Use the one from the dashboard's Home Assistant page.",
+      "cannot_connect": "Jar didn't answer at any of its addresses. Is the Jar PC on?",
+      "unknown": "Jar answered with an error."
+    },
+    "abort": {
+      "already_configured": "Jar is already set up.",
+      "reconfigure_successful": "Jar's link was updated.",
+      "reauth_successful": "Jar's link was updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Jar",
+        "data": {
+          "allow_control": "Let Jar's memos control the house"
+        }
+      }
+    }
+  },
+  "services": {
+    "add_task": {
+      "name": "Add a Jar task",
+      "description": "Adds a task to Jar's family list (it pops up on their phones).",
+      "fields": {
+        "title": {
+          "name": "Title",
+          "description": "The task, short."
+        },
+        "people": {
+          "name": "For",
+          "description": "Family member ids or names."
+        },
+        "due": {
+          "name": "Due",
+          "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM (optional)."
+        },
+        "notes": {
+          "name": "Notes",
+          "description": "Optional details."
+        },
+        "each_of_them": {
+          "name": "Each of them",
+          "description": "On: each person does it; off: one of them is enough."
+        }
+      }
+    }
+  }
+}

@@ -199,6 +199,7 @@ class Notes:
     join_info: object = None    # callable(person) -> {"download", "pair_link"}: for get_join_instructions
     transcript: str = ""        # what was said: lets day words in the memo correct a miscomputed date
     family_account: object = None   # FamilyGoogle: the family's own Jar Gmail (sends to family only), or None
+    home: object = None             # worker.home.HomeAssistant once Home Assistant is linked, else None
 
     def _day(self, value: str | None):
         """A date for a tool call. If the model gave YYYY-MM-DD or a weekday name but the memo names exactly one
@@ -829,6 +830,30 @@ class Notes:
                      f"{body.strip()}\n\nSource: {self._link()}\n", encoding="utf-8", newline="\n")
         return self._record("email_family", f"family email “{subject.strip()}” NOT sent, saved as a note ({why})", p)
 
+    def control_home(self, command: str) -> str:
+        """Lights, AC, boiler, vacuum: Home Assistant's Assist does it now (worker/home.py)."""
+        command = (command or "").strip()
+        if not command:
+            raise ToolError("command is required")
+        if self.home is None:
+            raise ToolError("Home Assistant isn't connected; tell the speaker")
+        try:
+            r = self.home.command(command)
+        except Exception as e:  # noqa: BLE001 — the model tells the speaker; the memo still files
+            log.warning("home: %s", e)
+            r = None
+            why = str(e) or type(e).__name__
+        who = getattr(self.speaker, "name", "")
+        line = (f"- {self.ctx.recorded_local:%Y-%m-%d %H:%M} · {who} · “{command}” → "
+                f"{(r.speech if r else 'error: ' + why)} ({self._link()})\n")
+        p = self._append("Home.md", line, "# House (Home Assistant)")
+        if r is None:
+            return f"not done: {why}"
+        if not r.ok:
+            self._record("home", f"🏠 “{command}”: {r.speech}", p)
+            return f"not done: {r.speech}. If a name was wrong, try once with the room or device as Home Assistant calls it."
+        return self._record("home", f"🏠 {r.speech}", p)
+
     def save_lesson_idea(self, idea: str, class_name: str = "", topic: str = "") -> str:
         if not idea.strip():
             raise ToolError("idea is required")
@@ -913,10 +938,12 @@ def registry(notes: Notes) -> dict[str, Tool]:
     family_on = notes.family_account is not None and notes.family is not None
     if not family_on:
         tools.pop("email_family", None)
+    if notes.home is None:
+        tools.pop("home", None)
     if notes.restricted:
         tools = {k: v for k, v in tools.items()
                  if k in ("save_note", "add_task", "find_tasks", "update_task", "note_on_task", "draft_whatsapp",
-                          "draft_join_instructions", "search_notes", "email_family", "suggest_idea")
+                          "draft_join_instructions", "search_notes", "email_family", "suggest_idea", "home")
                  or (k == "create_event" and family_on)}      # family members' events: the family calendar
     return tools
 
@@ -1032,6 +1059,12 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   who={**IDS, "description": "empty = everyone"}),
               "required": ["subject", "body"]},
              "internal", notes.email_family),
+        Tool("home", "Do it now in the house via Home Assistant: lights, AC, boiler, vacuum, or ask a device's state "
+             "('תכבה את האור במטבח', 'is the boiler on?'). Not for reminders.",
+             {**s(command=string("the request in short plain English, e.g. 'turn off the kitchen lights', "
+                                 "'set the living room AC to 24', 'is the boiler on'")),
+              "required": ["command"]},
+             "external", notes.control_home),
         Tool("save_lesson_idea", "Save a teaching idea for a class (math or software engineering).",
              {**s(idea=string("the idea, cleaned up"), class_name=string("e.g. 10th grade math, optional"),
                   topic=string("e.g. rational functions, optional")),

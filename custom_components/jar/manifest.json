@@ -1,0 +1,13 @@
+{
+  "domain": "jar",
+  "name": "Jar",
+  "codeowners": ["@noless-zz"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/noless-zz/jar/blob/main/docs/HOME_ASSISTANT.md",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/noless-zz/jar/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

@@ -9,7 +9,7 @@ shares tasks and reminders between the people in the house.
 | `server/`, `worker/` | the home server (FastAPI) and the memo worker (Whisper → local LLM → tools) |
 | `android/` | the phone app: record memos, family tasks with reminders, updates from GitHub Releases |
 | `firmware/` | the XIAO ESP32-S3 Sense pendant |
-| `docs/` | [calendars & email](docs/CONNECT.md) · [family](docs/FAMILY.md) · [releasing the app](docs/RELEASES.md) · [developing](docs/DEVELOPING.md) · [points design](docs/POINTS.md) |
+| `docs/` | [calendars & email](docs/CONNECT.md) · [family](docs/FAMILY.md) · [releasing the app](docs/RELEASES.md) · [developing](docs/DEVELOPING.md) · [points design](docs/POINTS.md) · [Home Assistant](docs/HOME_ASSISTANT.md) |
 
 **Get the app:** [latest release](https://github.com/noless-zz/jar/releases/latest) → download the `.apk`.
 

@@ -150,6 +150,8 @@ class TaskStore:
 
     # ---- rules ----
     def visible(self, t: dict, p: Person) -> bool:
+        if getattr(p, "is_home", False):
+            return self.on_panel(t)
         if t.get("kind") == "idea":
             return True                                  # the family sees every idea and what became of it
         ho = t.get("handover") or {}
@@ -159,6 +161,19 @@ class TaskStore:
         if p.id == t.get("created_by") or p.id in ids:
             return True
         return p.is_parent and any((a := self.family.get(i)) is not None and not a.is_parent for i in ids)
+
+    def on_panel(self, t: dict) -> bool:
+        """What Home Assistant (the family wall panel) shows: household tasks, not anyone's private to-dos.
+        A child's task, a shared task, a chore in an area of responsibility, or one somebody asked another
+        family member to do. A parent's own note-to-self (repeating or not), Jar ideas and WhatsApp drafts stay off."""
+        if t.get("kind", "task") != "task":
+            return False
+        ids = owners(t)
+        if len(ids) > 1 or t.get("area"):
+            return True
+        if t.get("created_by") and t.get("created_by") not in ids:
+            return True
+        return any((a := self.family.get(i)) is not None and not a.is_parent for i in ids)
 
     def resolve_people(self, ids) -> list[Person]:
         """Family members from a list of ids (or one id); raises on an unknown one."""
@@ -362,6 +377,29 @@ class TaskStore:
             self._write(data)
             return dict(t, award=award) if award else t
 
+    def act_for(self, task_id: str, action: str, person_id: str = "", fields: dict | None = None) -> dict:
+        """Home Assistant ticks or unticks a task on the wall panel for one of the people it is for, so it
+        counts as theirs (their coins, their part of an "each of them" task). Without a person: the first
+        one, except on an "each of them" task, where it must say whose part it is."""
+        if action not in ("done", "reopen"):
+            raise TaskError(403, "Home Assistant can only tick or untick tasks")
+        t = next((x for x in self._read()["tasks"] if x["id"] == task_id and x.get("status") != "deleted"), None)
+        if t is None or not self.on_panel(t):
+            raise TaskError(404, "no such task")
+        ids = owners(t)
+        who = self.family.get(person_id) if person_id else None
+        if person_id and who is None:
+            raise TaskError(400, f"no such family member: {person_id}")
+        if who is None:
+            if shared_mode(t) == "all":
+                raise TaskError(400, "each of them does this one: say whose part (\"as\")")
+            who = self.family.get(ids[0]) if ids else None
+            if who is None:
+                raise TaskError(404, "no such task")
+        elif who.id not in ids:
+            raise TaskError(403, f"{who.name} isn't on this task")
+        return self.act(who, task_id, action, None, fields)
+
     # ---- coins ----
     def _take_back(self, t: dict, why: str, person: str | None = None) -> None:
         if self.points is not None:
@@ -509,7 +547,7 @@ class TaskStore:
 
     def _series_visible(self, s: dict, p: Person) -> bool:
         return self.visible({"created_by": s.get("created_by"), "assignee": (s.get("owners") or [""])[0],
-                             "assignees": s.get("owners") or []}, p)
+                             "assignees": s.get("owners") or [], "area": s.get("area")}, p)
 
     def _series_out(self, s: dict) -> dict:
         rule = recurring.parse(s["rule"])

@@ -218,8 +218,9 @@ class ContextBudget(unittest.TestCase):
         fam = Family.from_config(cfg, "t", tmp)
         n = Notes(tmp / "n", tz, MemoContext("e" * 16, datetime(2026, 10, 12, 13, 0, tzinfo=tz)), accounts={},
                   store=TaskStore(tmp / "t.json", fam), family=fam, speaker=fam.admin,
-                  family_account=object())                 # the biggest tool list: family account on too
+                  family_account=object(), home=object())  # the biggest tool list: family account and house on
         self.assertIn("email_family", registry(n))
+        self.assertIn("home", registry(n))
         text = system_prompt(n, datetime(2026, 10, 12, 13, 0, tzinfo=tz), "Asia/Jerusalem", "x" * 200)
         text += json.dumps([t.schema() for t in registry(n).values()], ensure_ascii=False)
         tokens = len(text) / 2.5                          # pessimistic for Hebrew-heavy text

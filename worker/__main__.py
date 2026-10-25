@@ -88,6 +88,8 @@ class Worker:
         self.family = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
         from .accounts import build_family
         self.family_account = build_family(cfg, self.family)   # the family's own Jar Gmail, or None
+        from .home import HomeAssistant
+        self.house = HomeAssistant(self.family.tokens_path.parent / "home_assistant.json")   # docs/HOME_ASSISTANT.md
         from .points import PointsConfig, PointsStore
         self.points = PointsStore(cfg.data_dir / "points.json", self.family, cfg.timezone,
                                   PointsConfig.from_raw(cfg.points))
@@ -136,14 +138,14 @@ class Worker:
         if speaker.admin:
             notes = Notes(self.cfg.notes_dir, self.tz, MemoContext(m.id, when), accounts=self.accounts,
                           store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info,
-                          family_account=self.family_account)
+                          family_account=self.family_account, home=self.house if self.house.configured else None)
         else:
             # Everyone else's notes and memo log live in their own folder; no access to the admin's
             # calendars or email.
             from .tools import slug
             notes = Notes(self.cfg.notes_dir / "Family" / slug(speaker.name), self.tz, MemoContext(m.id, when),
                           store=self.tasks, family=self.family, speaker=speaker, join_info=self.join_info,
-                          family_account=self.family_account)
+                          family_account=self.family_account, home=self.house if self.house.configured else None)
         if m.meta.get("actions"):
             # Filed before (Re-file / edited transcript): drop the family events and open tasks that filing made.
             self.forget_events(m.meta.get("actions") or [])

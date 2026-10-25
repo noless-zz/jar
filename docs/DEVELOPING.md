@@ -13,6 +13,7 @@
 | `worker/taskstore.py` | family task store (`data/tasks.json`): visibility, requests, actions, thread/waiting_on |
 | `worker/effort.py`, `points.py`, `filelock.py` | points game: AI effort rating + rules, coin ledger (`data/points.json`), shared file lock — see POINTS.md |
 | `worker/family.py`, `config.py`, `join.py`, `replies.py`, `evaluate.py` | family/tokens, config, invite text + join page, ✨ quick replies, AI test |
+| `worker/home.py`, `custom_components/jar/` | Home Assistant: memos switch the house via Assist; the HA integration (to-do per person, coins, `jar.add_task`) — see HOME_ASSISTANT.md |
 | `android/` | app (Java, minSdk 29): tasks, thread screen, settings pages, 2 widgets, updater; version in `android/VERSION` |
 | `android/CHANGES.md` | one line per version `x.y.z \| עברית \| English` — shown in the app's update bar |
 | `tests/` | Python unittest suite (`python -m unittest discover -s tests -t .`) |

@@ -99,6 +99,12 @@ REJECTED: deque = deque(maxlen=20)
 log = logging.getLogger("uvicorn.error")
 
 
+# Home Assistant's token (worker/family.py, "home") reaches only these: the wall panel's tasks, ticks and the
+# leaderboard, and /v1/home (docs/HOME_ASSISTANT.md).
+HOME_PATHS = re.compile(r"^/v1/(auth|me|time|points|tasks|tasks/[0-9a-f]+/(done|reopen)|home(/link)?)$")
+HOME_LINK = FAMILY.tokens_path.parent / "home_assistant.json"
+
+
 def check_auth(authorization: str | None, request: Request | None = None, device: str = "") -> Person:
     """The family member this phone/pendant token belongs to, or 401."""
     if not TOKEN:
@@ -118,6 +124,8 @@ def check_auth(authorization: str | None, request: Request | None = None, device
                          "ip": ip, "device": device or "?", "reason": why})
         log.warning("refused upload from %s (%s): %s", ip, device or "?", why)
         raise HTTPException(401, "bad token")
+    if person.is_home and (request is None or not HOME_PATHS.match(request.url.path)):
+        raise HTTPException(403, "Home Assistant's token only reaches the task list")
     return person
 
 
@@ -427,9 +435,11 @@ def new_task(request: Request, body: dict = Body(...), authorization: str | None
     (returns the first occurrence, with "series"). A Jar idea: {"kind": "idea", "title", "notes"}."""
     p = check_auth(authorization, request, x_device_id)
     try:
+        ids = body.get("assignees") or ([body["assignee"]] if body.get("assignee") else [])
+        if p.is_home and (body.get("kind") == "idea" or not ids):
+            raise HTTPException(400, "Home Assistant's tasks need \"assignee\" or \"assignees\"")
         if body.get("kind") == "idea":
             return TASKS.add_idea(p, str(body.get("title", "")), str(body.get("notes", "")))
-        ids = body.get("assignees") or ([body["assignee"]] if body.get("assignee") else [])
         who = TASKS.resolve_people(ids) or [p]
         rep = body.get("repeat")
         if isinstance(rep, str):
@@ -563,9 +573,52 @@ def task_action(task_id: str, action: str, request: Request, body: dict | None =
     p = check_auth(authorization, request, x_device_id)
     body = body or {}
     try:
+        if p.is_home:                       # the wall panel ticks it for one of its people: {"as": "alona"}
+            return TASKS.act_for(task_id, action, str(body.get("as") or ""), body)
         return TASKS.act(p, task_id, action, body.get("until"), body)
     except TaskError as e:
         _task_error(e)
+
+
+# ---------------------------------------------------------------- Home Assistant (docs/HOME_ASSISTANT.md)
+
+def home_link() -> dict:
+    """{"url", "token"} Home Assistant gave Jar for controlling the house, or {}."""
+    try:
+        return json.loads(HOME_LINK.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+@app.get("/v1/home")
+def home_status(request: Request, authorization: str | None = Header(None), x_device_id: str = Header("")):
+    p = check_auth(authorization, request, x_device_id)
+    if not (p.is_home or p.admin):
+        raise HTTPException(403, "only " + FAMILY.admin.name)
+    link = home_link()
+    return {"paired": FAMILY.home_paired(), "linked": bool(link.get("token")), "url": link.get("url", "")}
+
+
+@app.post("/v1/home/link")
+def home_set_link(request: Request, body: dict = Body(...), authorization: str | None = Header(None),
+                  x_device_id: str = Header("")):
+    """Jar's Home Assistant integration hands Jar its address and a token of a Home Assistant user made for
+    Jar, so memos can switch lights, the AC and the boiler (worker/home.py). {"url": "", "token": ""} unlinks."""
+    p = check_auth(authorization, request, x_device_id)
+    if not p.is_home:
+        raise HTTPException(403, "only Home Assistant sends this")
+    url, tok = str(body.get("url", "")).strip().rstrip("/"), str(body.get("token", "")).strip()
+    if not url and not tok:
+        HOME_LINK.unlink(missing_ok=True)
+        return {"linked": False}
+    if not re.match(r"^https?://[^\s/]+(:\d+)?(/\S*)?$", url) or len(tok) < 20 or any(c.isspace() for c in tok):
+        raise HTTPException(400, "need {\"url\": \"https://…\", \"token\": \"…\"}")
+    HOME_LINK.parent.mkdir(parents=True, exist_ok=True)
+    tmp = HOME_LINK.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"url": url, "token": tok, "linked_at": int(time.time())}, indent=2), encoding="utf-8")
+    os.replace(tmp, HOME_LINK)
+    log.info("Home Assistant linked: %s", url)
+    return {"linked": True, "url": url}
 
 
 # ---------------------------------------------------------------- points (docs/POINTS.md)

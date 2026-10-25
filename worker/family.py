@@ -10,6 +10,10 @@ config.toml:
 The admin (whoever owns the PC) keeps using [server] token, so existing phones/pendants keep
 working. Everyone else gets their own token, generated once into data/secrets/family_tokens.json.
 Without a [family] section there is one person, "me", the admin: the single-user setup from before.
+
+Besides the people there is one device identity, "home" (Home Assistant, docs/HOME_ASSISTANT.md): its token is
+also in family_tokens.json. It is not a family member: never in the family list, the model's prompt or the
+leaderboard, earns no coins, and the server lets it reach only the task list (see server.HOME_PATHS).
 """
 
 from __future__ import annotations
@@ -20,6 +24,8 @@ import os
 import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
+
+HOME_ID = "home"
 
 
 @dataclass
@@ -37,6 +43,11 @@ class Person:
     def is_parent(self) -> bool:
         return self.role != "child"
 
+    @property
+    def is_home(self) -> bool:
+        """Home Assistant's identity (see the module docstring), not a person."""
+        return self.role == HOME_ID
+
     def public(self) -> dict:
         return {"id": self.id, "name": self.name, "role": self.role, "admin": self.admin}
 
@@ -50,7 +61,8 @@ def _age(value) -> int:
 
 class Family:
     def __init__(self, people: list[Person], admin_token: str, secrets_dir: Path):
-        self.people = {p.id: p for p in people}
+        self.people = {p.id: p for p in people if p.id != HOME_ID}   # "home" is reserved for Home Assistant
+        self.home = Person(HOME_ID, "Home Assistant", role=HOME_ID)
         self.admin_token = admin_token
         self.tokens_path = secrets_dir / "family_tokens.json"
         if not any(p.admin for p in people) and people:
@@ -116,10 +128,7 @@ class Family:
         tokens = self._load_tokens()
         if pid not in tokens:
             tokens[pid] = secrets.token_urlsafe(24)
-            self.tokens_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.tokens_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
-            os.replace(tmp, self.tokens_path)
+            self._save_tokens(tokens)
         return tokens[pid]
 
     def who(self, token: str | None) -> Person | None:
@@ -133,7 +142,28 @@ class Family:
         for pid, t in self._load_tokens().items():
             if pid in self.people and hmac.compare_digest(token, t):
                 found = found or self.people[pid]
+            elif pid == HOME_ID and hmac.compare_digest(token, t):
+                found = found or self.home
         return found
+
+    def home_token(self, renew: bool = False) -> str:
+        """Home Assistant's token (made on first use). renew=True replaces it: the old one stops working."""
+        self._tokens = None                   # re-read: the server and dashboard share the file
+        tokens = self._load_tokens()
+        if renew or HOME_ID not in tokens:
+            tokens[HOME_ID] = secrets.token_urlsafe(24)
+            self._save_tokens(tokens)
+        return tokens[HOME_ID]
+
+    def home_paired(self) -> bool:
+        self._tokens = None
+        return HOME_ID in self._load_tokens()
+
+    def _save_tokens(self, tokens: dict[str, str]) -> None:
+        self.tokens_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.tokens_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
+        os.replace(tmp, self.tokens_path)
 
     contacts: dict = {}
 

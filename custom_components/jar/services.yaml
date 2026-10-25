@@ -1,0 +1,25 @@
+add_task:
+  fields:
+    title:
+      required: true
+      example: "לתלות כביסה"
+      selector:
+        text:
+    people:
+      required: true
+      example: '["alona"]'
+      selector:
+        text:
+          multiple: true
+    due:
+      example: "2026-10-26T18:00"
+      selector:
+        text:
+    notes:
+      selector:
+        text:
+          multiline: true
+    each_of_them:
+      default: false
+      selector:
+        boolean:
