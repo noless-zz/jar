@@ -26,6 +26,7 @@ class _Base(CoordinatorEntity[JarCoordinator], SensorEntity):
         super().__init__(coord)
         self.pid = person["id"]
         self._attr_unique_id = f"{coord.config_entry.entry_id}_{self.pid}_{kind}"
+        self.entity_id = f"sensor.jar_{self.pid}_{kind}"
         self._attr_device_info = {"identifiers": {(DOMAIN, coord.config_entry.entry_id)}, "name": "Jar",
                                   "manufacturer": "Jar", "entry_type": "service"}
 

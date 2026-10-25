@@ -59,6 +59,7 @@ class JarTodo(CoordinatorEntity[JarCoordinator], TodoListEntity):
         super().__init__(coord)
         self.pid = person["id"]
         self._attr_unique_id = f"{coord.config_entry.entry_id}_{self.pid}_tasks"
+        self.entity_id = f"todo.jar_{self.pid}"          # readable even when names are in Hebrew
         self._attr_name = person["name"]
         self._attr_icon = "mdi:account-check" if person.get("role") == "child" else "mdi:account-tie"
         self._attr_device_info = {"identifiers": {(DOMAIN, coord.config_entry.entry_id)}, "name": "Jar",
