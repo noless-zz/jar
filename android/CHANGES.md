@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+1.9.5 | אפשר למחוק מ'ההקלטות שלי' דבר אחד שהקלטה יצרה (משימה, הערה, אירוע או טיוטה), ובאנר העדכון מופיע מהר יותר | Delete one thing a memo made (a task, note, event or draft) from My memos, and the update banner shows sooner
 1.9.2 | תיקון: מספר המטבעות ב'כל הכבוד' (למשל +15) נשאר בשורה אחת גם בגופן גדול | Fix: the coin amount on "Well done" (like +15) stays on one line, even with a big font
 1.9.1 | ווידג'ט חדש: עיצוב משלו לכל סגנון, כפתור הקלטה ו'+ משימה', התקדמות היומית, ומתאים לכל גודל | A new widget: its own design per style, record and + Task buttons, today's progress, and it fits any size
 1.9.0 | העיצוב החדש הוא ברירת המחדל (אפשר לחזור לקלאסי בהגדרות): פתיחה ראשונה וחיבור, הודעות וואטסאפ, הזמנה ועדכונים, התראות והווידג'ט במראה שלך, ואפליקציה קטנה יותר | The new design is now the default (Classic screen in Settings switches back): first run and pairing, WhatsApp messages, invite and updates, notifications and the widget in your look, and a smaller app
