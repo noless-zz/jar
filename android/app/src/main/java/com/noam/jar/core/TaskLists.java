@@ -329,9 +329,13 @@ public final class TaskLists {
         return out;
     }
 
+    /** How Home Assistant (the family wall panel, server id "home") is shown; set from strings.xml by TaskCache. */
+    public static volatile String homeName = "🏠 Home";
+
     /** "Yoni" for an id, falling back to the id itself. */
     public static String name(Map<String, String> names, String id) {
         String n = names.get(id);
+        if (n == null && "home".equals(id)) return homeName;
         return n == null ? id : n;
     }
 }

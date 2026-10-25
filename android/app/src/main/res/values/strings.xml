@@ -477,6 +477,7 @@
     <string name="ui_save">Save</string>
     <string name="ui_preview_task">Walk the dog</string>
     <string name="ui_from">from %1$s</string>
+    <string name="home_assistant_name">🏠 Home</string>
     <string name="ui_for">for %1$s</string>
     <string name="ui_recording">Listening · %1$s</string>
     <string name="ui_open_in_classic">All actions</string>

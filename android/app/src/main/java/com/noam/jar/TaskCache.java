@@ -30,6 +30,7 @@ public final class TaskCache {
 
     public TaskCache(Context c) {
         sp = c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
+        com.noam.jar.core.TaskLists.homeName = c.getString(R.string.home_assistant_name);
     }
 
     // ---------------------------------------------------------------- who am I

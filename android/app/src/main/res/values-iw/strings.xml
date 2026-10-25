@@ -485,6 +485,7 @@
     <string name="ui_save">שמירה</string>
     <string name="ui_preview_task">להוציא את הכלב</string>
     <string name="ui_from">מ%1$s</string>
+    <string name="home_assistant_name">🏠 הבית</string>
     <string name="ui_for">בשביל %1$s</string>
     <string name="ui_recording">מקשיב · %1$s</string>
     <string name="ui_open_in_classic">כל הפעולות</string>

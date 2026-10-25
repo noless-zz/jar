@@ -187,4 +187,13 @@ public class TaskListsTest {
         assertEquals(Arrays.asList("fresh", "week", "old"), ids(l));
         assertEquals(-1, TaskLists.utcMillis("junk"));
     }
+
+    @org.junit.Test
+    public void homeAssistantHasAName() {
+        java.util.Map<String, String> names = new java.util.HashMap<>();
+        names.put("yoni", "Yoni");
+        org.junit.Assert.assertEquals("Yoni", TaskLists.name(names, "yoni"));
+        org.junit.Assert.assertEquals(TaskLists.homeName, TaskLists.name(names, "home"));
+        org.junit.Assert.assertEquals("bob", TaskLists.name(names, "bob"));
+    }
 }
