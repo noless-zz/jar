@@ -196,7 +196,7 @@ class HomeActivity : ComponentActivity() {
     val actions = object : HomeActions {
         override fun act(t: Task, action: String, until: String?) {
             val me0 = TaskCache(this@HomeActivity).myId()
-            val forOther = action == "done" && !t.openFor(me0)
+            val forOther = action == "done" && !t.isFor(me0)
             TaskReceiver.apply(this@HomeActivity, t.id, action, until)
             if (forOther) {
                 val names = TaskCache(this@HomeActivity).names()

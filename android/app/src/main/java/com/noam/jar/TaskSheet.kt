@@ -63,9 +63,11 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
     val actions = LocalActions.current
     val now = System.currentTimeMillis()
     val tz = TimeZone.getDefault()
-    val open = t.openFor(data.me)
-    // Noam (the admin) can tick someone else's task for them, e.g. Sveta did it and forgot: the coins are theirs.
-    val forOther = !open && data.admin && t.isOpen && !t.isIdea && !t.isMessage
+    // My own task: Done. Someone else's: only the admin (Noam) can tick it for them, e.g. Sveta did it and
+    // forgot; the coins are theirs. (openFor() alone doesn't look at whose task it is.)
+    val own = t.isFor(data.me)
+    val open = own && t.openFor(data.me)
+    val forOther = !own && data.admin && t.isOpen && !t.isIdea && !t.isMessage
     val otherNames = t.owners().joinToString(", ") { TaskLists.name(data.names, it) }
     var more by remember { mutableStateOf(false) }
     val editable = t.status != "declined" && !t.isMessage
