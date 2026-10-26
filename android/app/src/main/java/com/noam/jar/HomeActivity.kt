@@ -110,6 +110,11 @@ class HomeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Every time the screen comes back: a quiet look at GitHub (at most every few minutes), so a new
+        // version's banner is there right away, without going to Settings → About.
+        if (Updater.enabled()) io.execute {
+            if (runCatching { Updater.checkOnOpen(this) }.getOrDefault(false)) main.post { refresh() }
+        }
         // Back from "allow installs from this source": carry on with the update.
         val apk = pendingApk
         if (apk != null && packageManager.canRequestPackageInstalls()) {
@@ -151,15 +156,8 @@ class HomeActivity : ComponentActivity() {
         super.onStart()
         ContextCompat.registerReceiver(this, receiver, IntentFilter(Jar.ACTION_STATE), ContextCompat.RECEIVER_NOT_EXPORTED)
         refresh()
-        if (Prefs(this).token().isNotEmpty()) {
-            TaskSync.now(this)
-            loadMemo()
-        }
+        if (Prefs(this).token().isNotEmpty()) TaskSync.now(this)
         if (RecorderService.isRecording()) main.post(ticker)
-        if (Updater.enabled()) io.execute {
-            runCatching { Updater.checkOnOpen(this) }
-            main.post { refresh() }
-        }
     }
 
     override fun onStop() {
@@ -197,8 +195,13 @@ class HomeActivity : ComponentActivity() {
 
     val actions = object : HomeActions {
         override fun act(t: Task, action: String, until: String?) {
+            val me0 = TaskCache(this@HomeActivity).myId()
+            val forOther = action == "done" && !t.openFor(me0)
             TaskReceiver.apply(this@HomeActivity, t.id, action, until)
-            if (action == "done" && !t.isMessage) {
+            if (forOther) {
+                val names = TaskCache(this@HomeActivity).names()
+                toast(getString(R.string.ui_done_for_toast, t.owners().joinToString(", ") { TaskLists.name(names, it) }))
+            } else if (action == "done" && !t.isMessage) {
                 val cache = TaskCache(this@HomeActivity)
                 val me = cache.myId()
                 val left = TaskLists.mine(cache.tasks(), me).count {

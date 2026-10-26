@@ -580,4 +580,6 @@
     <string name="shop_offline">אין חיבור למחשב כרגע</string>
     <string name="shop_failed">לא עבר, נסו שוב</string>
     <string name="menu_shopping">🛒 קניות</string>
+    <string name="ui_done_for">בוצע על ידי %1$s</string>
+    <string name="ui_done_for_toast">סומן כבוצע עבור %1$s: המטבעות שלהם</string>
 </resources>

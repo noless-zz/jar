@@ -115,7 +115,9 @@ public final class TaskLists {
         List<Task> out = new ArrayList<>();
         for (Task t : all) {
             if (t.isIdea()) continue;
-            if ((me.equals(t.createdBy) && !t.isFor(me)) || iAskedAndWait(t, me)) out.add(t);
+            // A recurring chore I set up (e.g. Alona's laundry) isn't something I asked for today: it's under Family.
+            boolean mine = me.equals(t.createdBy) && !t.isFor(me) && !t.isRecurring();
+            if (mine || iAskedAndWait(t, me)) out.add(t);
         }
         Collections.sort(out, ORDER);
         return out;

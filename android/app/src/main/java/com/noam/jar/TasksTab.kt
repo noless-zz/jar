@@ -140,9 +140,6 @@ fun TasksTab(data: HomeData, memo: JSONObject?, onOpen: (Task) -> Unit, onSettin
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (data.update != null) item(key = "update") { UpdateBanner(data) }
-            if (recentMemo != null && filter == Filter.MINE) item(key = "memo") {
-                if (jar.style == JarStyle.NIGHT) HeardPill(recentMemo) else HeardCard(recentMemo)
-            }
             taskSection("waiting", ctx.getString(R.string.header_need_ok), s.waiting, data, onOpen, c.coin)
             taskSection("overdue", ctx.getString(R.string.ui_sec_overdue), s.overdue, data, onOpen, c.danger)
             taskSection("today", ctx.getString(R.string.ui_sec_today), s.today, data, onOpen)

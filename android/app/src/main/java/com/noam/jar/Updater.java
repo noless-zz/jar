@@ -75,11 +75,11 @@ public final class Updater {
     }
 
     /**
-     * Opening the app asks GitHub again after an hour (the background check waits 6), so a release from
-     * this evening shows on the task list the next time someone opens Jar.
+     * Coming back to the task list asks GitHub again after 5 minutes (the background check waits 6 hours), so a
+     * new release shows on the task list the next time someone looks at it.
      */
     public static boolean checkOnOpen(Context c) throws IOException {
-        return check(c, 3600 * 1000L);
+        return check(c, 5 * 60 * 1000L);
     }
 
     private static boolean check(Context c, long olderThanMs) throws IOException {

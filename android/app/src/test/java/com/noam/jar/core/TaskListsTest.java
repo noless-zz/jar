@@ -167,6 +167,15 @@ public class TaskListsTest {
     }
 
     @Test
+    public void recurringChoreISetUpIsNotSomethingIAsked() {
+        Task once = t("once", "dana", "avi", "open", null);         // Avi asked Dana once
+        Task chore = t("chore", "yoni", "avi", "open", null);       // Avi set up Yoni's weekly laundry
+        chore.seriesId = "s1";
+        java.util.List<Task> all = java.util.Arrays.asList(once, chore);
+        org.junit.Assert.assertEquals(java.util.Collections.singletonList("once"), ids(TaskLists.asked(all, "avi")));
+    }
+
+    @Test
     public void doneGoesToReviewThenWeekThenArchive() {
         long now = TaskLists.utcMillis("2026-10-24T09:00:00Z");
         Task open = t("open", "avi", "avi", "open", null);
