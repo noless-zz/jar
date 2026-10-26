@@ -577,4 +577,7 @@
     <string name="ui_memo_delete_all">Delete the memo and everything it made</string>
     <string name="ui_memo_delete_all_confirm">Delete this memo and everything Jar made from it? Its tasks (done ones too, with their coins), notes, events, drafts and shopping items, and the recording itself.</string>
     <string name="ui_memo_deleted">Memo deleted, with everything it made</string>
+    <string name="ui_all_changes">All changes · %1$d versions</string>
+    <string name="ui_changes_title">What's new</string>
+    <string name="ui_changes_sub">Since your version, %1$s</string>
 </resources>

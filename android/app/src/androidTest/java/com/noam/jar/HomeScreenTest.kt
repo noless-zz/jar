@@ -555,7 +555,7 @@ class HomeScreenTest {
         context.getSharedPreferences("jar_update", Context.MODE_PRIVATE).edit()
             .putString("tag", "v99.0.0").putString("apk", "https://example.invalid/jar.apk")
             .putLong("checked_at", System.currentTimeMillis())
-            .putString("notes", "99.0.0 | משהו חדש | Something new").commit()
+            .putString("notes", "99.0.0 | משהו חדש | Something new\n98.0.0 | משהו קודם | Something before\n").commit()
         for ((style, mode, tag) in styles) {
             scenario?.close()
             launch(style, mode)
@@ -563,6 +563,10 @@ class HomeScreenTest {
             compose.onNodeWithText(s(R.string.ui_update_title, "v99.0.0")).assertExists()
             shot("24-update-banner-$tag")
         }
+        compose.onNodeWithTag("all_changes").performClick()                     // two versions behind: the full list
+        compose.onNodeWithTag("changes").assertExists()
+        compose.onNodeWithText("Something before").assertExists()
+        shot("24-all-changes")
     }
 
     // ---------------------------------------------------------------- the home-screen widget

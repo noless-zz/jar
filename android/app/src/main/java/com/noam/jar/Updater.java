@@ -59,6 +59,12 @@ public final class Updater {
         return sp(c).getString("notes", "");
     }
 
+    /** Every version since the installed one, newest first, in the phone's language: {version, text}. */
+    public static java.util.List<String[]> changes(Context c) {
+        String lang = java.util.Locale.getDefault().getLanguage();
+        return com.noam.jar.core.Changes.entries(releaseNotes(c), BuildConfig.VERSION_CODE, "iw".equals(lang) || "he".equals(lang));
+    }
+
     /** "What's new" since the installed version, one line, in the phone's language ("" if unknown). */
     public static String whatsNew(Context c) {
         String lang = java.util.Locale.getDefault().getLanguage();
