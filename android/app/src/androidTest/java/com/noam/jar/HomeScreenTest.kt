@@ -525,6 +525,8 @@ class HomeScreenTest {
         compose.onNodeWithText(s(R.string.ui_done_for, "Livne")).performClick()
         compose.waitForIdle()
         assertEquals(true, TaskCache(context).find("t9")?.isDone)
+    }
+
     /** Delete a whole memo, also one with no speech: it leaves the list (the PC removes all it made). */
     @Test
     fun memos_deleteAWholeMemo() {
