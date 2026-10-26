@@ -445,7 +445,11 @@ private fun HomeScreen(cache: TaskCache, version: Int, recording: Boolean, memo:
     if (global != null) {
         val close = { actions.global(null) }
         ModalBottomSheet(onDismissRequest = close, containerColor = c.bg) {
-            if (global == "invite") InviteSheet(data, close) else AboutSheet(data, close)
+            when (global) {
+                "invite" -> InviteSheet(data, close)
+                "changes" -> ChangesSheet(data, close)
+                else -> AboutSheet(data, close)
+            }
         }
     }
     if (editing != null) {
@@ -462,7 +466,7 @@ class HomeData(
     val names: Map<String, String>, val colors: Map<String, Color>, val board: com.noam.jar.core.Board, val syncedAt: Long,
     val parents: Set<String>, val areas: List<Area> = emptyList(), val series: List<Series> = emptyList(), val keepDone: Int = 0,
     /** A newer Jar on GitHub (its tag) and what's new in it, or null. */
-    val update: String? = null, val whatsNew: String = "",
+    val update: String? = null, val whatsNew: String = "", val changes: List<Array<String>> = emptyList(),
 ) {
     fun color(id: String): Color = colors[id] ?: PersonColors[0]
 
@@ -485,7 +489,7 @@ class HomeData(
             return HomeData(cache.myId(), cache.myName(), cache.iAmParent(), cache.iAmAdmin(), cache.tasks(), names,
                 names.keys.mapIndexed { i, id -> id to PersonColors[i % PersonColors.size] }.toMap(), cache.board(),
                 cache.syncedAt(), cache.parents(), cache.areas(), cache.series(), cache.keepDoneDays(),
-                Updater.availableTag(ctx), Updater.whatsNew(ctx))
+                Updater.availableTag(ctx), Updater.whatsNew(ctx), Updater.changes(ctx))
         }
     }
 }

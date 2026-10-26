@@ -527,6 +527,29 @@ class HomeScreenTest {
         assertEquals(true, TaskCache(context).find("t9")?.isDone)
     }
 
+    /** Delete a whole memo, also one with no speech: it leaves the list (the PC removes all it made). */
+    @Test
+    fun memos_deleteAWholeMemo() {
+        MemoFeed.fake = listOf(
+            JSONObject().put("id", "m1").put("recorded_at", utc(System.currentTimeMillis() - HOUR)).put("status", "done")
+                .put("transcript", "Buy miso and wakame").put("actions", JSONArray().put("Added: Buy miso and wakame")),
+            JSONObject().put("id", "m2").put("recorded_at", utc(System.currentTimeMillis() - 2 * HOUR)).put("status", "done")
+                .put("transcript", "").put("actions", JSONArray()))
+        launch(JarStyle.NIGHT, JarMode.DARK)
+        openFromSettings(s(R.string.menu_memos))
+        compose.onNodeWithText(s(R.string.memo_no_text)).performClick()          // a memo with no speech opens too
+        compose.onNodeWithTag("delete_memo").assertExists()
+        shot("47-memo-delete-empty")
+        compose.onNodeWithTag("delete_memo").performClick()
+        compose.onNodeWithTag("confirm").performClick()
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText(s(R.string.memo_no_text)).assertDoesNotExist() }.isSuccess }
+        compose.onNodeWithText("Buy miso and wakame").performClick()
+        compose.onNodeWithTag("delete_memo").performScrollTo().performClick()
+        compose.onNodeWithTag("confirm").performClick()
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText("Buy miso and wakame").assertDoesNotExist() }.isSuccess }
+        shot("47-memos-empty")
+    }
+
     /** The update banner at the top of the task list, as on the classic screen before. */
     @Test
     fun updateBanner_onTheTaskList() {
@@ -534,7 +557,7 @@ class HomeScreenTest {
         context.getSharedPreferences("jar_update", Context.MODE_PRIVATE).edit()
             .putString("tag", "v99.0.0").putString("apk", "https://example.invalid/jar.apk")
             .putLong("checked_at", System.currentTimeMillis())
-            .putString("notes", "99.0.0 | משהו חדש | Something new").commit()
+            .putString("notes", "99.0.0 | משהו חדש | Something new\n98.0.0 | משהו קודם | Something before\n").commit()
         for ((style, mode, tag) in styles) {
             scenario?.close()
             launch(style, mode)
@@ -542,6 +565,10 @@ class HomeScreenTest {
             compose.onNodeWithText(s(R.string.ui_update_title, "v99.0.0")).assertExists()
             shot("24-update-banner-$tag")
         }
+        compose.onNodeWithTag("all_changes").performClick()                     // two versions behind: the full list
+        compose.onNodeWithTag("changes").assertExists()
+        compose.onNodeWithText("Something before").assertExists()
+        shot("24-all-changes")
     }
 
     // ---------------------------------------------------------------- the home-screen widget

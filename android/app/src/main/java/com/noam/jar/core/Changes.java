@@ -29,6 +29,20 @@ public final class Changes {
         return out;
     }
 
+    /** Each version newer than the installed one, newest first: {"1.11.2", "what changed"}. */
+    public static List<String[]> entries(String notes, int installedCode, boolean hebrew) {
+        List<String[]> out = new ArrayList<>();
+        if (notes == null) return out;
+        Matcher m = LINE.matcher(notes);
+        while (m.find()) {
+            if (Version.code(m.group(1)) <= installedCode) continue;
+            String text = (hebrew ? m.group(2) : m.group(3)).trim();
+            if (text.isEmpty()) text = (hebrew ? m.group(3) : m.group(2)).trim();
+            if (!text.isEmpty()) out.add(new String[] {m.group(1), text});
+        }
+        return out;
+    }
+
     /** One line for the update bar: "x · y · z" (at most {@code max} items, then "…"). */
     public static String oneLine(String notes, int installedCode, boolean hebrew, int max) {
         List<String> all = since(notes, installedCode, hebrew);

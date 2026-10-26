@@ -390,6 +390,53 @@ class Api(Base):
         self.assertNotIn("removing", m["actions"][2])
         self.assertFalse(list((self.server.DATA_ROOT / "deletes").glob("*.json")))
 
+    def test_delete_a_whole_memo(self):
+        """My memos → delete the memo: its tasks (done too), note, logs and the recording itself all go."""
+        import json as _j
+        from types import SimpleNamespace
+        from zoneinfo import ZoneInfo
+        from worker.__main__ import Worker
+        notes = self.tmp / "notes2"
+        self.server.NOTES_DIR = notes
+        mid = "4444444444444444"
+        open_t = self.store.add(self.fam.get("dana"), "לקנות מיסו", memo_id=mid)["id"]
+        done_t = self.store.add(self.fam.get("dana"), "לקנות וואקמה", memo_id=mid)["id"]
+        self.store.act(self.fam.get("dana"), done_t, "done")
+        other = self.store.add(self.fam.get("dana"), "משהו אחר")["id"]
+        root = notes / "Family" / "דנה"
+        (root / "Inbox").mkdir(parents=True)
+        (root / "Inbox" / "n.md").write_text("x", encoding="utf-8")
+        (root / "Memos").mkdir()
+        (root / "Memos" / "2026-10-12.md").write_text(
+            "# Memos 2026-10-12\n\n## 13:00 · 3.0 s · phone · he\n> קודם\n\n- (no action)\n\n"
+            "## 14:00 · 5.0 s · phone · he\n> לקנות מיסו\n\n- task\n\n", encoding="utf-8")
+        day = self.server.DATA_DIR / "2026-10-12"
+        day.mkdir(parents=True, exist_ok=True)
+        for suffix in (".wav", ".txt"):
+            (day / f"{mid}{suffix}").write_text("x", encoding="utf-8")
+        (day / f"{mid}.json").write_text(_j.dumps({"id": mid, "person": "dana", "status": "done", "device_id": "phone",
+            "duration_ms": 5000, "recorded_at": "2026-10-12T11:00:00Z", "transcript": "לקנות מיסו",
+            "actions": [{"tool": "add_task", "summary": "task", "file": "Tasks.md"},
+                        {"tool": "save_note", "summary": "note", "file": "Inbox/n.md"}]}), encoding="utf-8")
+        self.assertEqual(self.c.post(f"/v1/memos/{mid}/delete", headers=self.h("yoni")).status_code, 404)
+        r = self.c.post(f"/v1/memos/{mid}/delete", headers=self.h("dana"))
+        self.assertEqual(r.json()["tasks"], 2, r.text)
+        ids = [t["id"] for t in self.c.get("/v1/tasks", headers=self.h("dana")).json()["tasks"]]
+        self.assertNotIn(open_t, ids)
+        self.assertNotIn(done_t, ids)
+        self.assertIn(other, ids)
+        self.assertFalse((root / "Inbox" / "n.md").exists())
+        self.assertNotIn(mid, [m["id"] for m in self.c.get("/v1/memos", headers=self.h("dana")).json()["memos"]])
+
+        fake = SimpleNamespace(cfg=SimpleNamespace(data_dir=self.server.DATA_ROOT, notes_dir=notes), accounts={},
+                               family_account=None, family=self.fam, tz=ZoneInfo("Asia/Jerusalem"))
+        fake.delete_whole_memo = lambda mp, m: Worker.delete_whole_memo(fake, mp, m)
+        Worker.memo_item_deletes(fake)
+        self.assertFalse(any((day / f"{mid}{x}").exists() for x in (".wav", ".txt", ".json")))
+        log = (root / "Memos" / "2026-10-12.md").read_text(encoding="utf-8")
+        self.assertIn("קודם", log)
+        self.assertNotIn("לקנות מיסו", log)
+
     def test_dashboard_login_only_for_admin(self):
         self.assertEqual(self.c.post("/v1/dashboard-login", headers=self.h("dana")).status_code, 403)
         r = self.c.post("/v1/dashboard-login", headers=self.h("avi"))

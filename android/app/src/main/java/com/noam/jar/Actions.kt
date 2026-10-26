@@ -1,5 +1,6 @@
 package com.noam.jar
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -332,11 +333,31 @@ fun AboutSheet(data: HomeData, onClose: () -> Unit) {
             Muted(ctx.getString(R.string.update_available, data.update, BuildConfig.VERSION_NAME) +
                 if (data.whatsNew.isEmpty()) "" else "\n" + ctx.getString(R.string.update_whats_new, data.whatsNew))
             MainButton(stringResource(R.string.update_install)) { onClose(); actions.installUpdate() }
+            if (data.changes.size > 1) SideButton(ctx.getString(R.string.ui_all_changes, data.changes.size)) { actions.global("changes") }
         } else {
             MainButton(stringResource(R.string.menu_update)) { actions.checkUpdate() }
         }
         SideButton(stringResource(R.string.update_open_page)) { onClose(); actions.openUrl(TasksActivity.downloadPage()) }
         SideButton(stringResource(R.string.share_app)) { onClose(); actions.shareApp() }
+    }
+}
+
+/** Everything since the installed version, newest first, each with its version number; and Update. */
+@Composable
+fun ChangesSheet(data: HomeData, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val actions = LocalActions.current
+    val jar = LocalJar.current
+    SheetColumn("changes") {
+        SheetTitle(stringResource(R.string.ui_changes_title), ctx.getString(R.string.ui_changes_sub, BuildConfig.VERSION_NAME))
+        for (e in data.changes) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(e[0], color = jar.colors.accent.takeIf { jar.style != JarStyle.PLAYFUL } ?: jar.colors.ink, fontSize = 14.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontFamily = jar.font, modifier = Modifier.width(52.dp))
+                Text(e[1], color = jar.colors.ink, fontSize = 15.sp, fontFamily = jar.font, modifier = Modifier.weight(1f))
+            }
+        }
+        if (data.update != null) MainButton(stringResource(R.string.update_install)) { onClose(); actions.installUpdate() }
     }
 }
 
@@ -352,7 +373,13 @@ fun UpdateBanner(data: HomeData) {
             Column(Modifier.weight(1f)) {
                 Text(ctx.getString(R.string.ui_update_title, tag), color = jar.colors.ink, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     fontFamily = jar.font)
-                if (data.whatsNew.isNotEmpty()) Text(data.whatsNew, color = jar.colors.muted, fontSize = 13.sp, fontFamily = jar.font, maxLines = 3)
+                if (data.whatsNew.isNotEmpty()) Text(data.whatsNew, color = jar.colors.muted, fontSize = 13.sp, fontFamily = jar.font, maxLines = 3,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                // More than one version behind: everything since the installed one, version by version.
+                if (data.changes.size > 1) Text(ctx.getString(R.string.ui_all_changes, data.changes.size), color = jar.colors.accent.takeIf { jar.style != JarStyle.PLAYFUL } ?: jar.colors.ink,
+                    fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, fontFamily = jar.font,
+                    modifier = Modifier.padding(top = 4.dp).clickable(role = androidx.compose.ui.semantics.Role.Button) { actions.global("changes") }
+                        .testTag("all_changes"))
             }
             MainButton(stringResource(R.string.update_install), Modifier.width(110.dp)) { actions.installUpdate() }
         }

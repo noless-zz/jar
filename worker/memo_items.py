@@ -102,3 +102,58 @@ def mark(meta: dict, index: int, ok: bool, problem: str = "") -> None:
         a.pop("remove_failed", None)
     else:
         a["remove_failed"] = problem[:200]
+
+
+# ---------------------------------------------------------------- deleting a whole memo
+
+LOGS = ("Calendar.md", "Email drafts.md", "Shopping.md")
+
+
+def _local(meta: dict, tz):
+    raw = (meta.get("recorded_at") or "").replace("Z", "+00:00")
+    return datetime.fromisoformat(raw).astimezone(tz)
+
+
+def remove_from_logs(root: Path, meta: dict, tz) -> int:
+    """The memo's block in the day's memo log (Memos/<day>.md) and its lines in the calendar, email-draft and
+    shopping logs (they end with a link to that memo). Returns how many places changed."""
+    try:
+        t = _local(meta, tz)
+    except ValueError:
+        return 0
+    changed = 0
+    day = root / f"Memos/{t:%Y-%m-%d}.md"
+    if day.exists():
+        head = f"## {t:%H:%M} · {meta.get('duration_ms', 0) / 1000:.1f} s · {meta.get('device_id', '?')} · "
+        lines = day.read_text(encoding="utf-8").splitlines(keepends=True)
+        out, skip = [], False
+        for line in lines:
+            if line.startswith("## "):
+                skip = line.startswith(head)
+                changed += skip
+            if not skip:
+                out.append(line)
+        if len(out) != len(lines):
+            day.write_text("".join(out), encoding="utf-8", newline="\n")
+    link = f"[[Memos/{t:%Y-%m-%d}|memo {t:%H:%M}]]"
+    for name in LOGS:
+        p = root / name
+        if p.exists():
+            lines = p.read_text(encoding="utf-8").splitlines(keepends=True)
+            keep = [x for x in lines if link not in x]
+            if len(keep) != len(lines):
+                p.write_text("".join(keep), encoding="utf-8", newline="\n")
+                changed += 1
+    return changed
+
+
+def remove_memo_files(meta_path: Path) -> None:
+    """The recording itself: the audio, the transcript and the memo's record."""
+    for suffix in (".wav", ".txt", ".json"):
+        meta_path.with_suffix(suffix).unlink(missing_ok=True)
+
+
+def queue_all(queue_dir: Path, memo_id: str) -> None:
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    (queue_dir / f"{memo_id}_all.json").write_text(json.dumps({"memo": memo_id, "all": True, "at": time.time()}),
+                                                   encoding="utf-8")

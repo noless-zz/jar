@@ -27,4 +27,13 @@ public class ChangesTest {
         assertEquals("Smarter tasks · Upload fixed · Paste link", Changes.oneLine(NOTES, 0, false, 5));
         assertEquals("Smarter tasks · …", Changes.oneLine(NOTES, 0, false, 1));
     }
+
+    @Test
+    public void entriesKeepEachVersion() {
+        String notes = "1.11.2 | ג | C\n1.11.1 | ב | B\n1.11.0 | א | A\n";
+        java.util.List<String[]> e = Changes.entries(notes, Version.code("1.11.0"), false);
+        org.junit.Assert.assertEquals(2, e.size());
+        org.junit.Assert.assertArrayEquals(new String[] {"1.11.2", "C"}, e.get(0));
+        org.junit.Assert.assertArrayEquals(new String[] {"1.11.1", "ב"}, Changes.entries(notes, Version.code("1.11.0"), true).get(1));
+    }
 }

@@ -229,6 +229,11 @@ public final class TaskApi {
         return call(prefs, "POST", "/v1/memos/" + memoId + "/items/" + index + "/delete", new JSONObject());
     }
 
+    /** Delete a memo and everything it made (tasks, notes, events, drafts, shopping items, the recording). */
+    public static JSONObject deleteMemo(Prefs prefs, String memoId) throws IOException {
+        return call(prefs, "POST", "/v1/memos/" + memoId + "/delete", new JSONObject());
+    }
+
     public static JSONObject refile(Prefs prefs, String memoId, String transcript) throws IOException {
         JSONObject body = new JSONObject();
         try {

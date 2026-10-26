@@ -1091,6 +1091,29 @@ class TaskStore:
                 self._write(data)
         return n
 
+    def delete_memo(self, actor: Person, memo_id: str) -> int:
+        """Deleting a memo from My memos: every task it made goes (done ones too, their coins taken back) and
+        its recurring tasks end. Only whoever said it (or the admin)."""
+        n = 0
+        with self._locked():
+            data = self._read()
+            for t in data["tasks"]:
+                if t.get("memo_id") == memo_id and t.get("status") != "deleted" \
+                        and (t["created_by"] == actor.id or actor.admin):
+                    t["status"], t["updated_at"] = "deleted", _now()
+                    self._take_back(t, "memo deleted")
+                    if t.get("kind") == "idea" and self.points is not None:
+                        self.points.reverse(t["id"] + ":shipped", "memo deleted")
+                    n += 1
+            for x in data["series"]:
+                if x.get("memo_id") == memo_id and x.get("status") != "ended" \
+                        and (x["created_by"] == actor.id or actor.admin):
+                    x["status"], x["updated_at"] = "ended", _now()
+                    n += 1
+            if n:
+                self._write(data)
+        return n
+
     def import_markdown(self, owner: Person) -> int:
         """First run with the family list: bring over the open "- [ ]" lines of the old Tasks.md
         (as the owner's tasks) and keep the old file as "Tasks (before family list).md"."""
