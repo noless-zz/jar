@@ -730,7 +730,7 @@ def my_memos(request: Request, limit: int = 30, authorization: str | None = Head
             m = json.loads(meta_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if _mine(m, p):
+        if _mine(m, p) and m.get("status") != "deleting":
             acts = m.get("actions") or []
             out.append({k: m.get(k) for k in ("id", "recorded_at", "duration_ms", "status", "transcript",
                                                "summary", "edited", "error")}
@@ -797,6 +797,37 @@ def delete_memo_item(memo_id: str, index: int, request: Request, authorization: 
         memo_items.save(meta_path, m)
         log.info("%s deleted “%s” from memo %s", p.name, a.get("summary", ""), memo_id)
         return {"items": memo_items.items(m.get("actions") or [])}
+    raise HTTPException(404, "no such memo")
+
+
+@app.post("/v1/memos/{memo_id}/delete")
+def delete_memo(memo_id: str, request: Request, authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """Delete a memo and everything it made: its tasks (done ones too, coins taken back), recurring tasks,
+    shopping items, notes and files at once; calendar events, email drafts, its lines in the logs and the
+    recording itself by the worker within a minute. Works for a memo with no speech too."""
+    p = check_auth(authorization, request, x_device_id)
+    if not ID_RE.match(memo_id):
+        raise HTTPException(400, "bad memo id")
+    for meta_path in DATA_DIR.glob(f"*/{memo_id}.json"):
+        m = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not _mine(m, p):
+            break
+        if m.get("status") in ("transcribing", "filing"):
+            raise HTTPException(409, "Jar is filing this memo right now: try again in a minute")
+        tasks = TASKS.delete_memo(p, memo_id)
+        shopping = SHOPPING.forget_memo(memo_id)
+        root = memo_items.notes_root(NOTES_DIR, p, p.admin)
+        for a in m.get("actions") or []:
+            if isinstance(a, dict) and memo_items.kind(a) == "file" and not a.get("removed"):
+                try:
+                    memo_items.remove_file(root, a.get("file", ""))
+                except (OSError, ValueError) as e:
+                    log.warning("memo %s: couldn't delete %s: %s", memo_id, a.get("file"), e)
+        m["status"] = "deleting"
+        memo_items.save(meta_path, m)
+        memo_items.queue_all(DATA_ROOT / "deletes", memo_id)
+        log.info("%s deleted memo %s (%d task(s), %d shopping item(s))", p.name, memo_id, tasks, shopping)
+        return {"deleted": memo_id, "tasks": tasks, "shopping": shopping}
     raise HTTPException(404, "no such memo")
 
 

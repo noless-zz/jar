@@ -525,6 +525,27 @@ class HomeScreenTest {
         compose.onNodeWithText(s(R.string.ui_done_for, "Livne")).performClick()
         compose.waitForIdle()
         assertEquals(true, TaskCache(context).find("t9")?.isDone)
+    /** Delete a whole memo, also one with no speech: it leaves the list (the PC removes all it made). */
+    @Test
+    fun memos_deleteAWholeMemo() {
+        MemoFeed.fake = listOf(
+            JSONObject().put("id", "m1").put("recorded_at", utc(System.currentTimeMillis() - HOUR)).put("status", "done")
+                .put("transcript", "Buy miso and wakame").put("actions", JSONArray().put("Added: Buy miso and wakame")),
+            JSONObject().put("id", "m2").put("recorded_at", utc(System.currentTimeMillis() - 2 * HOUR)).put("status", "done")
+                .put("transcript", "").put("actions", JSONArray()))
+        launch(JarStyle.NIGHT, JarMode.DARK)
+        openFromSettings(s(R.string.menu_memos))
+        compose.onNodeWithText(s(R.string.memo_no_text)).performClick()          // a memo with no speech opens too
+        compose.onNodeWithTag("delete_memo").assertExists()
+        shot("47-memo-delete-empty")
+        compose.onNodeWithTag("delete_memo").performClick()
+        compose.onNodeWithTag("confirm").performClick()
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText(s(R.string.memo_no_text)).assertDoesNotExist() }.isSuccess }
+        compose.onNodeWithText("Buy miso and wakame").performClick()
+        compose.onNodeWithTag("delete_memo").performScrollTo().performClick()
+        compose.onNodeWithTag("confirm").performClick()
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText("Buy miso and wakame").assertDoesNotExist() }.isSuccess }
+        shot("47-memos-empty")
     }
 
     /** The update banner at the top of the task list, as on the classic screen before. */

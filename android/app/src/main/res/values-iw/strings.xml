@@ -582,4 +582,7 @@
     <string name="menu_shopping">🛒 קניות</string>
     <string name="ui_done_for">בוצע על ידי %1$s</string>
     <string name="ui_done_for_toast">סומן כבוצע עבור %1$s: המטבעות שלהם</string>
+    <string name="ui_memo_delete_all">למחוק את ההקלטה וכל מה שנוצר ממנה</string>
+    <string name="ui_memo_delete_all_confirm">למחוק את ההקלטה הזו וכל מה ש־Jar יצר ממנה? המשימות שלה (גם שבוצעו, עם המטבעות), ההערות, האירועים, הטיוטות ופריטי הקניות, וההקלטה עצמה.</string>
+    <string name="ui_memo_deleted">ההקלטה נמחקה, עם כל מה שנוצר ממנה</string>
 </resources>

@@ -205,6 +205,11 @@ class Worker:
                     continue
                 meta_path = found[0]
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                if req.get("all"):
+                    self.delete_whole_memo(meta_path, meta)
+                    req_path.unlink(missing_ok=True)
+                    n += 1
+                    continue
                 a = meta["actions"][int(req["index"])]
                 k = memo_items.kind(a)
                 ok, problem = True, ""
@@ -230,6 +235,30 @@ class Worker:
                 log.exception("bad delete request %s", req_path.name)
                 req_path.rename(req_path.with_suffix(".bad"))
         return n
+
+    def delete_whole_memo(self, meta_path, meta: dict) -> None:
+        """The rest of deleting a memo from the app (the server already removed its tasks, shopping items and
+        notes): its calendar events and email drafts, its lines in the logs, and the recording itself."""
+        from . import memo_items
+        from .tools import slug
+        for a in meta.get("actions") or []:
+            if not isinstance(a, dict) or a.get("removed"):
+                continue
+            k = memo_items.kind(a)
+            try:
+                if k == "family_event" and self.family_account is not None:
+                    self.family_account.delete_family_event(a["event_id"])
+                elif k in ("event", "draft"):
+                    conn = self.accounts.get(a.get("account") or "personal")
+                    if conn is not None and hasattr(conn, "delete"):
+                        conn.delete(k, a["event_id" if k == "event" else "draft_id"])
+            except Exception as e:  # noqa: BLE001 — the memo still goes; say what stayed behind
+                log.warning("memo %s: couldn't remove “%s”: %s", meta.get("id"), a.get("summary", ""), e)
+        speaker = self.family.get(meta.get("person")) or self.family.admin
+        root = self.cfg.notes_dir if speaker.admin else self.cfg.notes_dir / "Family" / slug(speaker.name)
+        memo_items.remove_from_logs(root, meta, self.tz)
+        memo_items.remove_memo_files(meta_path)
+        log.info("memo %s deleted (by %s, from the app)", meta.get("id"), speaker.name)
 
     def sync_event_deletes(self) -> int:
         """A deleted follow-up task ("add details or delete it") deletes its calendar event too."""

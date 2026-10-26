@@ -309,7 +309,7 @@ fun MemosScreen() {
             list == null -> item(key = "loading") { Muted(stringResource(R.string.syncing), Modifier.padding(8.dp)) }
             list.isEmpty() -> item(key = "none") { Muted(stringResource(R.string.memos_empty), Modifier.padding(8.dp)) }
             else -> items(list, key = { it.optString("id") }) { m ->
-                MemoCard(m, onDelete = { i, item -> deleting = Triple(m, i, item) }) { if (transcript(m).isNotEmpty()) open = m }
+                MemoCard(m, onDelete = { i, item -> deleting = Triple(m, i, item) }) { open = m }
             }
         }
     }
@@ -409,15 +409,27 @@ private fun RefileSheet(m: JSONObject, onDone: () -> Unit) {
     val ctx = LocalContext.current
     val actions = LocalActions.current
     var text by remember { mutableStateOf(transcript(m)) }
+    var confirm by remember { mutableStateOf(false) }
     val refile = { t: String? ->
         val prefs = Prefs(ctx); val id = m.optString("id")
         actions.call(R.string.memos_failed, ctx, ok = { actions.toast(ctx.getString(R.string.memo_refiled)) }) { TaskApi.refile(prefs, id, t) }
         onDone()
     }
     SheetColumn("refile") {
-        SheetTitle(stringResource(R.string.memo_edit_title), stringResource(R.string.memo_edit_message))
-        JarField(text, { text = it }, stringResource(R.string.memo_edit_hint), Modifier.testTag("memo_text"), minLines = 3)
-        MainButton(stringResource(R.string.memo_save_refile), enabled = text.isNotBlank()) { refile(text.trim()) }
-        SideButton(stringResource(R.string.memo_refile_as_is)) { refile(null) }
+        if (transcript(m).isNotEmpty()) {
+            SheetTitle(stringResource(R.string.memo_edit_title), stringResource(R.string.memo_edit_message))
+            JarField(text, { text = it }, stringResource(R.string.memo_edit_hint), Modifier.testTag("memo_text"), minLines = 3)
+            MainButton(stringResource(R.string.memo_save_refile), enabled = text.isNotBlank()) { refile(text.trim()) }
+            SideButton(stringResource(R.string.memo_refile_as_is)) { refile(null) }
+        } else SheetTitle(stringResource(R.string.memo_no_text), TaskFormat.memoTime(m.optString("recorded_at")))
+        SideButton(stringResource(R.string.ui_memo_delete_all), Modifier.testTag("delete_memo"), danger = true) { confirm = true }
+    }
+    if (confirm) Confirm(ctx.getString(R.string.ui_memo_delete_all_confirm), ctx.getString(R.string.action_delete), { confirm = false }) {
+        confirm = false
+        val prefs = Prefs(ctx); val id = m.optString("id")
+        if (MemoFeed.fake != null) {                  // tests: no PC
+            MemoFeed.fake = MemoFeed.fake!!.filter { it.optString("id") != id }
+        } else actions.call(R.string.memos_failed, ctx, ok = { actions.toast(ctx.getString(R.string.ui_memo_deleted)) }) { TaskApi.deleteMemo(prefs, id) }
+        onDone()
     }
 }

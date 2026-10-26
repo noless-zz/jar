@@ -170,6 +170,17 @@ class ShoppingStore:
             self._write(data)
             return item
 
+    def forget_memo(self, memo_id: str) -> int:
+        """Deleting a memo: the shopping items it put on a list go too."""
+        with self._locked():
+            data = self._read()
+            keep = [i for i in data["items"] if i.get("memo_id") != memo_id]
+            n = len(data["items"]) - len(keep)
+            if n:
+                data["items"] = keep
+                self._write(data)
+        return n
+
     def act_for(self, item_id: str, action: str, person_id: str = "") -> dict:
         """Home Assistant ticks an item as bought for a person (default: the item's buyer)."""
         if action not in ("bought", "unbought"):

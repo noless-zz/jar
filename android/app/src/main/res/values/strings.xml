@@ -574,4 +574,7 @@
     <string name="menu_shopping">🛒 Shopping</string>
     <string name="ui_done_for">Done for %1$s</string>
     <string name="ui_done_for_toast">Done for %1$s: the coins are theirs</string>
+    <string name="ui_memo_delete_all">Delete the memo and everything it made</string>
+    <string name="ui_memo_delete_all_confirm">Delete this memo and everything Jar made from it? Its tasks (done ones too, with their coins), notes, events, drafts and shopping items, and the recording itself.</string>
+    <string name="ui_memo_deleted">Memo deleted, with everything it made</string>
 </resources>
