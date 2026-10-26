@@ -572,4 +572,6 @@
     <string name="shop_offline">Can\'t reach the PC right now</string>
     <string name="shop_failed">Didn\'t go through, try again</string>
     <string name="menu_shopping">🛒 Shopping</string>
+    <string name="ui_done_for">Done for %1$s</string>
+    <string name="ui_done_for_toast">Done for %1$s: the coins are theirs</string>
 </resources>

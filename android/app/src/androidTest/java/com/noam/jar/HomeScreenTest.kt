@@ -514,6 +514,19 @@ class HomeScreenTest {
         }
     }
 
+    /** Noam can tick someone else's task for them (they forgot): it's done, and the coins are theirs. */
+    @Test
+    fun admin_ticksATaskForSomeoneElse() {
+        launch(JarStyle.CALM, JarMode.LIGHT)
+        tapTab(R.string.ui_nav_family)
+        compose.onNodeWithText("Tidy your desk").performClick()
+        compose.onNodeWithText(s(R.string.ui_done_for, "Livne")).assertExists()
+        shot("25-done-for-livne")
+        compose.onNodeWithText(s(R.string.ui_done_for, "Livne")).performClick()
+        compose.waitForIdle()
+        assertEquals(true, TaskCache(context).find("t9")?.isDone)
+    }
+
     /** The update banner at the top of the task list, as on the classic screen before. */
     @Test
     fun updateBanner_onTheTaskList() {

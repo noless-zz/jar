@@ -89,7 +89,8 @@ fun FamilyTab(data: HomeData, onOpen: (Task) -> Unit) {
     // Every child's tasks, also the ones I gave them (the classic "Family" tab left those under "I asked").
     val byKid = remember(data) {
         data.all.filter { !it.isIdea && !it.isMessage && it.status != "declined" }
-            .flatMap { t -> t.owners().filter { it != data.me && it !in data.parents }.map { it to t } }
+            // The children; for the admin also the other parent, so a task they forgot to tick can be ticked for them.
+            .flatMap { t -> t.owners().filter { it != data.me && (it !in data.parents || data.admin) }.map { it to t } }
             .groupBy({ it.first }, { it.second })
     }
     val now = System.currentTimeMillis()

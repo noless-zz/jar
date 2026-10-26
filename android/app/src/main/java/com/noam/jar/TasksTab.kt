@@ -140,9 +140,6 @@ fun TasksTab(data: HomeData, memo: JSONObject?, onOpen: (Task) -> Unit, onSettin
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (data.update != null) item(key = "update") { UpdateBanner(data) }
-            if (recentMemo != null && filter == Filter.MINE) item(key = "memo") {
-                if (jar.style == JarStyle.NIGHT) HeardPill(recentMemo) else HeardCard(recentMemo)
-            }
             taskSection("waiting", ctx.getString(R.string.header_need_ok), s.waiting, data, onOpen, c.coin)
             taskSection("overdue", ctx.getString(R.string.ui_sec_overdue), s.overdue, data, onOpen, c.danger)
             taskSection("today", ctx.getString(R.string.ui_sec_today), s.today, data, onOpen)
@@ -433,7 +430,7 @@ fun TaskRow(t: Task, data: HomeData, onOpen: (Task) -> Unit) {
     val scope = rememberCoroutineScope()
     val drag = remember(t.id) { Animatable(0f) }
     val finished = TaskLists.doneBucket(t, null, System.currentTimeMillis()) != TaskLists.OPEN
-    val open = t.openFor(data.me)
+    val open = t.isFor(data.me) && t.openFor(data.me)      // swipe: only my own tasks
     Box(Modifier.fillMaxWidth()) {
         if (abs(drag.value) > 8f) {
             val done = drag.value > 0
@@ -479,7 +476,7 @@ private fun CalmRow(t: Task, data: HomeData, finished: Boolean, onOpen: (Task) -
     Row(Modifier.fillMaxWidth().background(c.surface).clickable { onOpen(t) }.padding(horizontal = 14.dp, vertical = 12.dp)
         .alpha(if (finished) 0.6f else 1f),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        TickCircle(t, data.me, finished, 24.dp)
+        TickCircle(t, data.me, finished, data.admin, 24.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(t.title, color = c.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium, fontFamily = jar.font,
                 textDecoration = if (finished) TextDecoration.LineThrough else null)
@@ -501,7 +498,7 @@ private fun PlayfulRow(t: Task, data: HomeData, finished: Boolean, onOpen: (Task
         Row(Modifier.fillMaxWidth().clip(shape).background(if (finished) c.accentSoft else c.surface).border(2.dp, c.ink, shape)
             .clickable { onOpen(t) }.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TickCircle(t, data.me, finished, 36.dp)
+            TickCircle(t, data.me, finished, data.admin, 36.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(t.title, color = c.ink, fontSize = 17.sp, fontWeight = FontWeight.Medium, fontFamily = jar.font,
                     textDecoration = if (finished) TextDecoration.LineThrough else null)
@@ -548,14 +545,14 @@ private fun NightRow(t: Task, data: HomeData, finished: Boolean, onOpen: (Task) 
                 }
                 Chips(t, data)
             }
-            TickCircle(t, data.me, finished, 26.dp)
+            TickCircle(t, data.me, finished, data.admin, 26.dp)
         }
     }
 }
 
 /** The round tick: tap to finish (or bring back) without opening the sheet. */
 @Composable
-fun TickCircle(t: Task, me: String, finished: Boolean, size: Dp) {
+fun TickCircle(t: Task, me: String, finished: Boolean, admin: Boolean, size: Dp) {
     val jar = LocalJar.current
     val c = jar.colors
     val ctx = LocalContext.current
@@ -566,7 +563,7 @@ fun TickCircle(t: Task, me: String, finished: Boolean, size: Dp) {
     val label = ctx.getString(if (ticked) R.string.action_reopen else R.string.action_done)
     Box(
         Modifier.size(size + 12.dp).clip(CircleShape)
-            .clickable(enabled = t.isOpen || t.isDone, role = Role.Checkbox) { actions.act(t, if (ticked) "reopen" else "done") }
+            .clickable(enabled = (t.isOpen || t.isDone) && (t.isFor(me) || admin), role = Role.Checkbox) { actions.act(t, if (ticked) "reopen" else "done") }
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {

@@ -63,7 +63,12 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
     val actions = LocalActions.current
     val now = System.currentTimeMillis()
     val tz = TimeZone.getDefault()
-    val open = t.openFor(data.me)
+    // My own task: Done. Someone else's: only the admin (Noam) can tick it for them, e.g. Sveta did it and
+    // forgot; the coins are theirs. (openFor() alone doesn't look at whose task it is.)
+    val own = t.isFor(data.me)
+    val open = own && t.openFor(data.me)
+    val forOther = !own && data.admin && t.isOpen && !t.isIdea && !t.isMessage
+    val otherNames = t.owners().joinToString(", ") { TaskLists.name(data.names, it) }
     var more by remember { mutableStateOf(false) }
     val editable = t.status != "declined" && !t.isMessage
     val repeatable = data.canMakeRepeat(t)
@@ -85,6 +90,7 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
         }
         if (jar.style == JarStyle.NIGHT) {
             if (open) SlideToFinish(onDone = { act("done", null) })
+            if (forOther) SlideToFinish(ctx.getString(R.string.ui_done_for, otherNames), onDone = { act("done", null) })
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!open && (t.isDone || t.doneFor(data.me)))
                     OutlineAction(JarIcons.Undo, ctx.getString(R.string.action_reopen), Modifier.weight(1f)) { act("reopen", null) }
@@ -100,6 +106,8 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
                 if (open) {
                     BigAction(JarIcons.Check, ctx.getString(R.string.action_done), true, Modifier.weight(1f)) { act("done", null) }
                     BigAction(JarIcons.Clock, ctx.getString(R.string.ui_action_later), false, Modifier.weight(1f)) { act("snooze", TaskLists.inAnHour(now, tz)) }
+                } else if (forOther) {
+                    BigAction(JarIcons.Check, ctx.getString(R.string.ui_done_for, otherNames), true, Modifier.weight(2f)) { act("done", null) }
                 } else if (t.isDone || t.doneFor(data.me)) {
                     BigAction(JarIcons.Undo, ctx.getString(R.string.action_reopen), true, Modifier.weight(1f)) { act("reopen", null) }
                 }
@@ -173,12 +181,12 @@ fun Notes(t: Task, data: HomeData, onThread: () -> Unit) {
 
 /** Night: drag the glowing thumb across to finish (a tap on the bar does it too, for accessibility). */
 @Composable
-private fun SlideToFinish(onDone: () -> Unit) {
+private fun SlideToFinish(text: String? = null, onDone: () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val scope = rememberCoroutineScope()
     val x = remember { Animatable(0f) }
-    val label = stringResource(R.string.ui_slide_done)
+    val label = text ?: stringResource(R.string.ui_slide_done)
     val density = LocalDensity.current
     BoxWithConstraints(
         Modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(32.dp)).background(c.accentSoft)
