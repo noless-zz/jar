@@ -16,6 +16,8 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
@@ -548,6 +550,62 @@ class HomeScreenTest {
         compose.onNodeWithTag("confirm").performClick()
         compose.waitUntil(5_000) { runCatching { compose.onNodeWithText("Buy miso and wakame").assertDoesNotExist() }.isSuccess }
         shot("47-memos-empty")
+    }
+
+    /**
+     * Livne's bug (27.10): in Hebrew, sliding the Night sheet's "slide to finish" to the left sent the check to the right.
+     * Now the thumb starts at the reading start and follows the finger, right to left in Hebrew, left to right in English.
+     */
+    @Test
+    fun slideToFinish_followsTheFingerInBothDirections() {
+        for (rtl in listOf(true, false)) {
+            forceRtl(rtl)
+            try {
+                scenario?.close()
+                context.getSharedPreferences("jar_tasks", Context.MODE_PRIVATE).edit().clear().commit()
+                launch(JarStyle.NIGHT, JarMode.DARK)
+                assertRtl(rtl)
+                compose.onNodeWithText("Buy milk").performClick()
+                compose.onNodeWithTag("slide_done").performTouchInput {
+                    val from = if (rtl) Offset(width - 40f, centerY) else Offset(40f, centerY)
+                    val to = if (rtl) Offset(20f, centerY) else Offset(width - 20f, centerY)
+                    swipe(from, to, 600)
+                }
+                compose.waitForIdle()
+                compose.onNodeWithTag("done_moment").assertExists()
+                shot("26-slide-" + if (rtl) "rtl" else "ltr")
+            } finally {
+                forceRtl(false)
+            }
+        }
+    }
+
+    /** Developer option "Force RTL layout direction" (the setting and the property it mirrors). */
+    private fun forceRtl(on: Boolean) {
+        val v = if (on) "1" else "0"
+        shell("settings put global debug.force_rtl $v")
+        shell("setprop debug.force_rtl $v")
+    }
+
+    private fun assertRtl(want: Boolean) {
+        var dir = -1
+        scenario!!.onActivity { dir = it.resources.configuration.layoutDirection }
+        assertEquals("activity layout direction (1 = RTL)", if (want) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR, dir)
+    }
+
+    /** Swiping a task row toward the reading end finishes it, in Hebrew (right to left) too. */
+    @Test
+    fun swipeRow_towardTheReadingEndFinishes_inRtl() {
+        forceRtl(true)
+        try {
+            launch(JarStyle.CALM, JarMode.LIGHT)
+            assertRtl(true)
+            compose.onNodeWithText("Buy milk").performTouchInput { swipe(Offset(width - 10f, centerY), Offset(width - 610f, centerY), 500) }
+            compose.waitForIdle()
+            assertEquals(true, TaskCache(context).find("t1")?.isDone)
+        } finally {
+            forceRtl(false)
+        }
     }
 
     /** The update banner at the top of the task list, as on the classic screen before. */

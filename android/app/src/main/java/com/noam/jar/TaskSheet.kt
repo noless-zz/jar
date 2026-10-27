@@ -188,6 +188,9 @@ private fun SlideToFinish(text: String? = null, onDone: () -> Unit) {
     val x = remember { Animatable(0f) }
     val label = text ?: stringResource(R.string.ui_slide_done)
     val density = LocalDensity.current
+    // offset {} moves toward the reading end; the finger's dx is in screen pixels. Hebrew reads right to left, so
+    // flip dx there: the thumb starts at the right and follows the finger left (Livne's bug, 27.10).
+    val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     BoxWithConstraints(
         Modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(32.dp)).background(c.accentSoft)
             .border(1.dp, c.accent.copy(alpha = 0.4f), RoundedCornerShape(32.dp))
@@ -200,8 +203,11 @@ private fun SlideToFinish(text: String? = null, onDone: () -> Unit) {
                 .background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.7f), c.accent)))
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
-                        onDragEnd = { scope.launch { if (x.value > max * 0.8f || x.value < -max * 0.8f) onDone() else x.animateTo(0f) } },
-                        onHorizontalDrag = { ch, d -> ch.consume(); scope.launch { x.snapTo((x.value + d).coerceIn(-max, max)) } },
+                        onDragEnd = { scope.launch { if (x.value > max * 0.8f) onDone() else x.animateTo(0f) } },
+                        onHorizontalDrag = { ch, d ->
+                            ch.consume()
+                            scope.launch { x.snapTo((x.value + if (rtl) -d else d).coerceIn(0f, max)) }
+                        },
                     )
                 },
             contentAlignment = Alignment.Center,
