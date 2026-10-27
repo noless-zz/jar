@@ -581,11 +581,9 @@ class HomeScreenTest {
         }
     }
 
-    /** Developer option "Force RTL layout direction" (the setting and the property it mirrors). */
+    /** The screen in Hebrew, right to left (the emulator's own language stays English). */
     private fun forceRtl(on: Boolean) {
-        val v = if (on) "1" else "0"
-        shell("settings put global debug.force_rtl $v")
-        shell("setprop debug.force_rtl $v")
+        TestHooks.locale = if (on) java.util.Locale.forLanguageTag("he") else null
     }
 
     private fun assertRtl(want: Boolean) {
