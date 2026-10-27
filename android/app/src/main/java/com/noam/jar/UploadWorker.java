@@ -22,6 +22,10 @@ import java.util.concurrent.TimeUnit;
  * being closed, and retries with back-off — the phone version of the pendant's
  * "retry every 15 s until the server acknowledges".
  */
+/*
+ * Retries: linear 15 s, 30 s, 45 s… (was exponential from 30 s, which after one failed try held a memo back for
+ * about 15 minutes: Noam's 27.10 12:05 memo reached the PC at 12:19).
+ */
 public final class UploadWorker extends Worker {
     private static final String WORK_NAME = "jar-upload";
 
@@ -34,7 +38,7 @@ public final class UploadWorker extends Worker {
         OneTimeWorkRequest req = new OneTimeWorkRequest.Builder(UploadWorker.class)
                 .setConstraints(new Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 15, TimeUnit.SECONDS)
                 .build();
         WorkManager.getInstance(c).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, req);
     }
@@ -43,7 +47,7 @@ public final class UploadWorker extends Worker {
         OneTimeWorkRequest req = new OneTimeWorkRequest.Builder(UploadWorker.class)
                 .setConstraints(new Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 15, TimeUnit.SECONDS)
                 .build();
         // APPEND_OR_REPLACE: a memo saved during an upload run still gets its own run afterwards.
         WorkManager.getInstance(c).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, req);
