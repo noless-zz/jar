@@ -550,6 +550,17 @@ class HomeScreenTest {
         shot("47-memos-empty")
     }
 
+    /** A memo the PC hasn't transcribed yet says Jar is working on it, not "no speech" (27.10). */
+    @Test
+    fun memos_beingFiledIsNotNoSpeech() {
+        MemoFeed.fake = listOf(JSONObject().put("id", "m1").put("recorded_at", utc(System.currentTimeMillis())).put("status", "received")
+            .put("transcript", JSONObject.NULL).put("actions", JSONArray()))
+        launch(JarStyle.CALM, JarMode.LIGHT)
+        openFromSettings(s(R.string.menu_memos))
+        compose.onNodeWithText(s(R.string.ui_jar_working)).assertExists()
+        compose.onNodeWithText(s(R.string.memo_no_text)).assertDoesNotExist()
+    }
+
     /** The update banner at the top of the task list, as on the classic screen before. */
     @Test
     fun updateBanner_onTheTaskList() {
