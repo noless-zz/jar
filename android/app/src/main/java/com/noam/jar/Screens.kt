@@ -357,7 +357,9 @@ private fun MemoCard(m: JSONObject, onDelete: (Int, JSONObject) -> Unit, onClick
                 if (filing) Chip(ctx.getString(R.string.memo_in_progress), c.coinSoft, c.coin)
                 if (m.optBoolean("edited")) Chip(ctx.getString(R.string.memo_edited), c.surface2, c.muted)
             }
-            Text(text.ifEmpty { ctx.getString(R.string.memo_no_text) }, color = if (text.isEmpty()) c.muted else c.ink, fontSize = 16.sp, fontFamily = jar.font)
+            // Still being transcribed / filed: say so (it used to read "no speech" until Jar got to it).
+            Text(text.ifEmpty { ctx.getString(if (filing) R.string.ui_jar_working else R.string.memo_no_text) },
+                color = if (text.isEmpty()) c.muted else c.ink, fontSize = 16.sp, fontFamily = jar.font)
             // What Jar did: each thing it made can be taken back from here (the newer PC sends "items").
             val items = m.optJSONArray("items")
             val n = items?.length() ?: did?.length() ?: 0

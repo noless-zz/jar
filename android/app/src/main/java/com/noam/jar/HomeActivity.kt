@@ -163,7 +163,10 @@ class HomeActivity : ComponentActivity() {
         super.onStart()
         ContextCompat.registerReceiver(this, receiver, IntentFilter(Jar.ACTION_STATE), ContextCompat.RECEIVER_NOT_EXPORTED)
         refresh()
-        if (Prefs(this).token().isNotEmpty()) TaskSync.now(this)
+        if (Prefs(this).token().isNotEmpty()) {
+            TaskSync.now(this)
+            if (Jar.queue(this).readyCount() > 0) UploadWorker.now(this)    // a memo still on the phone: try now
+        }
         if (RecorderService.isRecording()) main.post(ticker)
     }
 
