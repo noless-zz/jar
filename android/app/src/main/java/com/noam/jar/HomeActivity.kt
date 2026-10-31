@@ -84,6 +84,13 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
+    /** Tests run the screen in Hebrew (right to left) through [TestHooks.locale]; otherwise the phone's own. */
+    override fun attachBaseContext(base: Context) {
+        val l = TestHooks.locale
+        super.attachBaseContext(if (l == null) base else base.createConfigurationContext(
+            android.content.res.Configuration(base.resources.configuration).apply { setLocale(l); setLayoutDirection(l) }))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         TaskNotify.channels(this)
@@ -347,6 +354,12 @@ class HomeActivity : ComponentActivity() {
             finish()
         }
     }
+}
+
+/** Emulator tests only: run HomeActivity in another language (Hebrew, to check right to left). */
+@androidx.annotation.VisibleForTesting
+object TestHooks {
+    @Volatile var locale: java.util.Locale? = null
 }
 
 /** A task just finished: what the done moment shows (and what Undo brings back). */

@@ -41,6 +41,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -431,6 +433,8 @@ fun TaskRow(t: Task, data: HomeData, onOpen: (Task) -> Unit) {
     val drag = remember(t.id) { Animatable(0f) }
     val finished = TaskLists.doneBucket(t, null, System.currentTimeMillis()) != TaskLists.OPEN
     val open = t.isFor(data.me) && t.openFor(data.me)      // swipe: only my own tasks
+    // drag is in reading direction (offset {} mirrors in Hebrew; the finger's dx doesn't): toward the end = done.
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Box(Modifier.fillMaxWidth()) {
         if (abs(drag.value) > 8f) {
             val done = drag.value > 0
@@ -453,7 +457,7 @@ fun TaskRow(t: Task, data: HomeData, onOpen: (Task) -> Unit) {
                         },
                         onHorizontalDrag = { change, amount ->
                             change.consume()
-                            scope.launch { drag.snapTo(drag.value + amount) }
+                            scope.launch { drag.snapTo(drag.value + if (rtl) -amount else amount) }
                         },
                     )
                 }),
