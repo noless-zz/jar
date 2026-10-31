@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+1.11.3 | בעברית, החלקה לסיום והחלקת משימה ברשימה הולכות עם האצבע; הקלטות עולות מהר יותר אחרי בעיית רשת ו'Jar עובד על זה…' מופיע עד שהתמלול מוכן | In Hebrew, slide-to-finish and swiping a task follow the finger; memos upload sooner after a network hiccup, and 'Jar is working on it…' shows until the transcript is ready
 1.11.2 | אפשר למחוק הקלטה שלמה וכל מה שנוצר ממנה (משימות, הערות, אירועים, קניות וההקלטה עצמה), גם הקלטה בלי דיבור; ו'כל השינויים' מראה כל גרסה מאז שלך | Delete a whole memo and everything it made (tasks, notes, events, shopping and the recording), also one with no speech; and 'All changes' shows every version since yours
 1.11.1 | משימות חוזרות שהגדרת לא מופיעות ב'ביקשתי'; בלי פס 'Jar שמע'; עדכון חדש מופיע מיד כשחוזרים לרשימה; נעם יכול לסמן משימה כבוצעה עבור מישהו אחר | Recurring chores you set up no longer show under 'I asked'; no 'Jar heard' bar; a new update shows as soon as you return to the list; Noam can tick a task done for someone else
 1.11.0 | רשימות קניות 🛒: לכל אחד רשימה של מה שהוא קונה; אפשר להוסיף לכל אחד ("אבא, תקנה אפוקסי"), בהקלטה, באפליקציה (תפריט ← 🛒 קניות) ובלוח המשפחתי של Home Assistant | Shopping lists 🛒: everyone has a list of what they buy; add for anyone ("Dad, buy epoxy") by memo, in the app (menu → 🛒 Shopping) or on the Home Assistant family panel
