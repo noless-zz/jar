@@ -222,3 +222,30 @@ class Voice(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HomeTokenSurvives(unittest.TestCase):
+    """The server, the dashboard and the pairing page each load the token file; a phone paired in one must not
+    erase Home Assistant's token made in another (Home Assistant then says "Jar rejected the link")."""
+
+    def test_pairing_a_phone_keeps_the_home_token(self):
+        tmp = Path(tempfile.mkdtemp())
+        server = Family.from_config(FAMILY_CFG, "admin-token-123", tmp)
+        dashboard = Family.from_config(FAMILY_CFG, "admin-token-123", tmp)
+        server.token_for("yoni")                       # the server has the file cached now
+        home = dashboard.home_token()                  # the dashboard makes Home Assistant's link
+        server.token_for("maya")                       # a new phone pairs through the server
+        self.assertIs(server.who(home), server.home)
+        self.assertIs(dashboard.who(home), dashboard.home)
+
+    def test_unreadable_file_is_not_taken_as_empty(self):
+        tmp = Path(tempfile.mkdtemp())
+        fam = Family.from_config(FAMILY_CFG, "admin-token-123", tmp)
+        home = fam.home_token()
+        yoni = fam.token_for("yoni")
+        fam.tokens_path.write_text("{ half written", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            fam.token_for("maya")                      # refuses rather than saving {maya} over everyone
+        fam.tokens_path.write_text('{"home": "%s", "yoni": "%s"}' % (home, yoni), encoding="utf-8")
+        fam.token_for("maya")
+        self.assertIs(fam.who(home), fam.home)

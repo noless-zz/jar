@@ -22,6 +22,7 @@ import hmac
 import json
 import os
 import secrets
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -111,12 +112,25 @@ class Family:
         return None
 
     # ---- tokens ----
-    def _load_tokens(self) -> dict[str, str]:
+    def _load_tokens(self, fresh: bool = False) -> dict[str, str]:
+        """The token file. fresh=True re-reads it: always before writing, since the server, the dashboard and
+        the pairing page each hold a copy, and saving a stale one would drop a token another made since
+        (that is how Home Assistant's token got lost). A file that can't be read right now (Windows: another
+        process is replacing it) is retried, never taken as empty."""
+        if fresh:
+            self._tokens = None
         if self._tokens is None:
-            try:
-                self._tokens = json.loads(self.tokens_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                self._tokens = {}
+            for attempt in range(20):
+                try:
+                    self._tokens = json.loads(self.tokens_path.read_text(encoding="utf-8"))
+                    break
+                except FileNotFoundError:
+                    self._tokens = {}
+                    break
+                except (OSError, ValueError):
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.05)
         return self._tokens
 
     def token_for(self, pid: str) -> str:
@@ -125,7 +139,7 @@ class Family:
             raise KeyError(pid)
         if p.admin:
             return self.admin_token
-        tokens = self._load_tokens()
+        tokens = self._load_tokens(fresh=True)
         if pid not in tokens:
             tokens[pid] = secrets.token_urlsafe(24)
             self._save_tokens(tokens)
@@ -148,8 +162,7 @@ class Family:
 
     def home_token(self, renew: bool = False) -> str:
         """Home Assistant's token (made on first use). renew=True replaces it: the old one stops working."""
-        self._tokens = None                   # re-read: the server and dashboard share the file
-        tokens = self._load_tokens()
+        tokens = self._load_tokens(fresh=True)   # the server and dashboard share the file
         if renew or HOME_ID not in tokens:
             tokens[HOME_ID] = secrets.token_urlsafe(24)
             self._save_tokens(tokens)
