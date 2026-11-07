@@ -7,6 +7,7 @@ Run from the jar folder:   python -m uvicorn server.server:app --host 0.0.0.0 --
 """
 
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -373,6 +374,59 @@ def admin_status(request: Request, authorization: str | None = Header(None), x_d
         "eval_running": (DATA_ROOT / "eval" / "run").exists(),
         "urls": current_urls(),
         "rejected": list(REJECTED)[-5:],
+    }
+
+
+# ---- Read-only status for a home status board (docs/DEVELOPING.md). Off unless config.toml has
+# [monitor] key = "...", sent as the X-Monitor-Key header. Never returns memo text, names, tokens or URLs.
+MONITOR_KEY = os.environ.get("JAR_MONITOR_KEY") or str(_raw.get("monitor", {}).get("key", "")).strip()
+
+
+def _app_version() -> str:
+    try:
+        return (ROOT / "android" / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _ollama_ps() -> dict:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(_ollama_url() + "/api/ps", timeout=2) as resp:
+            return {"up": True, "loaded": [m.get("name", "") for m in json.loads(resp.read().decode()).get("models", [])]}
+    except Exception:  # noqa: BLE001
+        return {"up": False, "loaded": []}
+
+
+@app.get("/v1/monitor")
+def monitor(x_monitor_key: str = Header("")):
+    if not MONITOR_KEY:
+        raise HTTPException(404, "not enabled")
+    if not hmac.compare_digest(x_monitor_key.encode(), MONITOR_KEY.encode()):
+        raise HTTPException(403, "wrong monitor key")
+    now = time.time()
+    sup, work = _json_file(DATA_ROOT / "supervisor.json"), _json_file(DATA_ROOT / "worker.json")
+    counts: dict[str, int] = {}
+    for meta in sorted(DATA_DIR.glob("*/*.json"))[-200:]:
+        st = _json_file(meta).get("status", "?")
+        counts[st] = counts.get(st, 0) + 1
+    ev = _json_file(DATA_ROOT / "eval" / "report.json")
+    anywhere = sup.get("anywhere") or {}
+    return {
+        "time": int(now),
+        "app_version": _app_version(),
+        "server": {"up": True, "pid": os.getpid()},
+        "supervisor": {"alive": bool(sup) and now - sup.get("epoch", 0) < 30,
+                       "code": sup.get("code"), "update": sup.get("update"),
+                       "started": sup.get("started"), "restarts": sup.get("restarts"),
+                       "last_reason": sup.get("last_reason"),
+                       "checked_ago": int(now - sup["checked_epoch"]) if sup.get("checked_epoch") else None},
+        "worker": {"alive": bool(work) and now - work.get("epoch", 0) < 120, "doing": work.get("doing"),
+                   "llm": work.get("llm"), "whisper": work.get("whisper")},
+        "ollama": _ollama_ps(),
+        "funnel": {k: anywhere.get(k) for k in ("wanted", "ok", "problem", "checked") if k in anywhere},
+        "memos": counts,
+        "eval": {k: ev.get(k) for k in ("passed", "total", "at", "model")} if ev else None,
     }
 
 

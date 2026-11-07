@@ -28,6 +28,9 @@
 - **AI changes:** run the AI test on the PC: Settings → PC → *Run AI test* (or write `data/eval/run` with
   repeats 1–3). Report in `data/eval/report.md`; last result 46/46 (13 memo + 10 rating cases, 2 repeats).
 
+- **Status board:** `GET /v1/monitor` (header `X-Monitor-Key`, key from `config.toml` `[monitor] key`) gives a
+  read-only health summary for a screen elsewhere in the house. Off without a key; no memo text, names or URLs.
+
 ## Hard-won lessons
 - Prompt + tool schemas must stay well under `num_ctx` (12288): past it Ollama silently drops the memo.
   `tests/test_worker.py::ContextBudget` guards this. Never quote AI-test memos as prompt examples — the 9B
