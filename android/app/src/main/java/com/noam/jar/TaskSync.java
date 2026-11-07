@@ -121,7 +121,8 @@ public final class TaskSync extends Worker {
                 if (a == null) continue;
                 try {
                     JSONObject r = TaskApi.act(prefs, a.optString("id"), a.optString("action"),
-                            a.isNull("until") ? null : a.optString("until", null), a.optLong("at", 0));
+                            a.isNull("until") ? null : a.optString("until", null), a.optLong("at", 0),
+                            a.optString("as", null));
                     if ("done".equals(a.optString("action"))) PointsUi.toast(c, TaskApi.parseAward(r));
                 } catch (TaskApi.HttpError e) {
                     if (e.code == 401 || e.code >= 500) throw e;   // keep it for later

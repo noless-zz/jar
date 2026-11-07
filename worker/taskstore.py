@@ -303,7 +303,7 @@ class TaskStore:
                 # An offline tick carries the time it was made ("at", epoch seconds): paid at that time.
                 at = done_time((fields or {}).get("at"))
                 was_done = t["status"] == "done"
-                award = self._done(t, actor, at)
+                award = self._done(t, actor, at, self._credit_for(t, actor, (fields or {}).get("as")))
                 if idea and not was_done:
                     award = self._credit_idea(t, "shipped") or award
                 s = self._series_of(data, t)
@@ -321,6 +321,7 @@ class TaskStore:
                 else:
                     t.update(status="open", done_at=None, done_by=None)
                     t.pop("done_parts", None)
+                    t.pop("ticked_by", None)
                     self._take_back(t, "reopened")
             elif action == "snooze":
                 t["snoozed_until"] = clean_when(until)
@@ -405,12 +406,32 @@ class TaskStore:
         if self.points is not None:
             self.points.reverse(t["id"], why, person)
 
-    def _done(self, t: dict, actor: Person, at: str) -> dict | None:
+    def _credit_for(self, t: dict, actor: Person, person_id) -> Person | None:
+        """A parent ticks a task for whoever really did it ({"as": "alona"}): they get the credit and the
+        coins, even when it isn't their task (only for an "each of them" task must they be on it)."""
+        if not person_id or person_id == actor.id:
+            return None
+        if not actor.is_parent:
+            raise TaskError(403, "a parent ticks a task for someone else")
+        if t.get("kind") == "idea":
+            raise TaskError(403, "a Jar idea is shipped, not done for someone")
+        who = self.family.get(str(person_id))
+        if who is None or getattr(who, "is_home", False):
+            raise TaskError(400, f"no such family member: {person_id}")
+        if shared_mode(t) == "all" and who.id not in owners(t):
+            raise TaskError(400, f"{who.name} isn't on this task: each of them does their own part")
+        return who
+
+    def _done(self, t: dict, actor: Person, at: str, credit: Person | None = None) -> dict | None:
         """Tick a task. Shared "all" task: the actor's own part (the task is done once everyone's is);
         a parent who isn't one of them ticks it for all of them. "any": done, paid to whoever did it
-        (to the first of them when someone else ticks it)."""
+        (to the first of them when someone else ticks it). `credit`: a parent ticked it for that person,
+        who gets the coins (and only their part of an "all" task)."""
         ids = owners(t)
         pay_to: list[str]
+        ticker = actor
+        if credit is not None:
+            actor = credit
         if shared_mode(t) == "all":
             parts = t.setdefault("done_parts", {})
             if actor.id in ids:
@@ -426,10 +447,14 @@ class TaskStore:
                 t.update(status="done", done_at=at, done_by=actor.id, snoozed_until=None)
         else:
             if t["status"] == "done":                            # a retried tick: what it paid
-                paid = t.get("done_by") if t.get("done_by") in ids else ids[0]
+                paid = t.get("done_by") if t.get("done_by") in ids or t.get("ticked_by") else ids[0]
                 return self.points.pay(t, t.get("done_at"), paid) if self.points is not None else None
             t.update(status="done", done_at=at, done_by=actor.id, snoozed_until=None)
-            pay_to = [actor.id if actor.id in ids else ids[0]]
+            pay_to = [actor.id if actor.id in ids or credit is not None else ids[0]]
+        if credit is not None and t["status"] == "done":
+            t["ticked_by"] = ticker.id                           # who pressed it, when not who did it
+        elif t["status"] == "done":
+            t.pop("ticked_by", None)
         award = None
         if self.points is not None:
             for i in pay_to:

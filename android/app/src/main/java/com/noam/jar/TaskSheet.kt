@@ -75,6 +75,26 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
     val edit = { onClose(); actions.edit(EditReq(t)) }
     val repeat = { onClose(); actions.edit(EditReq(t, repeat = true)) }
     val act = { a: String, until: String? -> actions.act(t, a, until); onClose() }
+    // Who really did it (#17): the admin gives them the credit. People on the task (not done yet) first, then
+    // the rest of the family; never me (my own tick is the Done button). An "each of them" task: only its people.
+    var picking by remember { mutableStateOf(false) }
+    val canCredit = data.admin && t.isOpen && !t.isIdea && !t.isMessage
+    val credit = remember(t, data.names) {
+        val left = t.owners().filter { it !in t.doneParts }
+        (if (t.eachMust()) left else (left + data.names.keys).distinct()).filter { it != data.me }
+    }
+    val doneForOther: () -> Unit = {
+        when {
+            t.owners().size == 1 -> { actions.doneBy(t, t.owners()[0]); onClose() }
+            t.eachMust() -> act("done", null)             // a parent who isn't on it ticks it for all of them
+            else -> picking = true                        // one of them is enough: which one did it?
+        }
+        Unit
+    }
+    if (picking) {
+        WhoDidIt(t, data, credit, onPick = { actions.doneBy(t, it); onClose() }, onBack = { picking = false })
+        return
+    }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -90,7 +110,7 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
         }
         if (jar.style == JarStyle.NIGHT) {
             if (open) SlideToFinish(onDone = { act("done", null) })
-            if (forOther) SlideToFinish(ctx.getString(R.string.ui_done_for, otherNames), onDone = { act("done", null) })
+            if (forOther) SlideToFinish(ctx.getString(R.string.ui_done_for, otherNames), onDone = doneForOther)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!open && (t.isDone || t.doneFor(data.me)))
                     OutlineAction(JarIcons.Undo, ctx.getString(R.string.action_reopen), Modifier.weight(1f)) { act("reopen", null) }
@@ -105,7 +125,7 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
                     BigAction(JarIcons.Check, ctx.getString(R.string.action_done), true, Modifier.weight(1f)) { act("done", null) }
                     BigAction(JarIcons.Clock, ctx.getString(R.string.ui_action_later), false, Modifier.weight(1f)) { act("snooze", TaskLists.inAnHour(now, tz)) }
                 } else if (forOther) {
-                    BigAction(JarIcons.Check, ctx.getString(R.string.ui_done_for, otherNames), true, Modifier.weight(2f)) { act("done", null) }
+                    BigAction(JarIcons.Check, ctx.getString(R.string.ui_done_for, otherNames), true, Modifier.weight(2f), doneForOther)
                 } else if (t.isDone || t.doneFor(data.me)) {
                     BigAction(JarIcons.Undo, ctx.getString(R.string.action_reopen), true, Modifier.weight(1f)) { act("reopen", null) }
                 }
@@ -113,6 +133,10 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
                 if (editable) BigAction(JarIcons.Edit, ctx.getString(R.string.ui_edit), false, Modifier.weight(1f), edit)
             }
         }
+        if (canCredit && credit.isNotEmpty())
+            Text(stringResource(R.string.ui_done_by_other), color = c.accent, fontSize = 15.sp, fontFamily = jar.font,
+                modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) { picking = true }
+                    .padding(vertical = 6.dp).testTag("done_by_other"))
         if (open) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SheetChip(ctx.getString(R.string.snooze_hour)) { act("snooze", TaskLists.inAnHour(now, tz)) }
@@ -125,6 +149,23 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
         else Text(stringResource(R.string.ui_open_in_classic), color = c.muted, fontSize = 14.sp, fontFamily = jar.font,
             modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) { more = true }
                 .padding(vertical = 8.dp).testTag("all_actions"))
+    }
+}
+
+/** "Who did it?": a parent picks whoever really did the task; it's done, and the credit and coins are theirs. */
+@Composable
+private fun WhoDidIt(t: Task, data: HomeData, people: List<String>, onPick: (String) -> Unit, onBack: () -> Unit) {
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp)
+        .testTag("who_did_it"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SheetTitle(stringResource(R.string.ui_who_did_it), t.title)
+        Muted(stringResource(R.string.ui_who_did_it_sub))
+        Column {
+            for (id in people) {
+                val name = TaskLists.name(data.names, id)
+                ActionRow(JarIcons.Check, if (t.isFor(id)) name else stringResource(R.string.ui_not_on_task, name), tag = "credit_$id") { onPick(id) }
+            }
+        }
+        SideButton(stringResource(R.string.ui_back), onClick = onBack)
     }
 }
 

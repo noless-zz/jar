@@ -50,8 +50,13 @@ public final class TaskReceiver extends BroadcastReceiver {
 
     /** A change made on this phone: shown at once, sent to the PC now or when it's reachable. */
     static void apply(Context c, String taskId, String action, String until) {
+        apply(c, taskId, action, until, null);
+    }
+
+    /** {@code as}: a parent ticks it for whoever really did it (they get the coins). */
+    static void apply(Context c, String taskId, String action, String until, String as) {
         TaskCache cache = new TaskCache(c);
-        cache.queue(taskId, action, until);
+        cache.queue(taskId, action, until, as);
         TaskNotify.cancel(c, taskId);
         TaskNotify.scheduleReminders(c);
         Jar.notifyState(c);
