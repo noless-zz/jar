@@ -4,6 +4,7 @@ One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
 
+1.12.0 | הורה יכול לסמן משימה כבוצעה עבור מי שעשה אותה ושכח לסמן ('מישהו אחר עשה את זה…'), והקרדיט והמטבעות הולכים אליו; ובסגנון לילה חזר כפתור 'עריכה' | A parent can tick a task for whoever did it and forgot ('Someone else did it…'): the credit and coins go to them; and the Night style's task sheet has an Edit button again
 1.11.3 | בעברית, החלקה לסיום והחלקת משימה ברשימה הולכות עם האצבע; הקלטות עולות מהר יותר אחרי בעיית רשת ו'Jar עובד על זה…' מופיע עד שהתמלול מוכן | In Hebrew, slide-to-finish and swiping a task follow the finger; memos upload sooner after a network hiccup, and 'Jar is working on it…' shows until the transcript is ready
 1.11.2 | אפשר למחוק הקלטה שלמה וכל מה שנוצר ממנה (משימות, הערות, אירועים, קניות וההקלטה עצמה), גם הקלטה בלי דיבור; ו'כל השינויים' מראה כל גרסה מאז שלך | Delete a whole memo and everything it made (tasks, notes, events, shopping and the recording), also one with no speech; and 'All changes' shows every version since yours
 1.11.1 | משימות חוזרות שהגדרת לא מופיעות ב'ביקשתי'; בלי פס 'Jar שמע'; עדכון חדש מופיע מיד כשחוזרים לרשימה; נעם יכול לסמן משימה כבוצעה עבור מישהו אחר | Recurring chores you set up no longer show under 'I asked'; no 'Jar heard' bar; a new update shows as soon as you return to the list; Noam can tick a task done for someone else
