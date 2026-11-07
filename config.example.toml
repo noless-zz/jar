@@ -111,3 +111,8 @@ idea_coins = 20
 idea_shipped_bonus = 10
 idea_credits_per_week = 3   # accepted ideas that pay, per person per week
 idea_credit_parents = false # the other parent's ideas earn too?
+
+# ---- Home status board (optional): a read-only GET /v1/monitor for a status screen elsewhere in the house.
+# Off until a key is set. Make it long and random; it only reveals versions and health, never memos.
+# [monitor]
+# key = "a-long-random-string"
