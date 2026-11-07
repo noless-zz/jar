@@ -1,6 +1,8 @@
 # Installs the app on Android emulators and runs the tests in android/app/src/androidTest
 # (the task screen: done sections, archive, parents-only settings; the app starts at all).
-# Screenshots of every screen are attached to the run (Summary -> Artifacts).
+# Screenshots of every screen are attached to the run (Summary -> Artifacts), and when the run
+# belongs to a pull request they are also shown in a comment on that PR (one comment, updated
+# on every run; the pictures live on the ci-screenshots branch).
 # Runs on Android changes, and before every release (android-release.yml calls it and only
 # publishes when it passes).
 name: Android emulator tests
@@ -89,3 +91,101 @@ jobs:
         with:
           name: test-report-api-${{ matrix.api-level }}
           path: android/app/build/reports/androidTests/
+
+  # Shows the screenshots in the PR: one comment per PR, updated on every run, pass or fail.
+  # The images are shrunk and kept on the ci-screenshots branch (one squashed commit, latest run
+  # per PR, the 30 newest PRs), so raw.githubusercontent.com can serve them to the comment.
+  pr-screenshots:
+    needs: emulator
+    if: always() && needs.emulator.result != 'skipped' && needs.emulator.result != 'cancelled'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RESULT: ${{ needs.emulator.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Find the pull request
+        id: pr
+        run: |
+          N="${{ github.event.pull_request.number }}"
+          if [ -n "$N" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "$REPO" ]; then
+            echo "::notice::PR from a fork: no comment (the token can't write there)"; exit 0
+          fi
+          if [ -z "$N" ]; then
+            # a push or a manual run: the open PR whose head is this commit (none for a release push)
+            N="$(gh api "repos/$REPO/commits/${{ github.sha }}/pulls" -q '[.[] | select(.state=="open")][0].number // empty' || true)"
+          fi
+          echo "number=$N" >> "$GITHUB_OUTPUT"
+          [ -n "$N" ] || echo "::notice::No open pull request for this run; screenshots stay in the artifacts."
+
+      - uses: actions/download-artifact@v4
+        if: steps.pr.outputs.number != ''
+        with:
+          pattern: screenshots-api-*
+          path: shots
+
+      - name: Store the screenshots and comment
+        if: steps.pr.outputs.number != ''
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          DIR="pr-$PR/${{ github.run_id }}"
+          git init -q pub && cd pub
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git fetch -q --depth 1 origin ci-screenshots && git checkout -q FETCH_HEAD || true
+          # keep one run per PR and only the 30 newest PRs
+          rm -rf "pr-$PR"
+          { ls -d pr-* 2>/dev/null || true; } | sed 's/pr-//' | sort -n | head -n -29 | sed 's/^/pr-/' | xargs -r rm -rf || true
+          IM="$(command -v magick || command -v convert || true)"
+          for d in ../shots/*/api-*; do
+            [ -d "$d" ] || continue
+            api="$(basename "$d")"; mkdir -p "$DIR/$api"
+            for f in "$d"/*.png; do
+              [ -f "$f" ] || continue
+              out="$DIR/$api/$(basename "${f%.png}").jpg"
+              if [ -n "$IM" ]; then "$IM" "$f" -resize 360x -quality 80 "$out"; else cp "$f" "$DIR/$api/"; fi
+            done
+          done
+          if [ ! -d "$DIR" ]; then echo "::notice::No screenshots to show"; exit 0; fi
+          git checkout -q --orphan fresh
+          git add -A
+          git commit -q -m "Screenshots: PR #$PR, run ${{ github.run_id }}"
+          git push -q -f origin fresh:ci-screenshots
+          BASE="https://raw.githubusercontent.com/$REPO/ci-screenshots/$DIR"
+
+          case "$RESULT" in success) STATUS="✅ Emulator tests passed";; *) STATUS="❌ Emulator tests failed";; esac
+          {
+            echo "<!-- jar-screenshots -->"
+            echo "### 📱 Emulator screenshots"
+            echo "$STATUS for ${SHA:0:7} · [run]($RUN_URL)"
+            for api in $(ls "$DIR" | sort -t- -k2 -nr); do
+              n="$(ls "$DIR/$api" | wc -l)"
+              if [ "$api" = "$(ls "$DIR" | sort -t- -k2 -nr | head -1)" ]; then echo "<details open>"; else echo "<details>"; fi
+              echo "<summary><b>${api/api-/Android API }</b> ($n)</summary>"
+              echo
+              echo "<table><tr>"
+              i=0
+              for f in $(ls "$DIR/$api" | sort); do
+                name="${f%.*}"
+                echo "<td align=\"center\"><img src=\"$BASE/$api/$f\" width=\"180\"><br><sub>$name</sub></td>"
+                i=$((i+1)); [ $((i % 4)) -eq 0 ] && echo "</tr><tr>"
+              done
+              echo "</tr></table>"
+              echo "</details>"
+            done
+          } > ../comment.md
+          cd ..
+          ID="$(gh api "repos/$REPO/issues/$PR/comments" --paginate -q '.[] | select(.body | startswith("<!-- jar-screenshots -->")) | .id' | tail -1)"
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$ID" -F body=@comment.md -q .html_url
+          else
+            gh api "repos/$REPO/issues/$PR/comments" -F body=@comment.md -q .html_url
+          fi
