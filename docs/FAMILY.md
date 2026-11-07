@@ -14,6 +14,10 @@ Each family member gets the **Jar app** on their Android phone, signed in as the
   A parent who isn't on the task can tick it for everyone. Everyone on a shared task sees it in **Mine**; parents
   see shared kids' tasks under **👥 Shared** in the Family tab. Server fields: `assignees`, `mode` (`any`/`all`),
   `done_parts`; `assignee` stays the first person so older apps keep working.
+- **Someone did it and forgot to tick it:** the admin opens the task → **Done for …**, or **Someone else did it…** to
+  pick who really did it (also on the admin's own tasks, and someone who wasn't on the task). It's done, and the credit
+  and coins are theirs; on an "each of them" task only that person's part is ticked. API: `done` with `{"as": "<id>"}`
+  from a parent; the task keeps `done_by` = that person and `ticked_by` = the parent.
 
 ## Who sees what
 

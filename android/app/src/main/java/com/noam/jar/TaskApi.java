@@ -251,9 +251,16 @@ public final class TaskApi {
     /** {@code atMillis} > 0: when the change was made on the phone (an offline tick is paid at that time). */
     public static JSONObject act(Prefs prefs, String taskId, String action, String until, long atMillis)
             throws IOException {
+        return act(prefs, taskId, action, until, atMillis, null);
+    }
+
+    /** {@code as}: a parent ticks it for whoever really did it; they get the credit and the coins. */
+    public static JSONObject act(Prefs prefs, String taskId, String action, String until, long atMillis, String as)
+            throws IOException {
         JSONObject body = new JSONObject();
         try {
             if (until != null) body.put("until", until);
+            if (as != null && !as.isEmpty()) body.put("as", as);
             if (atMillis > 0) body.put("at", atMillis / 1000.0);
         } catch (JSONException e) {
             throw new IOException(e);

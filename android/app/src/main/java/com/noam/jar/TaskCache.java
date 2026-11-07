@@ -217,8 +217,10 @@ public final class TaskCache {
         switch (a.optString("action")) {
             case "done":
                 if (t.eachMust()) {
-                    // My part only (a parent who isn't one of them ticks it for everyone).
-                    if (t.isFor(me)) t.doneParts.add(me);
+                    // My part only (a parent who isn't one of them ticks it for everyone, or for the one named).
+                    String as = a.optString("as", "");
+                    if (!as.isEmpty()) t.doneParts.add(as);
+                    else if (t.isFor(me)) t.doneParts.add(me);
                     else t.doneParts.addAll(t.owners());
                     if (!t.doneParts.containsAll(t.owners())) break;
                 }
@@ -253,11 +255,17 @@ public final class TaskCache {
     // ---------------------------------------------------------------- offline queue
 
     public synchronized void queue(String taskId, String action, String until) {
+        queue(taskId, action, until, null);
+    }
+
+    /** {@code as}: ticked for whoever really did it (a parent giving them the credit). */
+    public synchronized void queue(String taskId, String action, String until, String as) {
         JSONArray arr = pending();
         try {
             JSONObject a = new JSONObject().put("id", taskId).put("action", action)
                     .put("at", System.currentTimeMillis());          // when it was ticked: offline ticks pay at this time
             if (until != null) a.put("until", until);
+            if (as != null && !as.isEmpty()) a.put("as", as);
             arr.put(a);
         } catch (JSONException ignored) {
             return;

@@ -224,6 +224,11 @@ class HomeActivity : ComponentActivity() {
             }
         }
 
+        override fun doneBy(t: Task, person: String) {
+            TaskReceiver.apply(this@HomeActivity, t.id, "done", null, person)
+            toast(getString(R.string.ui_done_for_toast, TaskLists.name(TaskCache(this@HomeActivity).names(), person)))
+        }
+
         override fun undo(m: DoneMoment) {
             TaskReceiver.apply(this@HomeActivity, m.task.id, "reopen", null)
             moment.value = null
@@ -367,6 +372,8 @@ data class DoneMoment(val task: Task, val coins: Int, val leftToday: Int, val we
 
 interface HomeActions {
     fun act(t: Task, action: String, until: String? = null)
+    /** A parent ticks [t] for [person], who really did it: done, and the coins are theirs. */
+    fun doneBy(t: Task, person: String)
     fun undo(m: DoneMoment)
     fun dismissMoment()
     fun classic(tab: Int, extras: (Intent) -> Unit = {})
