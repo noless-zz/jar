@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 import java.util.TimeZone
 import kotlin.math.roundToInt
 
-/** A task's sheet. Calm and Playful: a grid of big buttons. Night: slide to finish and three outlined buttons. */
+/** A task's sheet. Calm and Playful: a grid of big buttons. Night: slide to finish and outlined buttons (Repeat, Edit, Ask). */
 @Composable
 fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
     val jar = LocalJar.current
@@ -94,11 +94,9 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!open && (t.isDone || t.doneFor(data.me)))
                     OutlineAction(JarIcons.Undo, ctx.getString(R.string.action_reopen), Modifier.weight(1f)) { act("reopen", null) }
-                if (open) OutlineAction(JarIcons.Clock, ctx.getString(R.string.ui_action_later), Modifier.weight(1f)) {
-                    act("snooze", TaskLists.inAnHour(now, tz))
-                }
+                // No "Later" here: the "snooze 1 hour" chip below does the same and keeps room for Edit.
                 if (repeatable) OutlineAction(JarIcons.Repeat, ctx.getString(R.string.ui_repeat), Modifier.weight(1f), repeat)
-                else if (editable) OutlineAction(JarIcons.Edit, ctx.getString(R.string.ui_edit), Modifier.weight(1f), edit)
+                if (editable) OutlineAction(JarIcons.Edit, ctx.getString(R.string.ui_edit), Modifier.weight(1f).testTag("sheet_edit"), edit)
                 OutlineAction(JarIcons.Chat, ctx.getString(R.string.ui_ask), Modifier.weight(1f)) { onClose(); actions.thread(t) }
             }
         } else {
