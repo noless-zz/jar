@@ -144,16 +144,19 @@ jobs:
           # keep one run per PR and only the 30 newest PRs
           rm -rf "pr-$PR"
           { ls -d pr-* 2>/dev/null || true; } | sed 's/pr-//' | sort -n | head -n -29 | sed 's/^/pr-/' | xargs -r rm -rf || true
-          IM="$(command -v magick || command -v convert || true)"
-          for d in ../shots/*/api-*; do
-            [ -d "$d" ] || continue
-            api="$(basename "$d")"; mkdir -p "$DIR/$api"
-            for f in "$d"/*.png; do
-              [ -f "$f" ] || continue
-              out="$DIR/$api/$(basename "${f%.png}").jpg"
-              if [ -n "$IM" ]; then "$IM" "$f" -resize 360x -quality 80 "$out"; else cp "$f" "$DIR/$api/"; fi
-            done
-          done
+          # shrink to 360 px wide JPEG (~25 KB each instead of ~140 KB PNG)
+          pip install -q --break-system-packages pillow
+          python3 - "$DIR" <<'PY'
+          import pathlib, sys
+          from PIL import Image
+          out = pathlib.Path(sys.argv[1])
+          for f in sorted(pathlib.Path("../shots").glob("*/api-*/*.png")):
+              d = out / f.parent.name
+              d.mkdir(parents=True, exist_ok=True)
+              im = Image.open(f).convert("RGB")
+              im.thumbnail((360, 10000))
+              im.save(d / (f.stem + ".jpg"), quality=80, optimize=True)
+          PY
           if [ ! -d "$DIR" ]; then echo "::notice::No screenshots to show"; exit 0; fi
           git checkout -q --orphan fresh
           git add -A
