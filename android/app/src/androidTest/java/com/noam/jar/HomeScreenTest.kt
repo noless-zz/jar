@@ -127,6 +127,17 @@ class HomeScreenTest {
     }
 
     @Test
+    fun night_sheet_hasEdit() {                                             // issue #15: Edit was hidden whenever Repeat showed
+        launch(JarStyle.NIGHT, JarMode.DARK, 1)
+        compose.onNodeWithText("Buy milk").performClick()
+        compose.onNodeWithTag("sheet_edit").assertExists()
+        shot("19b-night-sheet-edit")
+        compose.onNodeWithTag("sheet_edit").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("edit_sheet").assertExists()
+    }
+
+    @Test
     fun night_light_keepsTheNightLayout() {
         launch(JarStyle.NIGHT, JarMode.LIGHT, 4)
         compose.onNodeWithTag("night_count").assertExists()
