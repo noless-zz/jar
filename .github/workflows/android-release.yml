@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write   # the emulator workflow comments screenshots on a PR when the run has one
 
 jobs:
   # The app must pass the emulator tests (Android 10 and 14) before anything is published.
