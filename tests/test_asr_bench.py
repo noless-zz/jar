@@ -111,6 +111,82 @@ class Run(unittest.TestCase):
         self.assertIn("ASR bench: 3 memos (1 hand-corrected)", md)
         self.assertIn("ivrit-gentle", rep["recommendation"])
 
+    def test_gemini_reference(self):
+        """Gemini fills the reference for uncorrected memos, is cached, and is scored on the corrected one."""
+        heard = {"base": {"aaa": "לקנות חלב", "bbb": "לקפל", "ccc": "תזכורת לרופא"},
+                 "ivrit-large": {"aaa": "לקנות חלב ולחם", "bbb": "משהו אחר", "ccc": "משהו אחר"}}
+        gemini = {"aaa": "לקנות חלב ולחם", "bbb": "לקפל כביסה", "ccc": "תזכורת לרופא"}
+        calls = []
+
+        def post(url, headers, body):
+            calls.append(body)
+            self.assertIn("gemini-3.5-transcribe", url)
+            self.assertNotIn("key=", url)                                    # key in the header, not the URL
+            self.assertIn("audioTranscriptionConfig", body["generationConfig"])
+            self.assertIn("אלונה", body["generationConfig"]["audioTranscriptionConfig"]["customVocabulary"])
+            mid = next(k for k in gemini if k not in [c.get("_done") for c in calls[:-1]])
+            calls[-1]["_done"] = mid
+            return 200, {"candidates": [{"content": {"parts": [{"text": gemini[mid]}]}}]}
+
+        class Fake:
+            def __init__(self, c):
+                self.c = c
+
+            def transcribe(self, wav):
+                return SimpleNamespace(text=heard[self.c.key][wav.stem])
+
+            def close(self):
+                pass
+        (self.tmp / "data" / "secrets").mkdir(parents=True)
+        (self.tmp / "data" / "secrets" / "gemini_key.txt").write_text("k\n", encoding="utf-8")
+        cfg = SimpleNamespace(data_dir=self.tmp / "data", family=FAMILY, token="t", contacts=None, vocabulary="")
+        B.MIN_WORDS = 4                         # too few corrected words (3) to decide; Gemini's 4 are enough
+        rep = B.run(cfg, keys=["base"], make=lambda c, cfg: Fake(c), cloud_post=post)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(rep["cloud"]["refs"], 2)                             # bbb + ccc; aaa has a human ref
+        self.assertEqual(rep["cloud"]["vs_human"]["wer"], 0)                  # Gemini matched the corrected memo
+        s = rep["summary"]
+        self.assertAlmostEqual(s["base"]["cloud"]["del"], 1 / 4)              # dropped "כביסה"
+        self.assertEqual(s["ivrit-large"]["cloud"]["words"], 4)               # scored too, not the reference now
+        self.assertEqual(s["base"]["auto"].get("words", 0), 0)
+        self.assertTrue(rep["recommendation"].startswith("base"))
+        self.assertIn("Gemini", rep["recommendation"])
+        md = (self.tmp / "data" / "eval" / "asr" / "report.md").read_text(encoding="utf-8")
+        self.assertIn("**Gemini:** לקפל כביסה", md)
+        B.run(cfg, keys=["base"], make=lambda c, cfg: Fake(c), cloud_post=post)
+        self.assertEqual(len(calls), 3)                                       # second run: all from the cache
+
+    def test_gemini_bad_key_stops_early(self):
+        (self.tmp / "data" / "secrets").mkdir(parents=True)
+        (self.tmp / "data" / "secrets" / "gemini_key.txt").write_text("bad", encoding="utf-8")
+        calls = []
+
+        def post(url, headers, body):
+            calls.append(1)
+            return 400, {"error": {"message": "API key not valid"}}
+        from worker import cloud_ref
+        memos = B.select(self.tmp / "data" / "memos", self.fam)
+        cfg = SimpleNamespace(data_dir=self.tmp / "data", vocabulary="")
+        st = cloud_ref.references(memos, cfg, self.fam, self.tmp / "out", post=post)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("API key not valid", st["error"])
+        self.assertFalse(any(m.cloud_ref for m in memos))
+
+
+class CloudParsing(unittest.TestCase):
+    def test_text_from_shapes(self):
+        from worker.cloud_ref import text_from
+        self.assertEqual(text_from({"candidates": [{"content": {"parts": [{"text": " שלום "}]}}]}), "שלום")
+        self.assertEqual(text_from({"candidates": [{"content": {"parts": [
+            {"audioTranscription": {"words": [{"word": "לקנות"}, {"word": "חלב"}]}}]}}]}), "לקנות חלב")
+        self.assertEqual(text_from({}), "")
+
+    def test_general_model_gets_a_prompt(self):
+        from worker.cloud_ref import body_for
+        b = body_for(b"RIFF", "gemini-3.8-flash", ["נועם"])
+        self.assertIn("נועם", b["contents"][0]["parts"][0]["text"])
+        self.assertEqual(b["contents"][0]["parts"][1]["inlineData"]["mimeType"], "audio/wav")
+
 
 if __name__ == "__main__":
     unittest.main()

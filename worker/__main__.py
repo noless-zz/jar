@@ -397,7 +397,8 @@ class Worker:
         self.transcriber.close()                     # free the GPU; it loads again for the next memo
         try:
             rep = asr_bench.run(self.cfg, limit=int(args.get("limit", 40)), person=str(args.get("person", "")),
-                                keys=args.get("candidates"))
+                                keys=args.get("candidates"), cloud=args.get("cloud"),
+                                cloud_model=str(args.get("cloud_model", "")))
             log.info("ASR bench done in %s s: %s (data/eval/asr/report.md)", rep["seconds"], rep["recommendation"])
         except Exception:  # noqa: BLE001
             log.exception("ASR bench failed")

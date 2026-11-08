@@ -31,6 +31,16 @@
 - **Status board:** `GET /v1/monitor` (header `X-Monitor-Key`, key from `config.toml` `[monitor] key`) gives a
   read-only health summary for a screen elsewhere in the house. Off without a key; no memo text, names or URLs.
 
+## Speech-model bench (`worker/asr_bench.py`)
+- Compares local Whisper models on the family's real memos. Trigger: write `data/eval/asr-run` (optional JSON,
+  e.g. `{"limit": 80}`), or `python -m worker.asr_bench '{"limit": 80}'`. Report: `data/eval/asr/report.md` (private).
+- References, best first: a transcript a family member corrected in My memos → **Gemini** (if set up) → the slow
+  ivrit large-v3 model. The report also scores Gemini against the corrected memos, so you can see how far to trust it.
+- **Gemini reference (optional, bench only):** put a Gemini API key in `data/secrets/gemini_key.txt`. Use a key from a
+  Google Cloud project **with billing linked**: on the free tier Google may use the audio to improve its products.
+  Each memo is sent once (inline, no file upload) and cached in `data/eval/asr/cloud/`; the whole set costs a few
+  cents. `"cloud": false` in the trigger skips it; `"cloud_model": "…"` picks another model. Production never calls it.
+
 ## Hard-won lessons
 - Prompt + tool schemas must stay well under `num_ctx` (12288): past it Ollama silently drops the memo.
   `tests/test_worker.py::ContextBudget` guards this. Never quote AI-test memos as prompt examples — the 9B
