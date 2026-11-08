@@ -1,11 +1,13 @@
 """ASR bench: compares Whisper models and settings on the family's REAL memos (read-only).
 
     python -m worker.asr_bench                 (or: write data/eval/asr-run; the worker runs it while idle)
-    data/eval/asr-run may hold JSON: {"limit": 40, "person": "alona", "candidates": ["base", "ivrit-gentle"]}
+    data/eval/asr-run may hold JSON: {"limit": 40, "person": "alona", "candidates": ["base", "ivrit-gentle"],
+                                      "cloud": true, "cloud_model": "gemini-3.5-transcribe"}
 
-Per memo the reference is the human-corrected transcript when the memo was fixed in the dashboard
-("edited"), else the slow ivrit large-v3 output (labelled "auto, not human"; only the human group is
-trustworthy). Metrics: WER, CER, deletion rate (dropped words: the complaint) and RTF (seconds of work per
+Per memo the reference is, in this order: the human-corrected transcript when the memo was fixed in the
+dashboard ("edited"); else Gemini's transcript when a Gemini key is set up (worker/cloud_ref.py, opt-in, cached,
+"cloud"); else the slow ivrit large-v3 output ("auto", not human). Only the human group is fully trustworthy; the
+report also scores Gemini itself on the hand-corrected memos, to show how far the cloud reference can be trusted. Metrics: WER, CER, deletion rate (dropped words: the complaint) and RTF (seconds of work per
 second of audio), overall and per person. Writes data/eval/asr/report.md + report.json — private (data/ is
 gitignored): they contain the family's transcripts.
 """
@@ -121,6 +123,7 @@ class Memo:
     recorded_at: str
     human_ref: str = ""          # the dashboard-corrected transcript, when there is one
     production: str = ""         # what Jar actually heard
+    cloud_ref: str = ""          # Gemini's transcript (cloud_ref.py), when the bench asked for one
     audio_s: float = 0.0
     hyps: dict = field(default_factory=dict)      # candidate key -> {"text", "seconds"}
 
@@ -175,8 +178,9 @@ def free_llm(ollama_url: str, model: str) -> None:
 
 
 def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = None, out_dir: Path | None = None,
-        make=None) -> dict:
-    """make(candidate, cfg) -> an object with transcribe(wav) -> .text and close(); default: Transcriber."""
+        make=None, cloud: bool | None = None, cloud_model: str = "", cloud_post=None) -> dict:
+    """make(candidate, cfg) -> an object with transcribe(wav) -> .text and close(); default: Transcriber.
+    cloud: None = use Gemini references when a key is set up, False = never, True = report it when it can't."""
     from . import config as config_mod
     from .family import Family
     cfg = cfg or config_mod.load()
@@ -185,6 +189,15 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
     fam = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
     memos = select(cfg.data_dir / "memos", fam, limit, person)
     cands = [c for c in CANDIDATES if not keys or c.key in keys or c.key == REFERENCE]
+    cloud_status = None
+    if cloud is not False:
+        from . import cloud_ref
+        cloud_status = cloud_ref.references(memos, cfg, fam, out_dir, cloud_model or cloud_ref.DEFAULT_MODEL,
+                                            post=cloud_post)
+        if cloud is None and cloud_status["error"].startswith("no key"):
+            cloud_status = None
+        else:
+            log.info("ASR bench: Gemini references %s", cloud_status)
     if make is None:
         free_llm(cfg.ollama_url, cfg.llm_model)
 
@@ -216,17 +229,26 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
                 tr.close()
             except Exception:  # noqa: BLE001
                 pass
-    report = build_report(memos, cands, fam, errors, round(time.monotonic() - t_all))
+    report = build_report(memos, cands, fam, errors, round(time.monotonic() - t_all), cloud_status)
     (out_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     (out_dir / "report.md").write_text(render(report), encoding="utf-8")
     return report
 
 
-def build_report(memos: list[Memo], cands: list[Candidate], fam, errors: dict, seconds: int) -> dict:
+def reference(mm: Memo) -> tuple[str, str]:
+    if mm.human_ref:
+        return mm.human_ref, "human"
+    if mm.cloud_ref:
+        return mm.cloud_ref, "cloud"
+    return mm.hyps.get(REFERENCE, {}).get("text", ""), "auto"
+
+
+def build_report(memos: list[Memo], cands: list[Candidate], fam, errors: dict, seconds: int,
+                 cloud_status: dict | None = None) -> dict:
     name = lambda pid: (fam.get(pid).name if fam and fam.get(pid) else pid)  # noqa: E731
     rows: dict[str, list] = {c.key: [] for c in cands}
     for mm in memos:
-        ref, kind = (mm.human_ref, "human") if mm.human_ref else (mm.hyps.get(REFERENCE, {}).get("text", ""), "auto")
+        ref, kind = reference(mm)
         if not ref:
             continue
         for c in cands:
@@ -242,20 +264,27 @@ def build_report(memos: list[Memo], cands: list[Candidate], fam, errors: dict, s
         summary[c.key] = {
             "label": c.label, "error": errors.get(c.key),
             "human": aggregate([r for r in rs if r["kind"] == "human"]),
+            "cloud": aggregate([r for r in rs if r["kind"] == "cloud"]),
             "auto": aggregate([r for r in rs if r["kind"] == "auto"]),
             "people": {name(p): aggregate([r for r in rs if r["person"] == p]) for p in sorted({r["person"] for r in rs})},
             "rtf": aggregate([dict(r) for r in rs]).get("rtf"),
         }
+    # How good is the cloud reference itself? Gemini against the hand-corrected memos.
+    check = [dict(score(m.human_ref, m.cloud_ref), person=m.person) for m in memos if m.human_ref and m.cloud_ref]
+    cloud = None
+    if cloud_status is not None:
+        cloud = dict(cloud_status, refs=sum(1 for m in memos if m.cloud_ref and not m.human_ref),
+                     vs_human=aggregate(check))
     return {"memos": len(memos), "human_refs": sum(1 for m in memos if m.human_ref), "seconds": seconds,
-            "summary": summary, "recommendation": recommend(summary),
+            "cloud": cloud, "summary": summary, "recommendation": recommend(summary),
             "samples": [{"id": m.id, "person": name(m.person), "audio_s": round(m.audio_s, 1),
-                         "human_ref": m.human_ref, "production": m.production,
+                         "human_ref": m.human_ref, "cloud_ref": m.cloud_ref, "production": m.production,
                          "hyps": {k: v["text"] for k, v in m.hyps.items()}} for m in memos]}
 
 
 def recommend(summary: dict) -> str:
-    """Lowest WER on the human-corrected memos when there are enough of them, else lowest deletion rate on the
-    auto group (the reference itself is excluded there)."""
+    """Lowest WER on the human-corrected memos when there are enough of them, else lowest WER against Gemini,
+    else lowest deletion rate on the auto group (the reference itself is excluded there)."""
     def pick(group: str, metric: str, min_words: int):
         ok = [(v[group][metric], k) for k, v in summary.items()
               if v[group].get("words", 0) >= min_words and metric in v[group] and not v.get("error")
@@ -264,6 +293,10 @@ def recommend(summary: dict) -> str:
     best = pick("human", "wer", MIN_WORDS)
     if best:
         return f"{best[1]} ({summary[best[1]]['label']}): lowest WER on hand-corrected memos ({best[0]:.1%})"
+    best = pick("cloud", "wer", MIN_WORDS)
+    if best:
+        return (f"{best[1]} ({summary[best[1]]['label']}): lowest WER against Gemini's transcripts ({best[0]:.1%}) "
+                "— a strong reference but not a human one; check Gemini's own score on the corrected memos")
     best = pick("auto", "del", MIN_WORDS)
     if best:
         return (f"{best[1]} ({summary[best[1]]['label']}): fewest dropped words against the auto reference "
@@ -280,13 +313,23 @@ def render(r: dict) -> str:
     L = [f"# ASR bench: {r['memos']} memos ({r['human_refs']} hand-corrected), {r['seconds']} s", "",
          f"**Recommendation:** {r['recommendation']}", "",
          "WER = word error rate, Del = dropped words, CER = character errors, RTF = work seconds per audio second.",
-         "Human = against the dashboard-corrected text (trustworthy); auto = against ivrit large-v3 (not human).", "",
-         "| candidate | human WER | human Del | auto WER | auto Del | RTF |", "|---|---|---|---|---|---|"]
+         "Human = against the dashboard-corrected text (trustworthy); cloud = against Gemini (memos nobody corrected);",
+         "auto = against ivrit large-v3 (not human; only when there's no Gemini transcript).", ""]
+    c = r.get("cloud")
+    if c:
+        vh = c.get("vs_human") or {}
+        L += [f"**Gemini reference** ({c['model']}): {c['refs']} memos used it; {c['sent']} sent now, "
+              f"{c['cached']} from the cache, {c['failed']} failed" + (f" — {c['error']}" if c.get("error") else "") + ".",
+              f"Gemini on the hand-corrected memos: WER {_pct(vh.get('wer'))}, dropped {_pct(vh.get('del'))} "
+              f"({vh.get('words', 0)} words).", ""]
+    L += ["| candidate | human WER | human Del | cloud WER | cloud Del | auto WER | auto Del | RTF |",
+          "|---|---|---|---|---|---|---|---|"]
     for k, v in r["summary"].items():
-        h, a = v["human"], v["auto"]
+        h, cl, a = v["human"], v.get("cloud", {}), v["auto"]
         rtf = "—" if v.get("rtf") is None else f"{v['rtf']:.2f}"
         err = f" — ERROR {v['error']}" if v.get("error") else ""
         L.append(f"| {k}: {v['label']}{err} | {_pct(h.get('wer'))} ({h.get('words', 0)} w) | {_pct(h.get('del'))} | "
+                 f"{_pct(cl.get('wer'))} ({cl.get('words', 0)} w) | {_pct(cl.get('del'))} | "
                  f"{_pct(a.get('wer'))} ({a.get('words', 0)} w) | {_pct(a.get('del'))} | {rtf} |")
     L += ["", "## Per person (all memos, WER / dropped)", ""]
     people = sorted({p for v in r["summary"].values() for p in v["people"]})
@@ -300,6 +343,8 @@ def render(r: dict) -> str:
         L.append(f"### {s['person']} · {s['audio_s']} s · `{s['id'][:8]}`")
         if s["human_ref"]:
             L.append(f"- **corrected:** {s['human_ref']}")
+        if s.get("cloud_ref"):
+            L.append(f"- **Gemini:** {s['cloud_ref']}")
         L.append(f"- *Jar heard:* {s['production']}")
         for k, t in s["hyps"].items():
             L.append(f"- {k}: {t}")
@@ -310,7 +355,8 @@ def render(r: dict) -> str:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
-    rep = run(limit=int(args.get("limit", 40)), person=str(args.get("person", "")), keys=args.get("candidates"))
+    rep = run(limit=int(args.get("limit", 40)), person=str(args.get("person", "")), keys=args.get("candidates"),
+              cloud=args.get("cloud"), cloud_model=str(args.get("cloud_model", "")))
     print(rep["recommendation"])
 
 
