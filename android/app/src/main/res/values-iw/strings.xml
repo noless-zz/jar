@@ -600,4 +600,21 @@
     <string name="ui_split_each">בערך %1$d מטבעות לכל אחד</string>
     <string name="ui_done_together_toast">בוצע יחד: המטבעות מתחלקים בין %1$s</string>
     <string name="meta_done_together">בוצע יחד ע״י %1$s</string>
+    <!-- #26: תיקון מה ש-Jar שמע בלי לשלוח שוב; הורים בודקים את ההקלטות של הילדים -->
+    <string name="memo_fix_message">תקנו מה ש-Jar לא שמע נכון ושמרו את הטקסט: זה מלמד את Jar. כדי לתקן גם את מה שנוצר, שלחו שוב.</string>
+    <string name="memo_fix_kid">ההקלטה של %1$s: תקנו מה ש-Jar לא שמע נכון, או סמנו שזה נכון.</string>
+    <string name="memo_listen">האזנה</string>
+    <string name="memo_stop">עצירה</string>
+    <string name="memo_audio_failed">לא הצלחתי לנגן את ההקלטה (%1$s)</string>
+    <string name="memo_other_reading">מודל נוסף שמע: ״%1$s״</string>
+    <string name="memo_use_other">להשתמש בזה</string>
+    <string name="memo_save_text">שמירת הטקסט</string>
+    <string name="memo_correct">זה נכון</string>
+    <string name="memo_text_saved">נשמר. תודה שלימדת את Jar!</string>
+    <string name="memo_text_saved_coins">נשמר. תודה שלימדת את Jar! ‎+%1$d 🪙</string>
+    <string name="memo_marked_correct">סומן כנכון</string>
+    <string name="memo_checked">נבדק</string>
+    <string name="memos_review_open">הקלטות של הילדים לבדיקה (%1$d)</string>
+    <string name="memos_review_sub">האזינו, תקנו מה ש-Jar לא שמע נכון, או סמנו שזה נכון. כל בדיקה עוזרת ל-Jar להכיר את הקולות שלהם.</string>
+    <string name="memos_review_empty">הכול נבדק. כל הכבוד!</string>
 </resources>

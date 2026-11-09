@@ -12,6 +12,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -232,6 +234,59 @@ public final class TaskApi {
     /** Delete a memo and everything it made (tasks, notes, events, drafts, shopping items, the recording). */
     public static JSONObject deleteMemo(Prefs prefs, String memoId) throws IOException {
         return call(prefs, "POST", "/v1/memos/" + memoId + "/delete", new JSONObject());
+    }
+
+    /**
+     * Fix what Jar heard without filing the memo again (#26): transcript != null saves that text; null marks the
+     * text as correct. Either way the memo counts as checked. The reply may carry an "award" (coins for a fix).
+     */
+    public static JSONObject fixMemoText(Prefs prefs, String memoId, String transcript) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            if (transcript != null) body.put("transcript", transcript);
+            else body.put("correct", true);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        return call(prefs, "POST", "/v1/memos/" + memoId + "/text", body);
+    }
+
+    /** Parents: the kids' memos nobody has checked yet ({"memos": [...], "left": n}). */
+    public static JSONObject reviewMemos(Prefs prefs) throws IOException {
+        return call(prefs, "GET", "/v1/memos/review?limit=40", null);
+    }
+
+    /** The memo's recording, saved to [out] (to listen while fixing the text). */
+    public static void memoAudio(Prefs prefs, String memoId, File out) throws IOException {
+        IOException last = new IOException("no server address");
+        for (String url : ServerList.ordered(prefs.serverUrls(), prefs.lastGoodUrl())) {
+            HttpURLConnection http = null;
+            try {
+                http = (HttpURLConnection) new URL(url + "/v1/memos/" + memoId + "/audio").openConnection();
+                http.setConnectTimeout(4000);
+                http.setReadTimeout(20000);
+                http.setRequestProperty("Authorization", "Bearer " + prefs.token());
+                http.setRequestProperty("X-Device-Id", prefs.deviceId());
+                try {
+                    http.connect();
+                } catch (IOException e) {
+                    last = e;
+                    continue;
+                }
+                int code = http.getResponseCode();
+                if (code >= 400) throw new HttpError(code, read(http.getErrorStream()));
+                prefs.setLastGoodUrl(url);
+                try (InputStream in = http.getInputStream(); OutputStream os = new FileOutputStream(out)) {
+                    byte[] buf = new byte[16384];
+                    int n;
+                    while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                }
+                return;
+            } finally {
+                if (http != null) http.disconnect();
+            }
+        }
+        throw last;
     }
 
     public static JSONObject refile(Prefs prefs, String memoId, String transcript) throws IOException {

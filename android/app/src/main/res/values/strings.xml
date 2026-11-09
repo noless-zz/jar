@@ -592,4 +592,21 @@
     <string name="ui_split_each">About %1$d coins each</string>
     <string name="ui_done_together_toast">Done together: the coins are split between %1$s</string>
     <string name="meta_done_together">done together by %1$s</string>
+    <!-- #26: fix what Jar heard without filing again; parents check the kids' memos -->
+    <string name="memo_fix_message">Fix what Jar misheard and save the text: it teaches Jar. To also redo what it made, file it again.</string>
+    <string name="memo_fix_kid">%1$s\'s memo: fix what Jar misheard, or mark it correct.</string>
+    <string name="memo_listen">Listen</string>
+    <string name="memo_stop">Stop</string>
+    <string name="memo_audio_failed">Couldn\'t play the recording (%1$s)</string>
+    <string name="memo_other_reading">Another model heard: “%1$s”</string>
+    <string name="memo_use_other">Use it</string>
+    <string name="memo_save_text">Save the text</string>
+    <string name="memo_correct">It\'s correct</string>
+    <string name="memo_text_saved">Saved. Thanks for teaching Jar!</string>
+    <string name="memo_text_saved_coins">Saved. Thanks for teaching Jar! +%1$d 🪙</string>
+    <string name="memo_marked_correct">Marked as correct</string>
+    <string name="memo_checked">checked</string>
+    <string name="memos_review_open">Kids\' memos to check (%1$d)</string>
+    <string name="memos_review_sub">Listen, fix what Jar misheard, or mark it correct. Every check helps Jar learn their voices.</string>
+    <string name="memos_review_empty">All checked. Nice!</string>
 </resources>
