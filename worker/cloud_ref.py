@@ -4,7 +4,8 @@ than another local model while there are few hand-corrected memos.
 Opt-in and bench-only: production transcription never calls this. It runs only when a key file exists:
     data/secrets/gemini_key.txt      (or the GEMINI_API_KEY environment variable)
 Use a key from a Google Cloud project WITH BILLING LINKED (paid tier). On the free tier Google may use the audio
-and transcripts to improve its products and human reviewers may read them, which is wrong for the kids' memos.
+and transcripts to improve its products and human reviewers may read them, which is wrong for the kids' memos; it
+also allows only 25 transcriptions a day (the cache keeps them, so a next-day run continues where it stopped).
 
 Audio is sent inline in the request (no Files API, nothing stored as a file at Google). Each memo is sent once:
 the result is cached in data/eval/asr/cloud/<memo id>.json (private, data/ is gitignored), so re-running the bench
@@ -92,6 +93,12 @@ class GeminiError(RuntimeError):
     pass
 
 
+def _daily_limit(resp) -> bool:
+    """A 429 for a per-day quota (the free tier allows 25 transcriptions a day), not a short burst limit."""
+    msg = json.dumps(resp or {}).lower()
+    return "per day" in msg or "perday" in msg or "free_tier_requests" in msg
+
+
 def transcribe(wav: Path, key: str, model: str = DEFAULT_MODEL, vocab: list[str] | None = None,
                post=None, raw_out: Path | None = None) -> str:
     """One memo → its transcript. post(url, headers, json) -> (status, dict) is injectable for tests."""
@@ -112,6 +119,8 @@ def transcribe(wav: Path, key: str, model: str = DEFAULT_MODEL, vocab: list[str]
     body = body_for(data, model, vocab or [])
     for attempt in range(4):
         status, resp = post(url, headers, body)
+        if status == 429 and _daily_limit(resp):
+            break                        # waiting seconds won't help: the quota resets tomorrow
         if status in (429, 500, 502, 503, 504) and attempt < 3:
             time.sleep(5 * (attempt + 1))
             continue
@@ -157,8 +166,8 @@ def references(memos, cfg, family, out_dir: Path, model: str = DEFAULT_MODEL, po
             status["failed"] += 1
             status["error"] = f"{type(e).__name__}: {e}"
             log.warning("Gemini reference failed for %s: %s", mm.id, e)
-            if "HTTP 4" in str(e) and "429" not in str(e):
-                break                    # bad key / model / request: every memo would fail the same way
+            if ("HTTP 4" in str(e) and "429" not in str(e)) or _daily_limit({"m": str(e)}):
+                break                    # bad key / request, or today's quota is used up: the rest would fail too
             continue
         mm.cloud_ref = text
         status["sent"] += 1
