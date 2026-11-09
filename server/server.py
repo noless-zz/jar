@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Body, FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from worker import effort, memo_items
 from worker.family import Family, Person
@@ -787,11 +787,101 @@ def my_memos(request: Request, limit: int = 30, authorization: str | None = Head
         if _mine(m, p) and m.get("status") != "deleting":
             acts = m.get("actions") or []
             out.append({k: m.get(k) for k in ("id", "recorded_at", "duration_ms", "status", "transcript",
-                                               "summary", "edited", "error")}
+                                               "summary", "edited", "checked", "error")}
                        | {"actions": [a.get("summary", "") if isinstance(a, dict) else str(a) for a in acts],
-                          "items": memo_items.items(acts)})
+                          "items": memo_items.items(acts), "shadow": _shadow_text(m)})
     out.sort(key=lambda x: x.get("recorded_at") or "", reverse=True)
     return {"memos": out[:max(1, min(limit, 200))]}
+
+
+def _shadow_text(m: dict) -> str | None:
+    """The second model's reading (worker/shadow.py), only when it differs: a hint while fixing the text."""
+    t = ((m.get("shadow") or {}).get("text") or "").strip()
+    return t if t and t != (m.get("original_transcript") or m.get("transcript") or "").strip() else None
+
+
+def _may_fix(m: dict, p: Person) -> bool:
+    """Your own memo, or (a parent) a child's: the kids' memos are the ones Jar mishears most."""
+    owner = FAMILY.get(m.get("person") or FAMILY.admin.id)
+    return owner is not None and (owner.id == p.id or (p.is_parent and not owner.is_parent))
+
+
+def _memo(memo_id: str) -> tuple[Path, dict]:
+    if not ID_RE.match(memo_id):
+        raise HTTPException(400, "bad memo id")
+    for meta_path in DATA_DIR.glob(f"*/{memo_id}.json"):
+        return meta_path, json.loads(meta_path.read_text(encoding="utf-8"))
+    raise HTTPException(404, "no such memo")
+
+
+@app.get("/v1/memos/review")
+def memos_to_review(request: Request, limit: int = 30, authorization: str | None = Header(None),
+                    x_device_id: str = Header("")):
+    """Parents: the kids' memos nobody has checked yet, newest first, to listen to and fix (#26)."""
+    p = check_auth(authorization, request, x_device_id)
+    if not p.is_parent:
+        raise HTTPException(403, "reviewing memos is for the grown-ups")
+    out = []
+    for meta_path in DATA_DIR.glob("*/*.json"):
+        try:
+            m = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        owner = FAMILY.get(m.get("person") or "")
+        if owner is None or owner.is_parent or m.get("checked") or m.get("status") not in ("done", "failed") \
+                or not meta_path.with_suffix(".wav").exists():
+            continue
+        out.append({k: m.get(k) for k in ("id", "recorded_at", "duration_ms", "status", "transcript", "edited")}
+                   | {"person": owner.id, "name": owner.name, "shadow": _shadow_text(m)})
+    out.sort(key=lambda x: x.get("recorded_at") or "", reverse=True)
+    return {"memos": out[:max(1, min(limit, 100))], "left": len(out)}
+
+
+@app.get("/v1/memos/{memo_id}/audio")
+def memo_audio(memo_id: str, request: Request, authorization: str | None = Header(None),
+               x_device_id: str = Header("")):
+    """The recording, to listen to while fixing the text."""
+    p = check_auth(authorization, request, x_device_id)
+    path, m = _memo(memo_id)
+    wav = path.with_suffix(".wav")
+    if not _may_fix(m, p) or not wav.exists():
+        raise HTTPException(404, "no such recording")
+    return FileResponse(wav, media_type="audio/wav", filename=f"{memo_id}.wav")
+
+
+@app.post("/v1/memos/{memo_id}/text")
+def fix_memo_text(memo_id: str, request: Request, body: dict = Body(...),
+                  authorization: str | None = Header(None), x_device_id: str = Header("")):
+    """Fix what Jar heard WITHOUT filing the memo again (#26): {"transcript": "..."}, or {"correct": true} when
+    it was right. Either way the memo counts as checked, a trustworthy test case for the speech bench. The first
+    real fix of a memo may earn coins ([points] memo_fix_coins)."""
+    p = check_auth(authorization, request, x_device_id)
+    path, m = _memo(memo_id)
+    if not _may_fix(m, p):
+        raise HTTPException(404, "no such memo")
+    if m.get("status") not in ("done", "failed"):
+        raise HTTPException(409, "Jar is still filing this memo: try again in a minute")
+    old = (m.get("transcript") or "").strip()
+    if body.get("correct"):
+        text = old
+    else:
+        text = str(body.get("transcript") or "").strip()
+        if not text:
+            raise HTTPException(400, "the transcript is empty")
+        if len(text) > 5000:
+            raise HTTPException(400, "the transcript is too long")
+    changed = text != old
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if changed:
+        m.setdefault("original_transcript", m.get("transcript"))
+        m.update(transcript=text, edited=True, fixed_by=p.id, fixed_at=now)
+        path.with_suffix(".txt").write_text(text + "\n", encoding="utf-8")
+    m.update(checked=True, checked_by=p.id, checked_at=now)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+    award = POINTS.pay_memo_fix(p.id, memo_id, text) if changed else None
+    return {"id": memo_id, "transcript": text, "edited": bool(m.get("edited")), "checked": True, "award": award}
 
 
 @app.post("/v1/memos/{memo_id}/refile")

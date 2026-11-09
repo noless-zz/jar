@@ -166,7 +166,7 @@ def select(memo_dir: Path, family, limit: int = 40, person: str = "") -> list[Me
         if person and who != person:
             continue
         found.append(Memo(m.get("id") or j.stem, wav, who, m.get("recorded_at") or "",
-                          human_ref=(m.get("transcript") or "") if m.get("edited") else "",
+                          human_ref=(m.get("transcript") or "") if (m.get("edited") or m.get("checked")) else "",
                           production=m.get("original_transcript") or m.get("transcript") or "",
                           shadow=(m.get("shadow") or {}).get("text") or "",
                           shadow_model=(m.get("shadow") or {}).get("model") or ""))

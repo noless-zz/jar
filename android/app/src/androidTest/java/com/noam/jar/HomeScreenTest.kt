@@ -15,6 +15,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -74,6 +75,8 @@ class HomeScreenTest {
     fun tearDown() {
         scenario?.close()
         MemoFeed.fake = null
+        MemoFeed.fakeReview = null
+        MemoFeed.sent.clear()
         Updater.testEnabled = false
     }
 
@@ -362,9 +365,17 @@ class HomeScreenTest {
         shot("41-edit")
     }
 
-    private fun openFromSettings(label: String) {
-        compose.onNodeWithContentDescription(s(R.string.ui_settings)).performClick()
-        compose.onNodeWithText(s(R.string.ui_settings)).performClick()
+    /** A string as the app shows it in Hebrew (forceRtl(true)), whatever the emulator's language is. */
+    private fun he(id: Int, vararg args: Any): String {
+        val conf = android.content.res.Configuration(context.resources.configuration)
+        conf.setLocale(java.util.Locale.forLanguageTag("he"))
+        return context.createConfigurationContext(conf).getString(id, *args)
+    }
+
+    private fun openFromSettings(label: String, hebrew: Boolean = false) {
+        val settings = if (hebrew) he(R.string.ui_settings) else s(R.string.ui_settings)
+        compose.onNodeWithContentDescription(settings).performClick()
+        compose.onNodeWithText(settings).performClick()
         compose.onNodeWithTag("settings").performScrollToNode(hasText(label))
         compose.onNodeWithText(label).performClick()
         compose.waitForIdle()
@@ -676,6 +687,77 @@ class HomeScreenTest {
         } finally {
             forceRtl(false)
         }
+    }
+
+    /**
+     * #26: fix what Jar heard without filing the memo again. The sheet has Listen, the other model's reading (one tap
+     * takes it) and "Save the text"; an unchanged text offers "It's correct" instead. Hebrew too.
+     */
+    @Test
+    fun memos_fixTheTextWithoutFilingAgain() {
+        for (rtl in listOf(false, true)) {
+            forceRtl(rtl)
+            try {
+                scenario?.close()
+                val heard = if (rtl) "לקנות נייר נגדת" else "Buy paper tower"
+                val other = if (rtl) "לקנות נייר מגבת" else "Buy paper towel"
+                MemoFeed.sent.clear()
+                MemoFeed.fake = listOf(JSONObject().put("id", "m1").put("recorded_at", utc(System.currentTimeMillis() - HOUR)).put("status", "done")
+                    .put("transcript", heard).put("shadow", other).put("actions", JSONArray().put("Added: $heard")))
+                launch(JarStyle.CALM, JarMode.LIGHT)
+                openFromSettings(if (rtl) he(R.string.menu_memos) else s(R.string.menu_memos), rtl)
+                compose.onNodeWithText(heard).performClick()
+                compose.onNodeWithTag("memo_play").assertExists()
+                compose.onNodeWithTag("memo_correct").assertExists()            // nothing changed yet: "It's correct"
+                compose.onNodeWithTag("other_reading").assertExists()
+                shot(if (rtl) "48-memo-fix-he" else "48-memo-fix")
+                compose.onNodeWithTag("use_other").performClick()
+                compose.onNodeWithTag("other_reading").assertDoesNotExist()      // taken: the field holds it now
+                compose.onNodeWithTag("fix_text").assertExists()
+                compose.onNodeWithTag("save_refile").assertExists()               // own memo: can still file it again
+                compose.onNodeWithTag("fix_text").performClick()
+                compose.waitUntil(5_000) { MemoFeed.sent.isNotEmpty() }
+                assertEquals(listOf("fix:m1:$other"), MemoFeed.sent.toList())
+                compose.waitUntil(5_000) { runCatching { compose.onNodeWithText(other).assertExists() }.isSuccess }
+                compose.onNodeWithText(if (rtl) he(R.string.memo_checked) else s(R.string.memo_checked)).assertExists()
+                shot(if (rtl) "48-memo-fixed-he" else "48-memo-fixed")
+            } finally {
+                forceRtl(false)
+            }
+        }
+    }
+
+    /** #26: a parent checks the kids' memos: a second list, listen, then "It's correct" (or a fix); no re-filing there. */
+    @Test
+    fun memos_parentChecksTheKidsMemos() {
+        MemoFeed.fake = listOf(JSONObject().put("id", "m1").put("recorded_at", utc(System.currentTimeMillis() - HOUR)).put("status", "done")
+            .put("transcript", "Call the vet").put("actions", JSONArray()))
+        MemoFeed.fakeReview = listOf(
+            JSONObject().put("id", "k1").put("recorded_at", utc(System.currentTimeMillis() - HOUR)).put("status", "done")
+                .put("person", "livne").put("name", "Livne").put("transcript", "Feed the cat"),
+            JSONObject().put("id", "k2").put("recorded_at", utc(System.currentTimeMillis() - 2 * HOUR)).put("status", "done")
+                .put("person", "livne").put("name", "Livne").put("transcript", "Fold the laudry"))
+        launch(JarStyle.NIGHT, JarMode.DARK)
+        openFromSettings(s(R.string.menu_memos))
+        compose.onNodeWithTag("review_kids").performClick()
+        compose.onNodeWithText("Feed the cat").assertExists()
+        compose.onNodeWithText("Call the vet").assertDoesNotExist()
+        shot("49-memo-review")
+        compose.onNodeWithText("Feed the cat").performClick()
+        compose.onNodeWithTag("save_refile").assertDoesNotExist()                 // a kid's memo: fix or confirm only
+        compose.onNodeWithTag("delete_memo").assertDoesNotExist()
+        compose.onNodeWithTag("memo_correct").performClick()
+        compose.waitUntil(5_000) { MemoFeed.sent.isNotEmpty() }
+        assertEquals("correct:k1", MemoFeed.sent[0])
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText("Feed the cat").assertDoesNotExist() }.isSuccess }
+        compose.onNodeWithText("Fold the laudry").performClick()
+        compose.onNodeWithTag("memo_text").performTextClearance()
+        compose.onNodeWithTag("memo_text").performTextInput("Fold the laundry")
+        compose.onNodeWithTag("fix_text").performClick()
+        compose.waitUntil(5_000) { MemoFeed.sent.size == 2 }
+        assertEquals("fix:k2:Fold the laundry", MemoFeed.sent[1])
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText(s(R.string.memos_review_empty)).assertExists() }.isSuccess }
+        shot("49-memo-review-done")
     }
 
     /** A memo the PC hasn't transcribed yet says Jar is working on it, not "no speech" (27.10). */

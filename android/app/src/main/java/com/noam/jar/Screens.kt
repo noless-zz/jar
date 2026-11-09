@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -269,11 +270,16 @@ fun ArchiveScreen(data: HomeData, onOpen: (Task) -> Unit) {
 @VisibleForTesting
 object MemoFeed {
     @Volatile var fake: List<JSONObject>? = null
+    /** Parents' "kids' memos to check" list in tests; null = ask the PC. */
+    @Volatile var fakeReview: List<JSONObject>? = null
+    /** Tests: what the sheet sent instead of calling the PC ("fix:<id>:<text>", "correct:<id>"). */
+    val sent: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
 }
 
 /**
  * What Jar heard and what it did with it. Calm: cards. Night: a timeline with the time in its own column.
- * Playful: speech bubbles. Tap one to fix what was misheard and file it again.
+ * Playful: speech bubbles. Tap one to listen and fix what was misheard (#26): save the text (teaches Jar, nothing is
+ * filed again) or file it again. Parents also get the kids' memos nobody has checked yet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -283,14 +289,21 @@ fun MemosScreen() {
     val ctx = LocalContext.current
     var gen by remember { mutableIntStateOf(0) }
     var memos by remember { mutableStateOf<List<JSONObject>?>(null) }
+    var toCheck by remember { mutableStateOf<List<JSONObject>?>(null) }
+    var review by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     var open by remember { mutableStateOf<JSONObject?>(null) }
     var deleting by remember { mutableStateOf<Triple<JSONObject, Int, JSONObject>?>(null) }
+    val parent = remember { TaskCache(ctx).iAmParent() }
     val actions = LocalActions.current
     LaunchedEffect(gen) {
         problem = null
         val fake = MemoFeed.fake
-        if (fake != null) { memos = fake.map { JSONObject(it.toString()) }; return@LaunchedEffect }
+        if (fake != null || MemoFeed.fakeReview != null) {
+            memos = fake.orEmpty().map { JSONObject(it.toString()) }
+            toCheck = MemoFeed.fakeReview?.map { JSONObject(it.toString()) }
+            return@LaunchedEffect
+        }
         val prefs = Prefs(ctx)
         if (prefs.token().isEmpty()) { problem = ctx.getString(R.string.tasks_not_paired); return@LaunchedEffect }
         try {
@@ -301,21 +314,37 @@ fun MemosScreen() {
         } catch (e: Exception) {
             problem = ctx.getString(R.string.memos_failed, e.message)
         }
+        if (parent) toCheck = try {
+            withContext(Dispatchers.IO) {
+                val arr = TaskApi.reviewMemos(prefs).optJSONArray("memos")
+                (0 until (arr?.length() ?: 0)).mapNotNull { arr!!.optJSONObject(it) }
+            }
+        } catch (e: Exception) { null }                  // an older PC: no review list, just my memos
     }
-    SubScreen(stringResource(R.string.memos_title), "memos", stringResource(R.string.ui_memos_sub)) {
-        val list = memos
+    SubScreen(stringResource(R.string.memos_title), "memos",
+        stringResource(if (review) R.string.memos_review_sub else R.string.ui_memos_sub)) {
+        val kids = toCheck
+        if (parent && kids != null && (kids.isNotEmpty() || review)) item(key = "modes") {
+            ChipRow {
+                ChoiceChip(stringResource(R.string.memos_title), !review, Modifier.testTag("my_memos")) { review = false }
+                ChoiceChip(ctx.getString(R.string.memos_review_open, kids.size), review, Modifier.testTag("review_kids")) { review = true }
+            }
+        }
+        val list = if (review) kids else memos
         when {
-            problem != null -> item(key = "problem") { Muted(problem!!, Modifier.padding(8.dp)) }
+            problem != null && !review -> item(key = "problem") { Muted(problem!!, Modifier.padding(8.dp)) }
             list == null -> item(key = "loading") { Muted(stringResource(R.string.syncing), Modifier.padding(8.dp)) }
-            list.isEmpty() -> item(key = "none") { Muted(stringResource(R.string.memos_empty), Modifier.padding(8.dp)) }
-            else -> items(list, key = { it.optString("id") }) { m ->
-                MemoCard(m, onDelete = { i, item -> deleting = Triple(m, i, item) }) { open = m }
+            list.isEmpty() -> item(key = "none") {
+                Muted(stringResource(if (review) R.string.memos_review_empty else R.string.memos_empty), Modifier.padding(8.dp))
+            }
+            else -> items(list, key = { (if (review) "k" else "m") + it.optString("id") }) { m ->
+                MemoCard(m, showName = review, onDelete = { i, item -> deleting = Triple(m, i, item) }) { open = m }
             }
         }
     }
     val m = open
     if (m != null) ModalBottomSheet(onDismissRequest = { open = null }, containerColor = c.bg) {
-        RefileSheet(m) { open = null; gen++ }
+        MemoSheet(m, kid = review, onClose = { open = null }, onChanged = { gen++ })
     }
     deleting?.let { (memo, i, item) ->
         val what = ctx.getString(when (item.optString("tool")) {
@@ -340,22 +369,27 @@ fun MemosScreen() {
 
 private fun transcript(m: JSONObject): String = m.optString("transcript").takeIf { it != "null" } ?: ""
 
+/** The other model's reading (the PC's shadow transcript), when it heard something different. */
+private fun otherReading(m: JSONObject): String = m.optString("shadow").takeIf { it != "null" } ?: ""
+
 @Composable
-private fun MemoCard(m: JSONObject, onDelete: (Int, JSONObject) -> Unit, onClick: () -> Unit) {
+private fun MemoCard(m: JSONObject, showName: Boolean = false, onDelete: (Int, JSONObject) -> Unit, onClick: () -> Unit) {
     val jar = LocalJar.current
     val c = jar.colors
     val ctx = LocalContext.current
     val text = transcript(m)
     val did = m.optJSONArray("actions")
-    val filing = m.optString("status") != "done"
+    val filing = m.optString("status") !in setOf("done", "failed")
     val time = TaskFormat.memoTime(m.optString("recorded_at"))
     val body: @Composable () -> Unit = {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (jar.style != JarStyle.NIGHT) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(JarIcons.Mic, null, tint = c.muted, modifier = Modifier.size(16.dp))
-                Text(time, color = c.muted, fontSize = 13.sp, fontFamily = jar.font, modifier = Modifier.weight(1f))
+            if (jar.style != JarStyle.NIGHT || showName) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (jar.style != JarStyle.NIGHT) Icon(JarIcons.Mic, null, tint = c.muted, modifier = Modifier.size(16.dp))
+                if (showName) Text(m.optString("name"), color = c.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = jar.font)
+                Text(if (jar.style != JarStyle.NIGHT) time else "", color = c.muted, fontSize = 13.sp, fontFamily = jar.font, modifier = Modifier.weight(1f))
                 if (filing) Chip(ctx.getString(R.string.memo_in_progress), c.coinSoft, c.coin)
-                if (m.optBoolean("edited")) Chip(ctx.getString(R.string.memo_edited), c.surface2, c.muted)
+                if (m.optBoolean("checked")) Chip(ctx.getString(R.string.memo_checked), c.accentSoft, c.onAccentSoft)
+                else if (m.optBoolean("edited")) Chip(ctx.getString(R.string.memo_edited), c.surface2, c.muted)
             }
             // Still being transcribed / filed: say so (it used to read "no speech" until Jar got to it).
             Text(text.ifEmpty { ctx.getString(if (filing) R.string.ui_jar_working else R.string.memo_no_text) },
@@ -406,32 +440,105 @@ private fun MemoCard(m: JSONObject, onDelete: (Int, JSONObject) -> Unit, onClick
     } else Block(Modifier.clickable(role = Role.Button, onClick = onClick)) { body() }
 }
 
+/**
+ * Listen and fix (#26). "Save the text" corrects what Jar heard without filing again; "It's correct" marks it right.
+ * Either way the memo becomes a checked example the PC's speech bench trusts. On your own memo you can still file it
+ * again (with the fix) or delete it. [kid] = a parent checking a child's memo: fix or confirm only.
+ */
 @Composable
-private fun RefileSheet(m: JSONObject, onDone: () -> Unit) {
+private fun MemoSheet(m: JSONObject, kid: Boolean, onClose: () -> Unit, onChanged: () -> Unit) {
+    val jar = LocalJar.current
+    val c = jar.colors
     val ctx = LocalContext.current
     val actions = LocalActions.current
-    var text by remember { mutableStateOf(transcript(m)) }
+    val id = m.optString("id")
+    val heard = transcript(m)
+    var text by remember { mutableStateOf(heard) }
     var confirm by remember { mutableStateOf(false) }
+    val testing = MemoFeed.fake != null || MemoFeed.fakeReview != null
+    var playing by remember { mutableStateOf(false) }
+    val player = remember { arrayOfNulls<android.media.MediaPlayer>(1) }
+    DisposableEffect(Unit) { onDispose { player[0]?.release(); player[0] = null } }
+    fun stop() { player[0]?.release(); player[0] = null; playing = false }
+    val play = {
+        if (playing) stop()
+        else {
+            playing = true
+            if (!testing) {
+                val f = java.io.File(ctx.cacheDir, "memo-$id.wav")
+                actions.background({ if (f.length() == 0L) TaskApi.memoAudio(Prefs(ctx), id, f); f }, { file ->
+                    if (playing) try {
+                        val mp = android.media.MediaPlayer()
+                        mp.setDataSource(file.path)
+                        mp.setOnCompletionListener { if (player[0] === it) stop() }
+                        mp.prepare(); mp.start(); player[0] = mp
+                    } catch (e: Exception) {
+                        stop(); actions.toast(ctx.getString(R.string.memo_audio_failed, e.message))
+                    }
+                }, { e -> stop(); f.delete(); actions.toast(ctx.getString(R.string.memo_audio_failed, e.message)) })
+            }
+        }
+    }
+    // t == null: "it's correct"
+    val fix = { t: String? ->
+        stop()
+        if (testing) {
+            MemoFeed.sent.add(if (t == null) "correct:$id" else "fix:$id:$t")
+            (MemoFeed.fake.orEmpty() + MemoFeed.fakeReview.orEmpty()).filter { it.optString("id") == id }.forEach {
+                if (t != null) it.put("transcript", t).put("edited", true)
+                it.put("checked", true)
+            }
+            if (kid) MemoFeed.fakeReview = MemoFeed.fakeReview?.filter { it.optString("id") != id }
+            actions.toast(ctx.getString(if (t == null) R.string.memo_marked_correct else R.string.memo_text_saved))
+            onChanged()
+        } else actions.background({ TaskApi.fixMemoText(Prefs(ctx), id, t) }, { r ->
+            val coins = r.optJSONObject("award")?.optInt("coins") ?: 0
+            actions.toast(when {
+                t == null -> ctx.getString(R.string.memo_marked_correct)
+                coins > 0 -> ctx.getString(R.string.memo_text_saved_coins, coins)
+                else -> ctx.getString(R.string.memo_text_saved)
+            })
+            onChanged()
+        }, { e -> actions.toast(ctx.getString(R.string.memos_failed, e.message)) })
+        onClose()
+    }
     val refile = { t: String? ->
-        val prefs = Prefs(ctx); val id = m.optString("id")
+        stop()
+        val prefs = Prefs(ctx)
         actions.call(R.string.memos_failed, ctx, ok = { actions.toast(ctx.getString(R.string.memo_refiled)) }) { TaskApi.refile(prefs, id, t) }
-        onDone()
+        onClose(); onChanged()
     }
     SheetColumn("refile") {
-        if (transcript(m).isNotEmpty()) {
-            SheetTitle(stringResource(R.string.memo_edit_title), stringResource(R.string.memo_edit_message))
+        if (heard.isNotEmpty() || kid) {
+            SheetTitle(stringResource(R.string.memo_edit_title),
+                if (kid) ctx.getString(R.string.memo_fix_kid, m.optString("name")) else stringResource(R.string.memo_fix_message))
+            SideButton((if (playing) "■ " else "▶ ") + stringResource(if (playing) R.string.memo_stop else R.string.memo_listen),
+                Modifier.testTag("memo_play")) { play() }
             JarField(text, { text = it }, stringResource(R.string.memo_edit_hint), Modifier.testTag("memo_text"), minLines = 3)
-            MainButton(stringResource(R.string.memo_save_refile), enabled = text.isNotBlank()) { refile(text.trim()) }
-            SideButton(stringResource(R.string.memo_refile_as_is)) { refile(null) }
+            val other = otherReading(m)
+            if (other.isNotEmpty() && other != text.trim()) Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().testTag("other_reading")) {
+                Text(ctx.getString(R.string.memo_other_reading, other), color = c.muted, fontSize = 14.sp, fontFamily = jar.font,
+                    modifier = Modifier.weight(1f))
+                ChoiceChip(stringResource(R.string.memo_use_other), false, Modifier.testTag("use_other")) { text = other }
+            }
+            val changed = text.trim() != heard.trim()
+            if (changed) MainButton(stringResource(R.string.memo_save_text), Modifier.testTag("fix_text"), enabled = text.isNotBlank()) { fix(text.trim()) }
+            else MainButton(stringResource(R.string.memo_correct), Modifier.testTag("memo_correct"), enabled = heard.isNotEmpty()) { fix(null) }
+            if (!kid && heard.isNotEmpty()) {
+                if (changed) SideButton(stringResource(R.string.memo_save_refile), Modifier.testTag("save_refile")) { if (text.isNotBlank()) refile(text.trim()) }
+                SideButton(stringResource(R.string.memo_refile_as_is)) { refile(null) }
+            }
         } else SheetTitle(stringResource(R.string.memo_no_text), TaskFormat.memoTime(m.optString("recorded_at")))
-        SideButton(stringResource(R.string.ui_memo_delete_all), Modifier.testTag("delete_memo"), danger = true) { confirm = true }
+        if (!kid) SideButton(stringResource(R.string.ui_memo_delete_all), Modifier.testTag("delete_memo"), danger = true) { confirm = true }
     }
     if (confirm) Confirm(ctx.getString(R.string.ui_memo_delete_all_confirm), ctx.getString(R.string.action_delete), { confirm = false }) {
         confirm = false
-        val prefs = Prefs(ctx); val id = m.optString("id")
+        stop()
+        val prefs = Prefs(ctx)
         if (MemoFeed.fake != null) {                  // tests: no PC
             MemoFeed.fake = MemoFeed.fake!!.filter { it.optString("id") != id }
         } else actions.call(R.string.memos_failed, ctx, ok = { actions.toast(ctx.getString(R.string.ui_memo_deleted)) }) { TaskApi.deleteMemo(prefs, id) }
-        onDone()
+        onClose(); onChanged()
     }
 }

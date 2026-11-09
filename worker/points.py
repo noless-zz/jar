@@ -6,7 +6,7 @@ Phase 1 pays E only (R = S = T = 1.0); the factors are already in every ledger l
 phase 2 only has to change `factors()`.
 
 data/points.json
-    lines    one per payment: person, task_id, title, chore_key, kind (task | lesson | work_day), at (UTC),
+    lines    one per payment: person, task_id, title, chore_key, kind (task | lesson | work_day | idea | memo_fix), at (UTC),
              coins, breakdown, by_parent, created_by, rated_by, reversed (+ reversed_at, reversed_why)
     ratings  chore_key -> {effort, by, at}: what a parent said it is worth; the starting point next time
 A line is never deleted: reopening, deleting or reassigning a done task marks its line reversed, and
@@ -40,6 +40,8 @@ class PointsConfig:
     idea_shipped_bonus: int = 10      # ...and when it ships
     idea_credits_per_week: int = 3    # accepted ideas that pay, per person per week
     idea_credit_parents: bool = False
+    memo_fix_coins: int = 0           # fixing what Jar heard in a memo (#26); 0 = off until the family decides
+    memo_fix_per_day: int = 5         # fixes that pay, per person per day
 
     @classmethod
     def from_raw(cls, raw: dict | None) -> "PointsConfig":
@@ -56,7 +58,8 @@ class PointsConfig:
                    announce=str(raw.get("announce", "sat 20:00")),
                    idea_coins=num("idea_coins", 20), idea_shipped_bonus=num("idea_shipped_bonus", 10),
                    idea_credits_per_week=num("idea_credits_per_week", 3),
-                   idea_credit_parents=bool(raw.get("idea_credit_parents", False)))
+                   idea_credit_parents=bool(raw.get("idea_credit_parents", False)),
+                   memo_fix_coins=num("memo_fix_coins", 0), memo_fix_per_day=num("memo_fix_per_day", 5))
 
 
 def _now_iso() -> str:
@@ -260,6 +263,34 @@ class PointsStore:
                     "chore_key": "work-day", "category": "job", "kind": "work_day", "at": at,
                     "coins": self.cfg.work_day_coins, "breakdown": {"fixed": self.cfg.work_day_coins},
                     "by_parent": True, "created_by": person_id, "rated_by": "rule", "reversed": False}
+            data["lines"].append(line)
+            self._write(data)
+            return self._award(data, line, new=True)
+
+    # ---- fixing what Jar heard (#26) ----
+    def pay_memo_fix(self, person_id: str, memo_id: str, text: str, at: str | None = None) -> dict | None:
+        """Coins for correcting a memo's transcript: [points] memo_fix_coins (0 = off), once per memo, at most
+        memo_fix_per_day a day. None = nothing paid."""
+        coins = self.cfg.memo_fix_coins
+        if coins <= 0:
+            return None
+        key = "memo-fix:" + memo_id
+        at = at or _now_iso()
+        with locked(self.lock_path):
+            data = self._read()
+            if any(ln.get("task_id") == key and not ln.get("reversed") for ln in data["lines"]):
+                return None                                     # this memo already paid someone
+            day = self._local_day(at)
+            n = sum(1 for ln in data["lines"] if ln.get("kind") == "memo_fix" and ln["person"] == person_id
+                    and not ln.get("reversed") and self._local_day(ln["at"]) == day)
+            if n >= self.cfg.memo_fix_per_day:
+                return None
+            data["seq"] += 1
+            title = "✏️ " + (text if len(text) <= 40 else text[:39] + "…")
+            line = {"id": data["seq"], "person": person_id, "task_id": key, "title": title,
+                    "chore_key": "memo-fix", "category": "other", "kind": "memo_fix", "at": at,
+                    "coins": coins, "breakdown": {"fixed": coins}, "by_parent": False,
+                    "created_by": person_id, "rated_by": "rule", "reversed": False}
             data["lines"].append(line)
             self._write(data)
             return self._award(data, line, new=True)
