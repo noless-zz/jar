@@ -535,8 +535,10 @@ class Notes:
         return "matching open tasks:\n" + "\n".join(lines)
 
     def update_task(self, task_id: str, title: str = "", due_date: str = "", due_time: str = "",
-                    for_person: str = "", status: str = "", repeat: str = "", take_turns: bool = False) -> str:
-        """Change, move, finish or cancel an existing task (id from find_tasks)."""
+                    for_person: str = "", status: str = "", repeat: str = "", take_turns: bool = False,
+                    done_with=None) -> str:
+        """Change, move, finish or cancel an existing task (id from find_tasks). done_with: others who did it
+        together with the speaker; its coins are split between them."""
         from .taskstore import TaskError
         if self.store is None:
             raise ToolError("there is no task list")
@@ -612,8 +614,15 @@ class Notes:
             if fields:
                 t = self.store.act(self.speaker, task_id, "edit", fields=fields)
             if status in ("done", "finished", "complete"):
-                t = self.store.act(self.speaker, task_id, "done")
-                did.append("marked done")
+                helpers = self._task_people(self.speaker.id, done_with)[1:] if done_with else []
+                if helpers:
+                    t = self.store.act(self.speaker, task_id, "done", None,
+                                       {"as": [self.speaker.id] + [p.id for p in helpers]})
+                    did.append("marked done together with " + ", ".join(p.name for p in helpers)
+                               + ": the coins are split")
+                else:
+                    t = self.store.act(self.speaker, task_id, "done")
+                    did.append("marked done")
             elif status in ("cancel", "cancelled", "delete", "deleted"):
                 t = self.store.act(self.speaker, task_id, "delete")
                 did.append("cancelled")
@@ -1064,7 +1073,9 @@ def _all_tools(notes: Notes) -> dict[str, Tool]:
                   status={"type": "string", "enum": ["", "done", "cancel", "reopen", "stop_repeating"],
                           "description": "done = finished; cancel = no longer needed; empty = no change"},
                   repeat=string("make it repeat / change its schedule (as add_task repeat); else empty"),
-                  take_turns={"type": "boolean", "description": "repeat: its people take turns"}),
+                  take_turns={"type": "boolean", "description": "repeat: its people take turns"},
+                  done_with={"type": "array", "items": {"type": "string"},
+                             "description": "done: others who did it with the speaker"}),
               "required": ["task_id"]},
              "internal", notes.update_task),
         Tool("note_on_task", "Add a note to an existing task (id from find_tasks), or ask about it: ask=true sends "

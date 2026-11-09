@@ -541,7 +541,7 @@ class HomeScreenTest {
         assertEquals(true, TaskCache(context).find("t9")?.isDone)
     }
 
-    /** #17: Livne did one of Noam's tasks. "Someone else did it…" → pick Livne: done, sent with "as" so the coins are his. */
+    /** #17: Livne did one of Noam's tasks. "Together, or someone else…" → only Livne: done, sent with "as" so the coins are his. */
     @Test
     fun admin_givesTheCreditToWhoeverDidIt() {
         for (style in listOf(JarStyle.CALM, JarStyle.NIGHT)) {
@@ -549,19 +549,48 @@ class HomeScreenTest {
             TestHooks.locale = Locale.forLanguageTag("he")
             launch(style, if (style == JarStyle.NIGHT) JarMode.DARK else JarMode.LIGHT)
             compose.onNodeWithText("Buy milk").performClick()
-            compose.onNodeWithTag("done_by_other").performClick()
+            compose.onNodeWithTag("done_together").performClick()
             compose.onNodeWithTag("who_did_it").assertExists()
-            compose.onNodeWithTag("credit_noam").assertDoesNotExist()           // not me: my own tick is Done
-            shot(if (style == JarStyle.NIGHT) "26b-who-did-it-night" else "26-who-did-it")
+            compose.onNodeWithTag("credit_noam").performClick()                 // I'm picked to start with: not me
             compose.onNodeWithTag("credit_livne").performClick()
+            shot(if (style == JarStyle.NIGHT) "26b-who-did-it-night" else "26-who-did-it")
+            compose.onNodeWithTag("who_did_it_done").performClick()
             compose.waitForIdle()
             assertEquals(true, TaskCache(context).find("t1")?.isDone)
-            val queued = TaskCache(context).pending()
-            val tick = (0 until queued.length()).map { queued.getJSONObject(it) }.last { it.optString("id") == "t1" }
-            assertEquals("livne", tick.optString("as"))
+            assertEquals("livne", lastTick("t1").optString("as"))
             TestHooks.locale = null
             scenario?.close()
         }
+    }
+
+    /** #21: Noam and Livne did it together: done, sent with both, and the coins are split. In all three styles. */
+    @Test
+    fun doneTogether_splitsTheCoins() {
+        val styles = listOf(Triple(JarStyle.CALM, JarMode.LIGHT, "calm"), Triple(JarStyle.NIGHT, JarMode.DARK, "night"),
+            Triple(JarStyle.PLAYFUL, JarMode.LIGHT, "playful"))
+        for ((style, mode, tag) in styles) {
+            context.getSharedPreferences("jar_tasks", Context.MODE_PRIVATE).edit().clear().commit()
+            TestHooks.locale = Locale.forLanguageTag("he")
+            launch(style, mode)
+            compose.onNodeWithText("Buy milk").performClick()
+            compose.onNodeWithTag("done_together").performClick()
+            compose.onNodeWithTag("credit_livne").performClick()               // me + Livne
+            compose.onNodeWithText(s(R.string.ui_split_done, 2)).assertExists()
+            shot("48-done-together-$tag")
+            compose.onNodeWithTag("who_did_it_done").performClick()
+            compose.waitForIdle()
+            val t = TaskCache(context).find("t1")!!
+            assertEquals(true, t.isDone)
+            assertEquals(listOf("noam", "livne"), t.doneWith)
+            assertEquals("noam,livne", lastTick("t1").optString("as"))
+            TestHooks.locale = null
+            scenario?.close()
+        }
+    }
+
+    private fun lastTick(id: String): JSONObject {
+        val queued = TaskCache(context).pending()
+        return (0 until queued.length()).map { queued.getJSONObject(it) }.last { it.optString("id") == id }
     }
 
     /** Delete a whole memo, also one with no speech: it leaves the list (the PC removes all it made). */

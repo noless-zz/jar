@@ -164,6 +164,15 @@ class Corrections(Base):
         with self.assertRaises(ToolError):
             n.update_task("nope", status="done")
 
+    def test_done_together_by_voice(self):
+        n = self.notes("dana")
+        n.add_task("להזמין גז")
+        tid = self.store.find(self.p["dana"], "גז")[0]["id"]
+        out = n.update_task(tid, status="done", done_with=["Avi"])
+        self.assertIn("together with", out)
+        t = next(x for x in self.store.snapshot(self.p["dana"])["tasks"] if x["id"] == tid)
+        self.assertEqual((t["status"], t["done_with"]), ("done", ["dana", "avi"]))
+
     def test_question_by_voice(self):
         t = self.store.add(self.p["dana"], "לסדר את החדר", self.p["yoni"])
         out = self.notes("dana").note_on_task(t["id"], "סידרת כבר את הארון?", ask=True)

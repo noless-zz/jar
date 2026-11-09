@@ -592,4 +592,12 @@
     <string name="ui_all_changes">כל השינויים · %1$d גרסאות</string>
     <string name="ui_changes_title">מה חדש</string>
     <string name="ui_changes_sub">מאז הגרסה שלך, %1$s</string>
+    <string name="ui_done_together">ביחד, או שמישהו אחר עשה…</string>
+    <string name="ui_change_who_did">מי עשה את זה? לשנות…</string>
+    <string name="ui_who_did_it_many">בחרו את כל מי שעשה את זה. המטבעות יתחלקו ביניהם.</string>
+    <string name="ui_me">%1$s (אני)</string>
+    <string name="ui_split_done">בוצע, מתחלק בין %1$d</string>
+    <string name="ui_split_each">בערך %1$d מטבעות לכל אחד</string>
+    <string name="ui_done_together_toast">בוצע יחד: המטבעות מתחלקים בין %1$s</string>
+    <string name="meta_done_together">בוצע יחד ע״י %1$s</string>
 </resources>

@@ -584,4 +584,12 @@
     <string name="ui_all_changes">All changes · %1$d versions</string>
     <string name="ui_changes_title">What\'s new</string>
     <string name="ui_changes_sub">Since your version, %1$s</string>
+    <string name="ui_done_together">Together, or someone else did it…</string>
+    <string name="ui_change_who_did">Who did it? Change…</string>
+    <string name="ui_who_did_it_many">Pick everyone who did it. The coins are split between them.</string>
+    <string name="ui_me">%1$s (me)</string>
+    <string name="ui_split_done">Done, split between %1$d</string>
+    <string name="ui_split_each">About %1$d coins each</string>
+    <string name="ui_done_together_toast">Done together: the coins are split between %1$s</string>
+    <string name="meta_done_together">done together by %1$s</string>
 </resources>

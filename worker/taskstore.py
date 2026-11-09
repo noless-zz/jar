@@ -158,8 +158,8 @@ class TaskStore:
         if ho and (p.id == ho.get("to") or p.is_parent):
             return True                                  # whoever may approve the move sees it
         ids = owners(t)
-        if p.id == t.get("created_by") or p.id in ids:
-            return True
+        if p.id == t.get("created_by") or p.id in ids or p.id in (t.get("done_with") or []):
+            return True                                  # also whoever did it together with them
         return p.is_parent and any((a := self.family.get(i)) is not None and not a.is_parent for i in ids)
 
     def on_panel(self, t: dict) -> bool:
@@ -303,7 +303,11 @@ class TaskStore:
                 # An offline tick carries the time it was made ("at", epoch seconds): paid at that time.
                 at = done_time((fields or {}).get("at"))
                 was_done = t["status"] == "done"
-                award = self._done(t, actor, at, self._credit_for(t, actor, (fields or {}).get("as")))
+                together = self._doers(t, actor, (fields or {}).get("as"))
+                if together is not None:
+                    award = self._done_together(t, actor, at, together)
+                else:
+                    award = self._done(t, actor, at, self._credit_for(t, actor, (fields or {}).get("as")))
                 if idea and not was_done:
                     award = self._credit_idea(t, "shipped") or award
                 s = self._series_of(data, t)
@@ -322,6 +326,7 @@ class TaskStore:
                     t.update(status="open", done_at=None, done_by=None)
                     t.pop("done_parts", None)
                     t.pop("ticked_by", None)
+                    t.pop("done_with", None)
                     self._take_back(t, "reopened")
             elif action == "snooze":
                 t["snoozed_until"] = clean_when(until)
@@ -357,6 +362,7 @@ class TaskStore:
                         t["status"] = "requested"     # a child handing it to someone else: a parent OKs it
                     if t.get("status") == "done":
                         self._take_back(t, "reassigned")          # the new person didn't do it
+                        t.pop("done_with", None)
                     else:
                         for gone in set(before) - set(owners(t)):     # a part done by someone taken off
                             (t.get("done_parts") or {}).pop(gone, None)
@@ -421,6 +427,78 @@ class TaskStore:
         if shared_mode(t) == "all" and who.id not in owners(t):
             raise TaskError(400, f"{who.name} isn't on this task: each of them does their own part")
         return who
+
+    @staticmethod
+    def _who_did(t: dict) -> list[str]:
+        """Who did a done task: the people it was split between, else the one who got its coins."""
+        if t.get("done_with"):
+            return list(t["done_with"])
+        ids = owners(t)
+        by = t.get("done_by")
+        return [by if by in ids or t.get("ticked_by") else (ids[0] if ids else by)]
+
+    def _doers(self, t: dict, actor: Person, value) -> list[Person] | None:
+        """Several people did it together ({"as": ["sveta", "noam"]} or "sveta,noam"), or a done task gets
+        a new list of who did it. None: an ordinary tick (no "as", or one person on an open task)."""
+        if value is None or value == "":
+            return None
+        ids = [str(v).strip() for v in (value if isinstance(value, list) else str(value).split(","))]
+        ids = list(dict.fromkeys(i for i in ids if i))
+        if not ids:
+            return None
+        if t.get("status") != "done" and len(ids) == 1:
+            return None
+        same = t.get("status") == "done" and set(ids) == set(self._who_did(t))
+        if same and len(ids) == 1:
+            return None                                          # a retried tick: what it paid
+        if t.get("kind") in ("idea", "message"):
+            raise TaskError(403, "only a task is done together")
+        if shared_mode(t) == "all":
+            raise TaskError(400, "each of them does their own part of this one")
+        if len(ids) > 8:
+            raise TaskError(400, "too many people")
+        people = []
+        for i in ids:
+            who = self.family.get(i)
+            if who is None or getattr(who, "is_home", False):
+                raise TaskError(400, f"no such family member: {i}")
+            people.append(who)
+        before = self._who_did(t) if t.get("status") == "done" else []
+        if not actor.is_parent and actor.id not in ids and actor.id not in before:
+            raise TaskError(403, "a parent says who did it, or someone who did it")
+        return people
+
+    def _done_together(self, t: dict, actor: Person, at: str, people: list[Person]) -> dict | None:
+        """Several people did the task: it's done, and its coins are split evenly between them. On a task that
+        is already done this changes who did it: what it paid is taken back and paid again, at the time it
+        was done."""
+        ids = [p.id for p in people]
+        if t.get("status") == "done":
+            at = t.get("done_at") or at
+            if set(ids) == set(self._who_did(t)):
+                ids = self._who_did(t)                           # a retried tick: the same lines, the same order
+            else:
+                self._take_back(t, "who did it changed")
+        first = actor.id if actor.id in ids else ids[0]
+        t.update(status="done", done_at=at, done_by=first, snoozed_until=None)
+        if len(ids) > 1:
+            t["done_with"] = ids
+        else:
+            t.pop("done_with", None)
+        if actor.id not in ids or (len(ids) == 1 and ids[0] not in owners(t)):
+            t["ticked_by"] = actor.id
+        else:
+            t.pop("ticked_by", None)
+        if self.points is None:
+            return None
+        award = None
+        for i, pid in enumerate(ids):
+            a = self.points.pay(t, at, pid, (i, len(ids)))
+            if pid == first:
+                award = a
+        if award is not None:
+            award = dict(award, split=len(ids), people=ids)
+        return award
 
     def _done(self, t: dict, actor: Person, at: str, credit: Person | None = None) -> dict | None:
         """Tick a task. Shared "all" task: the actor's own part (the task is done once everyone's is);

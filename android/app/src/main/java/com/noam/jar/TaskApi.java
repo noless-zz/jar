@@ -521,6 +521,11 @@ public final class TaskApi {
         t.snoozedUntil = str(o, "snoozed_until");
         t.doneAt = str(o, "done_at");
         t.doneBy = str(o, "done_by");
+        JSONArray with = o.optJSONArray("done_with");
+        for (int i = 0; with != null && i < with.length(); i++) {
+            String id = with.optString(i, "");
+            if (!id.isEmpty() && !t.doneWith.contains(id)) t.doneWith.add(id);
+        }
         t.updatedAt = o.optString("updated_at");
         t.kind = o.optString("kind", "task");
         t.message = o.optString("message", "");
