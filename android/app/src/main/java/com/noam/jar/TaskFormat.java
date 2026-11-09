@@ -110,7 +110,11 @@ final class TaskFormat {
         else if (!t.waitingOn.isEmpty()) parts.add(c.getString(R.string.meta_question_to, TaskLists.name(names, t.waitingOn)));
         else if (!t.thread.isEmpty()) parts.add("💬 " + t.thread.size());
         if ("declined".equals(t.status)) parts.add(c.getString(R.string.meta_declined));
-        if (t.isDone() && t.doneBy != null && !me.equals(t.doneBy))
+        if (t.isDone() && t.doneWith.size() > 1) {
+            java.util.List<String> who = new java.util.ArrayList<>();
+            for (String id : t.doneWith) who.add(TaskLists.name(names, id));
+            parts.add(c.getString(R.string.meta_done_together, String.join(", ", who)));
+        } else if (t.isDone() && t.doneBy != null && !me.equals(t.doneBy))
             parts.add(c.getString(R.string.meta_done_by, TaskLists.name(names, t.doneBy)));
         return String.join(" · ", parts);
     }

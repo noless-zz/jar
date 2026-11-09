@@ -226,6 +226,9 @@ public final class TaskCache {
                 }
                 t.status = "done";
                 t.snoozedUntil = null;
+                String with = a.optString("as", "");
+                t.doneWith.clear();
+                if (with.contains(",")) t.doneWith.addAll(java.util.Arrays.asList(with.split(",")));
                 break;
             case "reopen":
                 if (t.eachMust() && !t.isDone() && t.doneParts.contains(me)) {
@@ -234,6 +237,7 @@ public final class TaskCache {
                 }
                 t.status = "open";
                 t.doneParts.clear();
+                t.doneWith.clear();
                 break;
             case "snooze":
                 t.snoozedUntil = a.isNull("until") ? null : a.optString("until", null);

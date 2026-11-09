@@ -158,8 +158,10 @@ class PointsStore:
                 row[who] = (row.get(who, 0) + ln["coins"]) if extra else ln["coins"] + row.get(who, 0)
         return out
 
-    def pay(self, task: dict, at: str | None = None, person: str | None = None) -> dict | None:
-        """Pay `person` (default: the assignee) for a task that was just done. Safe to call twice: the second
+    def pay(self, task: dict, at: str | None = None, person: str | None = None,
+            split: tuple[int, int] = (0, 1)) -> dict | None:
+        """Pay `person` (default: the assignee) for a task that was just done. `split` = (i, n): several
+        people did it together and this is the i-th of n even shares (the first ones get the remainder). Safe to call twice: the second
         call finds the line. An unrated task is paid at the default rating and keeps it (a parent can
         correct it later). Returns {"new", "coins", "breakdown", "week_total", "line"} or None for a
         no-coin task."""
@@ -178,6 +180,10 @@ class PointsStore:
             if points.get("work_day") and self._work_day_paid(data, who, at):
                 return None                                  # one work day per person per day
             coins, breakdown = self.compute(who, points, _parse(at))
+            i, n = split
+            if n > 1:
+                coins = coins // n + (1 if i < coins % n else 0)
+                breakdown = dict(breakdown, split=n)
             creator = self.family.get(task.get("created_by"))
             data["seq"] += 1
             line = {"id": data["seq"], "person": who, "task_id": task["id"], "title": task.get("title", ""),
@@ -188,6 +194,8 @@ class PointsStore:
                     "rated_by": points.get("rated_by", "ai"), "reversed": False}
             if points.get("note"):
                 line["note"] = points["note"]
+            if n > 1:
+                line["split"] = n
             data["lines"].append(line)
             self._write(data)
             return self._award(data, line, new=True)
@@ -235,8 +243,9 @@ class PointsStore:
             return self.pay(task, task.get("done_at"))
         self.reverse(task["id"], "rating changed")
         award = None
-        for old in olds:
-            award = self.pay(task, old["at"], old["person"]) or award
+        for i, old in enumerate(olds):
+            n = int(old.get("split") or 1)
+            award = self.pay(task, old["at"], old["person"], (i, n) if n > 1 else (0, 1)) or award
         return award
 
     def pay_work_day(self, person_id: str, at: str | None = None) -> dict | None:

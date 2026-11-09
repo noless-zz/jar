@@ -22,6 +22,8 @@ public final class Task {
     public String snoozedUntil;         // null = not snoozed
     public String doneAt;
     public String doneBy;
+    /** Done together: everyone who did it (the coins were split between them); empty = one person. */
+    public java.util.List<String> doneWith = new java.util.ArrayList<>();
     public String updatedAt = "";
     /** "task", or "message" = a prepared WhatsApp message the person sends themselves. */
     public String kind = "task";
@@ -83,6 +85,14 @@ public final class Task {
     }
 
     /** Done as far as {@code person} is concerned: the whole task, or their own part of an "each" task. */
+    /** Who did a done task: the people it was split between, else the one who did it. */
+    public java.util.List<String> whoDid() {
+        if (!doneWith.isEmpty()) return doneWith;
+        java.util.List<String> one = new java.util.ArrayList<>();
+        if (doneBy != null && !doneBy.isEmpty()) one.add(doneBy);
+        return one;
+    }
+
     public boolean doneFor(String person) {
         return isDone() || (eachMust() && doneParts.contains(person));
     }
