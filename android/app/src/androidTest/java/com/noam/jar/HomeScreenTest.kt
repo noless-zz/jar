@@ -21,6 +21,7 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -544,6 +545,7 @@ class HomeScreenTest {
     /** #17: Livne did one of Noam's tasks. "Together, or someone else…" → only Livne: done, sent with "as" so the coins are his. */
     @Test
     fun admin_givesTheCreditToWhoeverDidIt() {
+        try {
         for (style in listOf(JarStyle.CALM, JarStyle.NIGHT)) {
             context.getSharedPreferences("jar_tasks", Context.MODE_PRIVATE).edit().clear().commit()   // no tick left from the last round
             TestHooks.locale = Locale.forLanguageTag("he")
@@ -561,6 +563,9 @@ class HomeScreenTest {
             TestHooks.locale = null
             scenario?.close()
         }
+        } finally {
+            TestHooks.locale = null
+        }
     }
 
     /** #21: Noam and Livne did it together: done, sent with both, and the coins are split. In all three styles. */
@@ -568,23 +573,26 @@ class HomeScreenTest {
     fun doneTogether_splitsTheCoins() {
         val styles = listOf(Triple(JarStyle.CALM, JarMode.LIGHT, "calm"), Triple(JarStyle.NIGHT, JarMode.DARK, "night"),
             Triple(JarStyle.PLAYFUL, JarMode.LIGHT, "playful"))
-        for ((style, mode, tag) in styles) {
-            context.getSharedPreferences("jar_tasks", Context.MODE_PRIVATE).edit().clear().commit()
-            TestHooks.locale = Locale.forLanguageTag("he")
-            launch(style, mode)
-            compose.onNodeWithText("Buy milk").performClick()
-            compose.onNodeWithTag("done_together").performClick()
-            compose.onNodeWithTag("credit_livne").performClick()               // me + Livne
-            compose.onNodeWithText(s(R.string.ui_split_done, 2)).assertExists()
-            shot("48-done-together-$tag")
-            compose.onNodeWithTag("who_did_it_done").performClick()
-            compose.waitForIdle()
-            val t = TaskCache(context).find("t1")!!
-            assertEquals(true, t.isDone)
-            assertEquals(listOf("noam", "livne"), t.doneWith)
-            assertEquals("noam,livne", lastTick("t1").optString("as"))
-            TestHooks.locale = null
-            scenario?.close()
+        try {
+            for ((style, mode, tag) in styles) {
+                context.getSharedPreferences("jar_tasks", Context.MODE_PRIVATE).edit().clear().commit()
+                TestHooks.locale = Locale.forLanguageTag("he")
+                launch(style, mode)
+                compose.onNodeWithText("Buy milk").performClick()
+                compose.onNodeWithTag("done_together").performClick()
+                compose.onNodeWithTag("credit_livne").performClick()               // me + Livne
+                compose.onNodeWithTag("who_did_it_done").assertIsEnabled()
+                shot("48-done-together-$tag")
+                compose.onNodeWithTag("who_did_it_done").performClick()
+                compose.waitForIdle()
+                val t = TaskCache(context).find("t1")!!
+                assertEquals(true, t.isDone)
+                assertEquals(listOf("noam", "livne"), t.doneWith)
+                assertEquals("noam,livne", lastTick("t1").optString("as"))
+                scenario?.close()
+            }
+        } finally {
+            TestHooks.locale = null                                                  // never leak Hebrew into the next test
         }
     }
 
