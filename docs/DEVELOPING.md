@@ -40,12 +40,14 @@
   Google Cloud project **with billing linked**: on the free tier Google may use the audio to improve its products.
   Each memo is sent once (inline, no file upload) and cached in `data/eval/asr/cloud/`; the whole set costs a few
   cents. `"cloud": false` in the trigger skips it; `"cloud_model": "…"` picks another model. Production never calls it.
-- **Other model families (opt-in, big downloads):** `{"extra": true}` (or name them in `"candidates"`) adds
-  `caspi` (Caspi-1.7B), `qwen-he` (qwen-asr-0.6b-he), `parakeet-he` (Parakeet TDT 0.6B v3 Hebrew) and `combo-2` /
-  `combo-3` (the local LLM picks the best reading from several transcripts). They run in their own Python
-  environments under `data/asr-envs/` (`worker/asr_extra.py`, created on first use with CUDA torch, ~5 GB each) through
-  `worker/asr_runner.py`; models download from Hugging Face on first load (~9 GB together). Logs:
-  `data/asr-envs/<env>-install.log`, `data/eval/asr/<candidate>.log`.
+- **Parakeet (`parakeet-he`):** Parakeet TDT 0.6B v3 Hebrew runs in its own environment `data/asr-envs/tf5`
+  (`worker/asr_extra.py`, created on the bench's first run with CUDA torch, ~5 GB) through `worker/asr_runner.py`; the
+  model (~2.5 GB) downloads from Hugging Face on first load. Logs: `data/asr-envs/tf5-install.log`,
+  `data/eval/asr/parakeet-he.log`. Tried on 11-09 and dropped: Caspi-1.7B, qwen-asr-0.6b-he, LLM-combined transcripts,
+  denoise/trim cleanup.
+- **Shadow transcript** (`worker/shadow.py`): `[transcribe] shadow = "parakeet-he"` also transcribes every memo with
+  Parakeet (CPU by default) after filing and saves it as `shadow` in the memo; filing still uses Whisper. The bench
+  report's "Real use" line compares both on memos people fixed by hand. Log: `data/logs/shadow.log`.
 
 ## Hard-won lessons
 - Prompt + tool schemas must stay well under `num_ctx` (12288): past it Ollama silently drops the memo.

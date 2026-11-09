@@ -80,6 +80,8 @@ class Worker:
         self.transcriber = Transcriber(cfg.whisper_model, cfg.whisper_device, cfg.whisper_compute,
                                        cfg.whisper_language, cfg.vocabulary, cfg.whisper_vad, cfg.whisper_normalize,
                                        cfg.whisper_clean)
+        from .shadow import Shadow
+        self.shadow = Shadow(cfg.data_dir, cfg.whisper_shadow, cfg.whisper_shadow_device)
         self.agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
                            about=cfg.about, think=cfg.think, num_ctx=cfg.num_ctx)
         from .accounts import build as build_accounts
@@ -113,6 +115,7 @@ class Worker:
     def process(self, m: MemoFile) -> None:
         log.info("memo %s (%s, %.1f s, %s)", m.id, m.status, m.meta.get("duration_ms", 0) / 1000,
                  m.meta.get("device_id", "?"))
+        fresh = m.status == "received"
         try:
             if m.status == "received":
                 t = self.transcriber.transcribe(m.wav)
@@ -123,6 +126,8 @@ class Worker:
                 log.info("  transcript (%s, %.1f s): %s", t.language, t.seconds, t.text[:200] or "(no speech)")
             if m.status == "transcribed":
                 self.route(m)
+            if fresh:
+                self.add_shadow(m)
         except OllamaUnavailable as e:
             # Not the memo's fault: keep it as "transcribed" and try again next poll.
             if not self._ollama_warned or str(e) != self._ollama_problem:
@@ -135,6 +140,17 @@ class Worker:
             m.update(attempts=attempts, error=f"{type(e).__name__}: {e}", status="failed" if failed else m.status)
             log.exception("  %s (attempt %d/%d)", "gave up" if failed else "error", attempts,
                           self.cfg.max_attempts)
+
+    def add_shadow(self, m: MemoFile) -> None:
+        """The second model's reading, saved next to the production transcript after filing (worker/shadow.py)."""
+        try:
+            sh = self.shadow.transcribe(m.wav)
+            if sh:
+                m.update(shadow=sh)
+                log.info("  shadow %s (%s s): %s", sh.get("model"), sh.get("seconds", "-"),
+                         (sh.get("text") or sh.get("error") or "")[:200])
+        except Exception:  # noqa: BLE001 — never stops memos
+            log.exception("shadow transcript failed")
 
     def route(self, m: MemoFile) -> None:
         when = recorded_local(m.meta, self.tz)
@@ -396,10 +412,11 @@ class Worker:
         self.heartbeat("comparing speech models")
         log.info("ASR bench: comparing speech models on real memos")
         self.transcriber.close()                     # free the GPU; it loads again for the next memo
+        self.shadow.close()                          # and the shadow model's memory; it restarts on the next memo
         try:
             rep = asr_bench.run(self.cfg, limit=int(args.get("limit", 40)), person=str(args.get("person", "")),
                                 keys=args.get("candidates"), cloud=args.get("cloud"),
-                                cloud_model=str(args.get("cloud_model", "")), extra=bool(args.get("extra")),
+                                cloud_model=str(args.get("cloud_model", "")),
                                 beat=lambda: self.heartbeat("comparing speech models"))
             log.info("ASR bench done in %s s: %s (data/eval/asr/report.md)", rep["seconds"], rep["recommendation"])
         except Exception:  # noqa: BLE001

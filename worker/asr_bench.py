@@ -1,7 +1,7 @@
 """ASR bench: compares Whisper models and settings on the family's REAL memos (read-only).
 
     python -m worker.asr_bench                 (or: write data/eval/asr-run; the worker runs it while idle)
-    data/eval/asr-run may hold JSON: {"limit": 40, "person": "alona", "candidates": ["base", "ivrit-gentle"],
+    data/eval/asr-run may hold JSON: {"limit": 40, "person": "alona", "candidates": ["base", "parakeet-he"],
                                       "cloud": true, "cloud_model": "gemini-3.5-transcribe"}
 
 Per memo the reference is, in this order: the human-corrected transcript when the memo was fixed in the
@@ -29,6 +29,7 @@ log = logging.getLogger("jar.asr_bench")
 
 IVRIT_TURBO = "ivrit-ai/whisper-large-v3-turbo-ct2"
 IVRIT_LARGE = "ivrit-ai/whisper-large-v3-ct2"
+PARAKEET_HE = "thewh1teagle/parakeet-tdt-0.6b-v3-he"
 
 
 @dataclass
@@ -41,40 +42,26 @@ class Candidate:
     language: str | None = None   # None = the configured language
     clean: str = ""               # audio cleanup steps (transcribe.clean)
     vocab: str = "config"         # "config" = [transcribe] vocabulary; "family" = + the family's names (and Gemini's list)
-    runner: str = ""              # not faster-whisper: "qwen" | "parakeet", run by worker/asr_runner.py in its own env
+    runner: str = ""              # not faster-whisper: "parakeet", run by worker/asr_runner.py in its own env
     env: str = ""                 # that env (worker/asr_extra.py ENVS)
-    combo: tuple = ()             # not a model: the LLM picks the best reading from these candidates' transcripts
-    extra: bool = False           # big downloads: only when asked for (by key, or {"extra": true})
 
 
 CANDIDATES = [
     Candidate("base", "current settings", ""),
-    Candidate("base-gentle", "current model + gentle VAD + normalize", "", "gentle", True),
-    Candidate("ivrit", "ivrit turbo", IVRIT_TURBO, language="he"),
     Candidate("ivrit-gentle", "ivrit turbo + gentle VAD + normalize", IVRIT_TURBO, "gentle", True, "he"),
     Candidate("ivrit-novad", "ivrit turbo, VAD off", IVRIT_TURBO, "off", True, "he"),
     Candidate("ivrit-large", "ivrit large-v3 + gentle VAD + normalize (auto reference)", IVRIT_LARGE, "gentle", True,
               "he"),
-    # 2026-11 round: audio cleanup and the family's words, all on the production setup (ivrit turbo + gentle VAD)
+    # audio cleanup and the family's words on the production setup: no gain on 11-09, kept to re-check with more
+    # hand-fixed memos (denoise and trim made it worse and were dropped)
     Candidate("clean-hp", "production + rumble/hum filter", IVRIT_TURBO, "gentle", True, "he", "hp"),
     Candidate("clean-loud", "production + filter + steady level (up to 30x)", IVRIT_TURBO, "gentle", True, "he",
               "hp,loud"),
-    Candidate("clean-denoise", "production + filter + noise removal + steady level", IVRIT_TURBO, "gentle", True,
-              "he", "hp,denoise,loud"),
-    Candidate("clean-trim", "production + filter + steady level + trim silence", IVRIT_TURBO, "gentle", True, "he",
-              "hp,loud,trim"),
     Candidate("vocab-family", "production + family names in the vocabulary", IVRIT_TURBO, "gentle", True, "he",
               vocab="family"),
-    # 2026-11 round 2, step 4: other model families (own Python environments, GBs to download) and model + LLM
-    Candidate("caspi", "Caspi-1.7B (Qwen3-ASR, Hebrew fine-tune)", "OzLabs/Caspi-1.7B", language="Hebrew",
-              runner="qwen", env="qwen", extra=True),
-    Candidate("qwen-he", "qwen-asr-0.6b-he (Qwen3-ASR, Hebrew fine-tune)", "flowty1/qwen-asr-0.6b-he",
-              language="Hebrew", runner="qwen", env="qwen", extra=True),
-    Candidate("parakeet-he", "Parakeet TDT 0.6B v3 Hebrew", "thewh1teagle/parakeet-tdt-0.6b-v3-he",
-              runner="parakeet", env="tf5", extra=True),
-    Candidate("combo-2", "LLM picks from ivrit-gentle + Caspi", "", combo=("ivrit-gentle", "caspi"), extra=True),
-    Candidate("combo-3", "LLM picks from ivrit-gentle + Caspi + Parakeet", "",
-              combo=("ivrit-gentle", "caspi", "parakeet-he"), extra=True),
+    # Parakeet: as accurate as production on 11-09 and ~7x faster; runs in its own environment (data/asr-envs/tf5).
+    # Caspi-1.7B, qwen-asr-0.6b-he and the LLM-combined transcripts were tried on 11-09 and dropped.
+    Candidate("parakeet-he", "Parakeet TDT 0.6B v3 Hebrew", PARAKEET_HE, runner="parakeet", env="tf5"),
 ]
 REFERENCE = "ivrit-large"
 MIN_WORDS = 60            # a group needs this many reference words before it decides the recommendation
@@ -150,6 +137,8 @@ class Memo:
     human_ref: str = ""          # the dashboard-corrected transcript, when there is one
     production: str = ""         # what Jar actually heard
     cloud_ref: str = ""          # Gemini's transcript (cloud_ref.py), when the bench asked for one
+    shadow: str = ""             # the shadow model's reading saved at the time (worker/shadow.py)
+    shadow_model: str = ""
     audio_s: float = 0.0
     hyps: dict = field(default_factory=dict)      # candidate key -> {"text", "seconds"}
 
@@ -178,7 +167,9 @@ def select(memo_dir: Path, family, limit: int = 40, person: str = "") -> list[Me
             continue
         found.append(Memo(m.get("id") or j.stem, wav, who, m.get("recorded_at") or "",
                           human_ref=(m.get("transcript") or "") if m.get("edited") else "",
-                          production=m.get("original_transcript") or m.get("transcript") or ""))
+                          production=m.get("original_transcript") or m.get("transcript") or "",
+                          shadow=(m.get("shadow") or {}).get("text") or "",
+                          shadow_model=(m.get("shadow") or {}).get("model") or ""))
     def is_kid(mm):
         p = family.get(mm.person) if family else None
         return p is not None and not p.is_parent
@@ -203,47 +194,19 @@ def free_llm(ollama_url: str, model: str) -> None:
         log.info("couldn't unload the LLM (%s); carrying on", e)
 
 
-def choose(keys: list[str] | None, extra: bool = False) -> list[Candidate]:
-    """The candidates to run: the ones named (plus what a named combo reads, plus the auto reference), or every
-    standard one (+ the extra ones when extra)."""
+def choose(keys: list[str] | None) -> list[Candidate]:
+    """The candidates named (plus the auto reference), or all of them."""
     if keys:
         want = set(keys) | {REFERENCE}
-        for c in CANDIDATES:
-            if c.key in want:
-                want |= set(c.combo)
         return [c for c in CANDIDATES if c.key in want]
-    return [c for c in CANDIDATES if extra or not c.extra]
-
-
-RECONCILE = ("You get several automatic transcripts of the same short Hebrew voice memo, each from a different "
-             "speech-recognition model. Each may contain misheard words. Write the single most likely thing the "
-             "speaker actually said, in Hebrew, choosing or combining words from the transcripts. Prefer real, "
-             "sensible Hebrew; add nothing that is in none of them. Names that may appear: {vocab}.\n\n{lines}\n\n"
-             "Answer with the transcript only.")
-
-
-def reconcile_llm(cfg, vocab: str):
-    """texts -> one transcript, via the local LLM (Ollama, no thinking, temperature 0)."""
-    def ask(texts: list[str]) -> str:
-        lines = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
-        body = json.dumps({"model": cfg.llm_model, "stream": False, "think": False,
-                           "options": {"temperature": 0},
-                           "messages": [{"role": "user",
-                                         "content": RECONCILE.format(vocab=vocab or "-", lines=lines)}]}).encode()
-        req = urllib.request.Request(cfg.ollama_url.rstrip("/") + "/api/chat", data=body,
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=300) as r:
-            out = json.loads(r.read().decode("utf-8"))
-        return ((out.get("message") or {}).get("content") or "").strip().strip('"')
-    return ask
+    return list(CANDIDATES)
 
 
 def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = None, out_dir: Path | None = None,
-        make=None, cloud: bool | None = None, cloud_model: str = "", cloud_post=None, extra: bool = False,
-        reconcile=None, beat=None) -> dict:
+        make=None, cloud: bool | None = None, cloud_model: str = "", cloud_post=None, beat=None, **_old) -> dict:
     """make(candidate, cfg) -> an object with transcribe(wav) -> .text and close(); default: Transcriber, or
-    asr_extra.ExternalTranscriber for runner candidates. reconcile(texts) -> text for combo candidates (default:
-    the local LLM). beat() keeps the worker's heartbeat fresh during long installs and downloads.
+    asr_extra.ExternalTranscriber for runner candidates. beat() keeps the worker's heartbeat fresh during long
+    installs and downloads.
     cloud: None = use Gemini references when a key is set up, False = never, True = report it when it can't."""
     from . import config as config_mod
     from .family import Family
@@ -252,7 +215,7 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
     out_dir.mkdir(parents=True, exist_ok=True)
     fam = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
     memos = select(cfg.data_dir / "memos", fam, limit, person)
-    cands = choose(keys, extra)
+    cands = choose(keys)
     cloud_status = None
     if cloud is not False:
         from . import cloud_ref
@@ -279,8 +242,6 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
     t_all = time.monotonic()
     errors = {}
     for c in cands:
-        if c.combo:
-            continue
         log.info("ASR bench: %s on %d memos", c.key, len(memos))
         if beat:
             beat()
@@ -303,25 +264,6 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
                 tr.close()
             except Exception:  # noqa: BLE001
                 pass
-    combos = [c for c in cands if c.combo]
-    if combos:
-        reconcile = reconcile or reconcile_llm(cfg, family_vocab)
-    for c in combos:
-        log.info("ASR bench: %s on %d memos", c.key, len(memos))
-        if beat:
-            beat()
-        for mm in memos:
-            texts = [mm.hyps[k]["text"] for k in c.combo if k in mm.hyps and mm.hyps[k]["text"].strip()]
-            if len(texts) < 2:
-                continue                 # an input model failed: nothing to pick from
-            t0 = time.monotonic()
-            try:
-                text = reconcile(texts)
-            except Exception as e:  # noqa: BLE001
-                errors[c.key] = f"{type(e).__name__}: {e}"
-                break
-            spent = sum(mm.hyps[k]["seconds"] for k in c.combo if k in mm.hyps)
-            mm.hyps[c.key] = {"text": text, "seconds": round(spent + time.monotonic() - t0, 2)}
     report = build_report(memos, cands, fam, errors, round(time.monotonic() - t_all), cloud_status)
     (out_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     (out_dir / "report.md").write_text(render(report), encoding="utf-8")
@@ -368,10 +310,18 @@ def build_report(memos: list[Memo], cands: list[Candidate], fam, errors: dict, s
     if cloud_status is not None:
         cloud = dict(cloud_status, refs=sum(1 for m in memos if m.cloud_ref and not m.human_ref),
                      vs_human=aggregate(check))
+    # Real use: what production heard vs what the shadow model heard, on memos people fixed by hand
+    both = [m for m in memos if m.human_ref and m.shadow]
+    live = None
+    if both:
+        live = {"memos": len(both), "model": both[-1].shadow_model,
+                "production": aggregate([score(m.human_ref, m.production) for m in both]),
+                "shadow": aggregate([score(m.human_ref, m.shadow) for m in both])}
     return {"memos": len(memos), "human_refs": sum(1 for m in memos if m.human_ref), "seconds": seconds,
-            "cloud": cloud, "summary": summary, "recommendation": recommend(summary),
+            "cloud": cloud, "live": live, "summary": summary, "recommendation": recommend(summary),
             "samples": [{"id": m.id, "person": name(m.person), "audio_s": round(m.audio_s, 1),
                          "human_ref": m.human_ref, "cloud_ref": m.cloud_ref, "production": m.production,
+                         "shadow": m.shadow,
                          "hyps": {k: v["text"] for k, v in m.hyps.items()}} for m in memos]}
 
 
@@ -415,6 +365,11 @@ def render(r: dict) -> str:
               f"{c['cached']} from the cache, {c['failed']} failed" + (f" — {c['error']}" if c.get("error") else "") + ".",
               f"Gemini on the hand-corrected memos: WER {_pct(vh.get('wer'))}, dropped {_pct(vh.get('del'))} "
               f"({vh.get('words', 0)} words).", ""]
+    lv = r.get("live")
+    if lv:
+        L += [f"**Real use** ({lv['memos']} hand-fixed memos that also have a shadow reading): production WER "
+              f"{_pct(lv['production'].get('wer'))}, dropped {_pct(lv['production'].get('del'))} · shadow "
+              f"{lv['model']} WER {_pct(lv['shadow'].get('wer'))}, dropped {_pct(lv['shadow'].get('del'))}.", ""]
     L += ["| candidate | human WER | human Del | cloud WER | cloud Del | auto WER | auto Del | RTF |",
           "|---|---|---|---|---|---|---|---|"]
     for k, v in r["summary"].items():
@@ -439,6 +394,8 @@ def render(r: dict) -> str:
         if s.get("cloud_ref"):
             L.append(f"- **Gemini:** {s['cloud_ref']}")
         L.append(f"- *Jar heard:* {s['production']}")
+        if s.get("shadow"):
+            L.append(f"- *shadow heard:* {s['shadow']}")
         for k, t in s["hyps"].items():
             L.append(f"- {k}: {t}")
         L.append("")
@@ -449,7 +406,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
     rep = run(limit=int(args.get("limit", 40)), person=str(args.get("person", "")), keys=args.get("candidates"),
-              cloud=args.get("cloud"), cloud_model=str(args.get("cloud_model", "")), extra=bool(args.get("extra")))
+              cloud=args.get("cloud"), cloud_model=str(args.get("cloud_model", "")))
     print(rep["recommendation"])
 
 

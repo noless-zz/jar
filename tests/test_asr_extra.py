@@ -1,4 +1,4 @@
-"""Extra speech models for the ASR bench: candidate choice, environment setup, the runner bridge, LLM combos."""
+"""Extra speech models for the ASR bench: candidate choice, environment setup, the runner bridge."""
 
 import json
 import sys
@@ -7,7 +7,6 @@ import textwrap
 import unittest
 import wave
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 
@@ -15,8 +14,6 @@ from worker import asr_bench as B
 from worker import asr_extra as X
 from worker import asr_runner as R
 
-FAMILY = {"noam": {"name": "נועם", "role": "parent", "admin": True},
-          "alona": {"name": "אלונה", "role": "child"}}
 
 
 def write_wav(path: Path, seconds=1.0, sr=16000, amp=0.05, ch=1):
@@ -32,50 +29,13 @@ def write_wav(path: Path, seconds=1.0, sr=16000, amp=0.05, ch=1):
 
 
 class Choose(unittest.TestCase):
-    def test_extras_only_when_asked(self):
-        std = [c.key for c in B.choose(None)]
-        self.assertIn("ivrit-gentle", std)
-        self.assertNotIn("caspi", std)
-        self.assertNotIn("combo-2", std)
-        allc = [c.key for c in B.choose(None, extra=True)]
-        self.assertIn("parakeet-he", allc)
-        self.assertIn("combo-3", allc)
-
-    def test_a_named_combo_brings_its_inputs(self):
-        got = {c.key for c in B.choose(["combo-2"])}
-        self.assertEqual(got, {"combo-2", "ivrit-gentle", "caspi", B.REFERENCE})
-
-
-class Combo(unittest.TestCase):
-    def test_combo_reads_the_other_transcripts(self):
-        tmp = Path(tempfile.mkdtemp())
-        d = tmp / "data" / "memos" / "2026-11-09"
-        d.mkdir(parents=True)
-        write_wav(d / "aaa.wav")
-        (d / "aaa.json").write_text(json.dumps({"id": "aaa", "person": "noam", "transcript": "לקנות נייר מגבת",
-                                                "edited": True, "original_transcript": "x"}, ensure_ascii=False),
-                                    encoding="utf-8")
-        heard = {"ivrit-gentle": "לקנות נייר נגבת", "caspi": "לקנות ניר מגבת", "ivrit-large": "לקנות נייר"}
-        asked = []
-
-        class Fake:
-            def __init__(self, c):
-                self.c = c
-
-            def transcribe(self, wav):
-                return SimpleNamespace(text=heard[self.c.key])
-
-            def close(self):
-                pass
-
-        def reconcile(texts):
-            asked.append(texts)
-            return "לקנות נייר מגבת"
-        cfg = SimpleNamespace(data_dir=tmp / "data", family=FAMILY, token="t", contacts=None, vocabulary="")
-        rep = B.run(cfg, keys=["combo-2"], make=lambda c, cfg: Fake(c), reconcile=reconcile, cloud=False)
-        self.assertEqual(asked, [["לקנות נייר נגבת", "לקנות ניר מגבת"]])
-        self.assertEqual(rep["summary"]["combo-2"]["human"]["wer"], 0)
-        self.assertGreater(rep["summary"]["caspi"]["human"]["wer"], 0)
+    def test_trimmed_list(self):
+        keys = [c.key for c in B.choose(None)]
+        self.assertIn("parakeet-he", keys)
+        for gone in ("caspi", "qwen-he", "combo-2", "combo-3", "clean-denoise", "clean-trim", "base-gentle"):
+            self.assertNotIn(gone, keys)
+        self.assertEqual({c.key for c in B.choose(["parakeet-he"])}, {"parakeet-he", B.REFERENCE})
+        self.assertEqual(set(X.ENVS), {"tf5"})
 
 
 class Env(unittest.TestCase):
@@ -102,13 +62,13 @@ class Env(unittest.TestCase):
 
         def run(cmd, logf, beat=None):
             if "venv" in cmd:
-                X.env_python(tmp, "qwen").parent.mkdir(parents=True, exist_ok=True)
-                X.env_python(tmp, "qwen").write_text("")
+                X.env_python(tmp, "tf5").parent.mkdir(parents=True, exist_ok=True)
+                X.env_python(tmp, "tf5").write_text("")
                 return 0
             return 1
         with self.assertRaises(RuntimeError):
-            X.ensure_env(tmp, "qwen", run=run)
-        self.assertFalse((tmp / "asr-envs" / "qwen" / ".jar-ready").exists())
+            X.ensure_env(tmp, "tf5", run=run)
+        self.assertFalse((tmp / "asr-envs" / "tf5" / ".jar-ready").exists())
 
     def test_refuses_without_disk_space(self):
         old = X.MIN_FREE_GB
@@ -143,7 +103,7 @@ class Bridge(unittest.TestCase):
         self.script.write_text(FAKE_RUNNER, encoding="utf-8")
 
     def test_round_trip_in_hebrew(self):
-        tr = X.ExternalTranscriber(Path(sys.executable), "qwen", "m", cmd=[sys.executable, str(self.script)],
+        tr = X.ExternalTranscriber(Path(sys.executable), "parakeet", "m", cmd=[sys.executable, str(self.script)],
                                    log_file=self.tmp / "x.log")
         self.assertEqual(tr.transcribe(Path("/a/abc.wav")).text, "שלום abc")
         with self.assertRaisesRegex(RuntimeError, "bad audio"):
@@ -153,7 +113,7 @@ class Bridge(unittest.TestCase):
 
     def test_load_failure_is_reported(self):
         with self.assertRaisesRegex(RuntimeError, "no such model"):
-            X.ExternalTranscriber(Path(sys.executable), "qwen", "m",
+            X.ExternalTranscriber(Path(sys.executable), "parakeet", "m",
                                   cmd=[sys.executable, str(self.script), "--fail"])
 
 

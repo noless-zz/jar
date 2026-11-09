@@ -1,10 +1,8 @@
-"""Extra speech models for the ASR bench that don't run on faster-whisper (Caspi-1.7B, qwen-asr-0.6b-he, Parakeet he).
+"""Speech models that don't run on faster-whisper (Parakeet TDT Hebrew), for the ASR bench and the shadow transcript.
 
-Each runs in its own Python environment under data/asr-envs/<env> (never in Jar's .venv: qwen-asr pins
-transformers 4.57.6 while Parakeet needs transformers 5), created on first use, with CUDA torch. The model itself
-downloads from Hugging Face the first time the runner loads it. Bench only: production never loads these.
-
-Disk: about 5 GB per environment plus the models (Caspi ~4.7 GB, qwen-he ~1.8 GB, Parakeet ~2.5 GB).
+Each environment lives under data/asr-envs/<env> (never in Jar's .venv: transformers 5 + CUDA torch would weigh down
+and risk the worker), created on first use. The model downloads from Hugging Face the first time the runner loads it.
+Disk: about 5 GB for the environment plus ~2.5 GB for Parakeet.
 """
 
 from __future__ import annotations
@@ -28,12 +26,8 @@ TORCH_INDEX = "https://download.pytorch.org/whl/cu128"     # RTX 30xx/40xx; CUDA
 RUNNER = Path(__file__).with_name("asr_runner.py")
 MIN_FREE_GB = 15
 
-# pip steps per environment. qwen-asr goes in without its dependency list: it pulls nagisa (no Windows wheel for
-# Python 3.12, only used by the timestamp aligner; the runner stubs it), gradio, flask and sox.
+# pip steps per environment.
 ENVS = {
-    "qwen": [["torch", "--index-url", TORCH_INDEX],
-             ["--no-deps", "qwen-asr==0.0.6"],
-             ["transformers==4.57.6", "accelerate==1.12.0", "librosa", "soundfile"]],
     "tf5": [["torch", "--index-url", TORCH_INDEX],
             ["transformers>=5.18,<6", "librosa"]],
 }
@@ -116,10 +110,12 @@ class ExternalTranscriber:
     """Same face as worker.transcribe.Transcriber for the bench: transcribe(wav) -> .text, close()."""
 
     def __init__(self, python: Path, kind: str, model: str, language: str = "", log_file: Path | None = None,
-                 beat=None, ready_timeout: int = 3600, memo_timeout: int = 300, cmd: list | None = None):
+                 beat=None, ready_timeout: int = 3600, memo_timeout: int = 300, cmd: list | None = None,
+                 device: str = ""):
         self.memo_timeout = memo_timeout
         self._err = open(log_file, "a", encoding="utf-8", errors="replace") if log_file else subprocess.DEVNULL
-        cmd = cmd or [str(python), str(RUNNER), "--kind", kind, "--model", model, "--language", language]
+        cmd = cmd or [str(python), str(RUNNER), "--kind", kind, "--model", model, "--language", language,
+                      *(["--device", device] if device else [])]
         self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self._err,
                                   text=True, encoding="utf-8", errors="replace", env=_child_env(),
                                   creationflags=NO_WINDOW)
