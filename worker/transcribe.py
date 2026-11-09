@@ -54,6 +54,106 @@ def normalize(audio):
     return audio.astype(np.float32)
 
 
+# ---------------------------------------------------------------- audio cleanup ([transcribe] clean)
+# Steps, comma-separated, applied in this order after normalize: "hp", "denoise", "loud", "trim". numpy only (the PC
+# has no scipy). Each one is a bench candidate first (worker/asr_bench.py): noise removal can hurt recognition.
+SR = 16000
+
+
+def highpass(audio, cutoff: float = 80.0):
+    """Remove rumble, hum and handling noise below ~80 Hz (speech has almost nothing there). FFT with a soft edge."""
+    import numpy as np
+    n = audio.size
+    spec = np.fft.rfft(audio)
+    f = np.fft.rfftfreq(n, 1.0 / SR)
+    gain = np.clip((f - cutoff / 2) / (cutoff / 2), 0.0, 1.0)      # 0 below 40 Hz, ramps to 1 at 80 Hz
+    return np.fft.irfft(spec * gain, n).astype(np.float32)
+
+
+def _frames(audio, size: int, hop: int):
+    import numpy as np
+    if audio.size < size:
+        audio = np.pad(audio, (0, size - audio.size))
+    count = 1 + (audio.size - size) // hop
+    idx = np.arange(size)[None, :] + hop * np.arange(count)[:, None]
+    return audio[idx], audio
+
+
+def denoise(audio, strength: float = 1.5, floor: float = 0.15):
+    """Light spectral gating: the noise profile is the quietest 10% of 32 ms frames; each frequency bin is turned
+    down where it doesn't rise above that noise. floor keeps 15% so words never vanish completely."""
+    import numpy as np
+    size, hop = 512, 128
+    if audio.size < size * 4:
+        return audio
+    frames, padded = _frames(audio, size, hop)
+    win = np.hanning(size).astype(np.float32)
+    spec = np.fft.rfft(frames * win, axis=1)
+    mag = np.abs(spec)
+    energy = mag.sum(axis=1)
+    quiet = mag[energy <= np.percentile(energy, 10)]
+    noise = quiet.mean(axis=0) if quiet.size else np.zeros(mag.shape[1])
+    gain = np.clip((mag - strength * noise) / np.maximum(mag, 1e-9), floor, 1.0)
+    # smooth the gain over time so it doesn't "bubble" (musical noise)
+    k = np.ones(5) / 5
+    gain = np.apply_along_axis(lambda g: np.convolve(g, k, mode="same"), 0, gain)
+    out_frames = np.fft.irfft(spec * gain, size, axis=1) * win
+    out = np.zeros(padded.size, dtype=np.float32)
+    norm = np.zeros(padded.size, dtype=np.float32)
+    for i, fr in enumerate(out_frames):                               # overlap-add
+        out[i * hop:i * hop + size] += fr
+        norm[i * hop:i * hop + size] += win ** 2
+    out = out / np.maximum(norm, 1e-6)
+    return out[:audio.size].astype(np.float32)
+
+
+def loud(audio, target_db: float = -20.0, max_gain: float = 30.0):
+    """Bring speech to a steady level: RMS of the loudest half-second parts to -20 dBFS, at most 30x (the plain
+    normalize stops at 10x; 19 of 87 family memos peak under 0.1). Peaks above 0.95 are softly limited."""
+    import numpy as np
+    frames, _ = _frames(audio, 8000, 4000)
+    rms = np.sqrt((frames ** 2).mean(axis=1))
+    level = float(np.percentile(rms, 90)) if rms.size else 0.0
+    if level <= 1e-5:
+        return audio
+    g = min(10 ** (target_db / 20) / level, max_gain)
+    if g <= 1.0:
+        return audio
+    out = audio * g
+    return (np.tanh(out / 0.95) * 0.95).astype(np.float32)
+
+
+def trim(audio, pad_s: float = 0.3):
+    """Cut silence at the start and the end (keeps 0.3 s around the speech)."""
+    import numpy as np
+    size = 320                                                        # 20 ms
+    frames, _ = _frames(audio, size, size)
+    rms = np.sqrt((frames ** 2).mean(axis=1))
+    if not rms.size or rms.max() <= 0:
+        return audio
+    thr = max(rms.max() * 0.05, np.percentile(rms, 20) * 2)
+    on = np.where(rms > thr)[0]
+    if not on.size:
+        return audio
+    pad = int(pad_s * SR)
+    a, b = max(0, on[0] * size - pad), min(audio.size, (on[-1] + 1) * size + pad)
+    return audio[a:b]
+
+
+CLEAN = {"hp": highpass, "denoise": denoise, "loud": loud, "trim": trim}
+
+
+def clean(audio, steps: str):
+    import numpy as np
+    if not isinstance(audio, np.ndarray) or audio.size == 0 or not steps:
+        return audio
+    names = [s.strip() for s in steps.split(",") if s.strip()]
+    for name in ("hp", "denoise", "loud", "trim"):                    # fixed order whatever the config says
+        if name in names:
+            audio = CLEAN[name](audio)
+    return audio.astype(np.float32)
+
+
 def language_for(model: str, language: str) -> str | None:
     """ivrit-ai's Hebrew models weakened language detection on purpose: they must run with "he"."""
     if not language and "ivrit" in (model or "").lower():
@@ -80,11 +180,13 @@ def load_audio(wav: Path):
 
 class Transcriber:
     def __init__(self, model: str, device: str = "auto", compute_type: str = "auto",
-                 language: str = "", vocabulary: str = "", vad: str = "default", normalize: bool = False):
+                 language: str = "", vocabulary: str = "", vad: str = "default", normalize: bool = False,
+                 clean: str = ""):
         self.model_name = model
         self.language = language_for(model, language)
         self.vad = vad if vad in ("default", "gentle", "off") else "default"
         self.normalize = bool(normalize)
+        self.clean = ",".join(s for s in (clean or "").replace(" ", "").split(",") if s in CLEAN)
         self.vocabulary = vocabulary or None
         self.device, self.compute_type = self._pick(device, compute_type)
         self._model = None
@@ -136,6 +238,8 @@ class Transcriber:
         audio = load_audio(wav)
         if self.normalize:
             audio = normalize(audio)
+        if self.clean:
+            audio = clean(audio, self.clean)
         segments, info = self._model.transcribe(
             audio,
             language=self.language,
