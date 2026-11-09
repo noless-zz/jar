@@ -40,6 +40,12 @@
   Google Cloud project **with billing linked**: on the free tier Google may use the audio to improve its products.
   Each memo is sent once (inline, no file upload) and cached in `data/eval/asr/cloud/`; the whole set costs a few
   cents. `"cloud": false` in the trigger skips it; `"cloud_model": "…"` picks another model. Production never calls it.
+- **Other model families (opt-in, big downloads):** `{"extra": true}` (or name them in `"candidates"`) adds
+  `caspi` (Caspi-1.7B), `qwen-he` (qwen-asr-0.6b-he), `parakeet-he` (Parakeet TDT 0.6B v3 Hebrew) and `combo-2` /
+  `combo-3` (the local LLM picks the best reading from several transcripts). They run in their own Python
+  environments under `data/asr-envs/` (`worker/asr_extra.py`, created on first use with CUDA torch, ~5 GB each) through
+  `worker/asr_runner.py`; models download from Hugging Face on first load (~9 GB together). Logs:
+  `data/asr-envs/<env>-install.log`, `data/eval/asr/<candidate>.log`.
 
 ## Hard-won lessons
 - Prompt + tool schemas must stay well under `num_ctx` (12288): past it Ollama silently drops the memo.

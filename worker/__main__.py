@@ -399,7 +399,8 @@ class Worker:
         try:
             rep = asr_bench.run(self.cfg, limit=int(args.get("limit", 40)), person=str(args.get("person", "")),
                                 keys=args.get("candidates"), cloud=args.get("cloud"),
-                                cloud_model=str(args.get("cloud_model", "")))
+                                cloud_model=str(args.get("cloud_model", "")), extra=bool(args.get("extra")),
+                                beat=lambda: self.heartbeat("comparing speech models"))
             log.info("ASR bench done in %s s: %s (data/eval/asr/report.md)", rep["seconds"], rep["recommendation"])
         except Exception:  # noqa: BLE001
             log.exception("ASR bench failed")
