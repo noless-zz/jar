@@ -42,6 +42,8 @@ class Config:
     whisper_vad: str = "default"  # [transcribe] vad: "default" | "gentle" | "off"
     whisper_normalize: bool = False  # [transcribe] normalize: lift quiet recordings before transcribing
     whisper_clean: str = ""  # [transcribe] clean: audio cleanup steps, e.g. "hp,loud" (worker/transcribe.py)
+    whisper_shadow: str = ""  # [transcribe] shadow: second model on every memo, saved only (worker/shadow.py)
+    whisper_shadow_device: str = "cpu"  # [transcribe] shadow_device
     family_account: dict | None = None   # [family_account]: the family's own Jar Gmail (docs/CONNECT.md, part C)
 
 
@@ -72,6 +74,8 @@ def load(path: Path | None = None, root: Path = ROOT) -> Config:
         whisper_vad=str(t.get("vad", "default")),
         whisper_normalize=bool(t.get("normalize", False)),
         whisper_clean=str(t.get("clean", "")),
+        whisper_shadow=str(t.get("shadow", "")),
+        whisper_shadow_device=str(t.get("shadow_device", "cpu")),
         ollama_url=l.get("ollama_url", "http://localhost:11434").rstrip("/"),
         llm_model=l.get("model", "qwen3.5:9b"),
         temperature=float(l.get("temperature", 0.2)),

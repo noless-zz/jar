@@ -28,6 +28,11 @@ normalize = false
 # Audio cleanup before transcribing, comma-separated: "hp" (remove rumble/hum), "denoise" (light noise removal),
 # "loud" (steady level, lifts very quiet memos up to 30x), "trim" (cut silence at the ends). Bench first: "" = none.
 clean = ""
+# Shadow transcript: a second model also transcribes every memo, saved in the memo only (filing still uses the one
+# above), to compare on real use once memo texts get fixed. "parakeet-he" = Parakeet TDT Hebrew (set up by running
+# the ASR bench with it once). shadow_device = "cpu" leaves the GPU to Whisper and the LLM.
+shadow = ""
+shadow_device = "cpu"
 
 [llm]
 ollama_url = "http://localhost:11434"
