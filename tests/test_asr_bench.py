@@ -172,6 +172,22 @@ class Run(unittest.TestCase):
         self.assertIn("API key not valid", st["error"])
         self.assertFalse(any(m.cloud_ref for m in memos))
 
+    def test_gemini_daily_quota_stops_at_once(self):
+        (self.tmp / "data" / "secrets").mkdir(parents=True)
+        (self.tmp / "data" / "secrets" / "gemini_key.txt").write_text("k", encoding="utf-8")
+        calls = []
+
+        def post(url, headers, body):
+            calls.append(1)
+            return 429, {"error": {"message": "Quota exceeded for metric: generate_content_free_tier_requests, "
+                                              "limit: 25 ... requests per day limit exceeded on Free Tier."}}
+        from worker import cloud_ref
+        memos = B.select(self.tmp / "data" / "memos", self.fam)
+        st = cloud_ref.references(memos, SimpleNamespace(data_dir=self.tmp / "data", vocabulary=""), self.fam,
+                                  self.tmp / "out", post=post)
+        self.assertEqual(len(calls), 1)                                       # no retries, no other memos
+        self.assertEqual(st["failed"], 1)
+
 
 class CloudParsing(unittest.TestCase):
     def test_text_from_shapes(self):
@@ -179,6 +195,8 @@ class CloudParsing(unittest.TestCase):
         self.assertEqual(text_from({"candidates": [{"content": {"parts": [{"text": " שלום "}]}}]}), "שלום")
         self.assertEqual(text_from({"candidates": [{"content": {"parts": [
             {"audioTranscription": {"words": [{"word": "לקנות"}, {"word": "חלב"}]}}]}}]}), "לקנות חלב")
+        self.assertEqual(text_from({"candidates": [{"content": {"parts": [                # the real shape (11-09)
+            {"audioTranscription": {"text": "לקנות חלב"}}]}}]}), "לקנות חלב")
         self.assertEqual(text_from({}), "")
 
     def test_general_model_gets_a_prompt(self):
