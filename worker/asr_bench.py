@@ -41,6 +41,10 @@ class Candidate:
     language: str | None = None   # None = the configured language
     clean: str = ""               # audio cleanup steps (transcribe.clean)
     vocab: str = "config"         # "config" = [transcribe] vocabulary; "family" = + the family's names (and Gemini's list)
+    runner: str = ""              # not faster-whisper: "qwen" | "parakeet", run by worker/asr_runner.py in its own env
+    env: str = ""                 # that env (worker/asr_extra.py ENVS)
+    combo: tuple = ()             # not a model: the LLM picks the best reading from these candidates' transcripts
+    extra: bool = False           # big downloads: only when asked for (by key, or {"extra": true})
 
 
 CANDIDATES = [
@@ -61,6 +65,16 @@ CANDIDATES = [
               "hp,loud,trim"),
     Candidate("vocab-family", "production + family names in the vocabulary", IVRIT_TURBO, "gentle", True, "he",
               vocab="family"),
+    # 2026-11 round 2, step 4: other model families (own Python environments, GBs to download) and model + LLM
+    Candidate("caspi", "Caspi-1.7B (Qwen3-ASR, Hebrew fine-tune)", "OzLabs/Caspi-1.7B", language="Hebrew",
+              runner="qwen", env="qwen", extra=True),
+    Candidate("qwen-he", "qwen-asr-0.6b-he (Qwen3-ASR, Hebrew fine-tune)", "flowty1/qwen-asr-0.6b-he",
+              language="Hebrew", runner="qwen", env="qwen", extra=True),
+    Candidate("parakeet-he", "Parakeet TDT 0.6B v3 Hebrew", "thewh1teagle/parakeet-tdt-0.6b-v3-he",
+              runner="parakeet", env="tf5", extra=True),
+    Candidate("combo-2", "LLM picks from ivrit-gentle + Caspi", "", combo=("ivrit-gentle", "caspi"), extra=True),
+    Candidate("combo-3", "LLM picks from ivrit-gentle + Caspi + Parakeet", "",
+              combo=("ivrit-gentle", "caspi", "parakeet-he"), extra=True),
 ]
 REFERENCE = "ivrit-large"
 MIN_WORDS = 60            # a group needs this many reference words before it decides the recommendation
@@ -189,9 +203,47 @@ def free_llm(ollama_url: str, model: str) -> None:
         log.info("couldn't unload the LLM (%s); carrying on", e)
 
 
+def choose(keys: list[str] | None, extra: bool = False) -> list[Candidate]:
+    """The candidates to run: the ones named (plus what a named combo reads, plus the auto reference), or every
+    standard one (+ the extra ones when extra)."""
+    if keys:
+        want = set(keys) | {REFERENCE}
+        for c in CANDIDATES:
+            if c.key in want:
+                want |= set(c.combo)
+        return [c for c in CANDIDATES if c.key in want]
+    return [c for c in CANDIDATES if extra or not c.extra]
+
+
+RECONCILE = ("You get several automatic transcripts of the same short Hebrew voice memo, each from a different "
+             "speech-recognition model. Each may contain misheard words. Write the single most likely thing the "
+             "speaker actually said, in Hebrew, choosing or combining words from the transcripts. Prefer real, "
+             "sensible Hebrew; add nothing that is in none of them. Names that may appear: {vocab}.\n\n{lines}\n\n"
+             "Answer with the transcript only.")
+
+
+def reconcile_llm(cfg, vocab: str):
+    """texts -> one transcript, via the local LLM (Ollama, no thinking, temperature 0)."""
+    def ask(texts: list[str]) -> str:
+        lines = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
+        body = json.dumps({"model": cfg.llm_model, "stream": False, "think": False,
+                           "options": {"temperature": 0},
+                           "messages": [{"role": "user",
+                                         "content": RECONCILE.format(vocab=vocab or "-", lines=lines)}]}).encode()
+        req = urllib.request.Request(cfg.ollama_url.rstrip("/") + "/api/chat", data=body,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=300) as r:
+            out = json.loads(r.read().decode("utf-8"))
+        return ((out.get("message") or {}).get("content") or "").strip().strip('"')
+    return ask
+
+
 def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = None, out_dir: Path | None = None,
-        make=None, cloud: bool | None = None, cloud_model: str = "", cloud_post=None) -> dict:
-    """make(candidate, cfg) -> an object with transcribe(wav) -> .text and close(); default: Transcriber.
+        make=None, cloud: bool | None = None, cloud_model: str = "", cloud_post=None, extra: bool = False,
+        reconcile=None, beat=None) -> dict:
+    """make(candidate, cfg) -> an object with transcribe(wav) -> .text and close(); default: Transcriber, or
+    asr_extra.ExternalTranscriber for runner candidates. reconcile(texts) -> text for combo candidates (default:
+    the local LLM). beat() keeps the worker's heartbeat fresh during long installs and downloads.
     cloud: None = use Gemini references when a key is set up, False = never, True = report it when it can't."""
     from . import config as config_mod
     from .family import Family
@@ -200,7 +252,7 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
     out_dir.mkdir(parents=True, exist_ok=True)
     fam = Family.from_config(cfg.family or {}, cfg.token, cfg.data_dir, cfg.contacts)
     memos = select(cfg.data_dir / "memos", fam, limit, person)
-    cands = [c for c in CANDIDATES if not keys or c.key in keys or c.key == REFERENCE]
+    cands = choose(keys, extra)
     cloud_status = None
     if cloud is not False:
         from . import cloud_ref
@@ -210,12 +262,16 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
             cloud_status = None
         else:
             log.info("ASR bench: Gemini references %s", cloud_status)
+    from .cloud_ref import vocabulary as vocab_list
+    family_vocab = ", ".join(vocab_list(cfg, fam))
     if make is None:
         free_llm(cfg.ollama_url, cfg.llm_model)
-        from .cloud_ref import vocabulary as vocab_list
-        family_vocab = ", ".join(vocab_list(cfg, fam))
 
         def make(c, cfg):
+            if c.runner:
+                from .asr_extra import ExternalTranscriber, ensure_env
+                py = ensure_env(cfg.data_dir, c.env, beat)
+                return ExternalTranscriber(py, c.runner, c.model, c.language or "", out_dir / f"{c.key}.log", beat)
             from .transcribe import Transcriber
             return Transcriber(c.model or cfg.whisper_model, cfg.whisper_device, cfg.whisper_compute,
                                cfg.whisper_language if c.language is None else c.language,
@@ -223,7 +279,11 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
     t_all = time.monotonic()
     errors = {}
     for c in cands:
+        if c.combo:
+            continue
         log.info("ASR bench: %s on %d memos", c.key, len(memos))
+        if beat:
+            beat()
         try:
             tr = make(c, cfg)
         except Exception as e:  # noqa: BLE001
@@ -243,6 +303,25 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
                 tr.close()
             except Exception:  # noqa: BLE001
                 pass
+    combos = [c for c in cands if c.combo]
+    if combos:
+        reconcile = reconcile or reconcile_llm(cfg, family_vocab)
+    for c in combos:
+        log.info("ASR bench: %s on %d memos", c.key, len(memos))
+        if beat:
+            beat()
+        for mm in memos:
+            texts = [mm.hyps[k]["text"] for k in c.combo if k in mm.hyps and mm.hyps[k]["text"].strip()]
+            if len(texts) < 2:
+                continue                 # an input model failed: nothing to pick from
+            t0 = time.monotonic()
+            try:
+                text = reconcile(texts)
+            except Exception as e:  # noqa: BLE001
+                errors[c.key] = f"{type(e).__name__}: {e}"
+                break
+            spent = sum(mm.hyps[k]["seconds"] for k in c.combo if k in mm.hyps)
+            mm.hyps[c.key] = {"text": text, "seconds": round(spent + time.monotonic() - t0, 2)}
     report = build_report(memos, cands, fam, errors, round(time.monotonic() - t_all), cloud_status)
     (out_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     (out_dir / "report.md").write_text(render(report), encoding="utf-8")
@@ -370,7 +449,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
     rep = run(limit=int(args.get("limit", 40)), person=str(args.get("person", "")), keys=args.get("candidates"),
-              cloud=args.get("cloud"), cloud_model=str(args.get("cloud_model", "")))
+              cloud=args.get("cloud"), cloud_model=str(args.get("cloud_model", "")), extra=bool(args.get("extra")))
     print(rep["recommendation"])
 
 
