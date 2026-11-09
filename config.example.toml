@@ -25,6 +25,9 @@ vocabulary = "Jar, Tailscale, Obsidian"
 # ASR bench (data/eval/asr, see docs/DEVELOPING.md). ivrit-ai models always run with language "he".
 vad = "default"
 normalize = false
+# Audio cleanup before transcribing, comma-separated: "hp" (remove rumble/hum), "denoise" (light noise removal),
+# "loud" (steady level, lifts very quiet memos up to 30x), "trim" (cut silence at the ends). Bench first: "" = none.
+clean = ""
 
 [llm]
 ollama_url = "http://localhost:11434"

@@ -78,7 +78,8 @@ class Worker:
         self.cfg = cfg
         self.tz = ZoneInfo(cfg.timezone)
         self.transcriber = Transcriber(cfg.whisper_model, cfg.whisper_device, cfg.whisper_compute,
-                                       cfg.whisper_language, cfg.vocabulary, cfg.whisper_vad, cfg.whisper_normalize)
+                                       cfg.whisper_language, cfg.vocabulary, cfg.whisper_vad, cfg.whisper_normalize,
+                                       cfg.whisper_clean)
         self.agent = Agent(cfg.ollama_url, cfg.llm_model, cfg.temperature, cfg.keep_alive, cfg.max_rounds,
                            about=cfg.about, think=cfg.think, num_ctx=cfg.num_ctx)
         from .accounts import build as build_accounts

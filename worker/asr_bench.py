@@ -39,6 +39,8 @@ class Candidate:
     vad: str = "default"
     normalize: bool = False
     language: str | None = None   # None = the configured language
+    clean: str = ""               # audio cleanup steps (transcribe.clean)
+    vocab: str = "config"         # "config" = [transcribe] vocabulary; "family" = + the family's names (and Gemini's list)
 
 
 CANDIDATES = [
@@ -49,6 +51,16 @@ CANDIDATES = [
     Candidate("ivrit-novad", "ivrit turbo, VAD off", IVRIT_TURBO, "off", True, "he"),
     Candidate("ivrit-large", "ivrit large-v3 + gentle VAD + normalize (auto reference)", IVRIT_LARGE, "gentle", True,
               "he"),
+    # 2026-11 round: audio cleanup and the family's words, all on the production setup (ivrit turbo + gentle VAD)
+    Candidate("clean-hp", "production + rumble/hum filter", IVRIT_TURBO, "gentle", True, "he", "hp"),
+    Candidate("clean-loud", "production + filter + steady level (up to 30x)", IVRIT_TURBO, "gentle", True, "he",
+              "hp,loud"),
+    Candidate("clean-denoise", "production + filter + noise removal + steady level", IVRIT_TURBO, "gentle", True,
+              "he", "hp,denoise,loud"),
+    Candidate("clean-trim", "production + filter + steady level + trim silence", IVRIT_TURBO, "gentle", True, "he",
+              "hp,loud,trim"),
+    Candidate("vocab-family", "production + family names in the vocabulary", IVRIT_TURBO, "gentle", True, "he",
+              vocab="family"),
 ]
 REFERENCE = "ivrit-large"
 MIN_WORDS = 60            # a group needs this many reference words before it decides the recommendation
@@ -200,12 +212,14 @@ def run(cfg=None, limit: int = 40, person: str = "", keys: list[str] | None = No
             log.info("ASR bench: Gemini references %s", cloud_status)
     if make is None:
         free_llm(cfg.ollama_url, cfg.llm_model)
+        from .cloud_ref import vocabulary as vocab_list
+        family_vocab = ", ".join(vocab_list(cfg, fam))
 
         def make(c, cfg):
             from .transcribe import Transcriber
             return Transcriber(c.model or cfg.whisper_model, cfg.whisper_device, cfg.whisper_compute,
-                               cfg.whisper_language if c.language is None else c.language, cfg.vocabulary,
-                               c.vad, c.normalize)
+                               cfg.whisper_language if c.language is None else c.language,
+                               family_vocab if c.vocab == "family" else cfg.vocabulary, c.vad, c.normalize, c.clean)
     t_all = time.monotonic()
     errors = {}
     for c in cands:
