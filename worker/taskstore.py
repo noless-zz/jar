@@ -331,7 +331,9 @@ class TaskStore:
             elif action == "snooze":
                 t["snoozed_until"] = clean_when(until)
             elif action == "delete":
-                if actor.id != t["created_by"] and not actor.admin:
+                # A WhatsApp draft is the sender's own: whoever it's for may throw it away too.
+                mine = t.get("kind") == "message" and actor.id in owners(t)
+                if actor.id != t["created_by"] and not actor.admin and not mine:
                     raise TaskError(403, "only whoever created it can delete it")
                 t["status"] = "deleted"
                 self._take_back(t, "deleted")

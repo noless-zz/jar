@@ -89,6 +89,16 @@ class Tasks(Base):
             self.store.act(self.p["maya"], t["id"], "done")
         self.assertEqual(e.exception.status, 404)
 
+    def test_whoever_sends_a_whatsapp_draft_may_delete_it(self):
+        m = self.store.add(self.p["dana"], "WhatsApp → grandma", self.p["yoni"], kind="message", message="hi")
+        with self.assertRaises(TaskError):
+            self.store.act(self.p["maya"], m["id"], "delete")                   # not hers
+        self.store.act(self.p["yoni"], m["id"], "delete")                       # his to send, so his to drop
+        self.assertEqual(self.store.snapshot(self.p["yoni"])["tasks"], [])
+        t = self.store.add(self.p["dana"], "call grandma", self.p["yoni"])
+        with self.assertRaises(TaskError):
+            self.store.act(self.p["yoni"], t["id"], "delete")                   # an ordinary task stays Dana's call
+
     def test_markdown_is_written_and_old_file_imported(self):
         md = self.tmp / "notes" / "Tasks.md"
         md.parent.mkdir(parents=True)

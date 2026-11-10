@@ -276,6 +276,10 @@ class HomeScreenTest {
             compose.onNodeWithTag("send_whatsapp").assertExists()
             compose.onNodeWithText("Hi Grandma, we'll come on Friday at five").assertExists()
             shot("51-message-$tag")
+            // Not relevant any more: the draft can be thrown away, after a "Delete?" question.
+            compose.onNodeWithTag("message_delete").performScrollTo().performClick()
+            compose.onNodeWithTag("confirm").assertExists()
+            shot("51-message-delete-$tag")
         }
     }
 

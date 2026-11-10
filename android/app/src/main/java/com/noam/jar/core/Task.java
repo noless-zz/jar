@@ -118,6 +118,11 @@ public final class Task {
         return "";
     }
 
+    /** May {@code me} delete it: whoever made it, the admin, or (for a WhatsApp draft) whoever would send it. */
+    public boolean mayDelete(String me, boolean iAmAdmin) {
+        return iAmAdmin || createdBy.equals(me) || (isMessage() && isFor(me));
+    }
+
     public boolean isMessage() {
         return "message".equals(kind);
     }

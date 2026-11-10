@@ -64,7 +64,7 @@ fun MoreActions(t: Task, data: HomeData, onClose: () -> Unit) {
         if (data.parent && t.canRate()) ActionRow(JarIcons.Trophy, plain(ctx.getString(R.string.effort_menu))) { dialog = "effort" }
         if (data.canMakeRepeat(t)) ActionRow(JarIcons.Repeat, plain(ctx.getString(R.string.make_repeat))) { onClose(); actions.edit(EditReq(t, true)) }
         if (seriesMine) ActionRow(JarIcons.Repeat, ctx.getString(R.string.recurring_stop), danger = true) { dialog = "stop" }
-        if (me == t.createdBy || data.admin) ActionRow(JarIcons.Close, ctx.getString(R.string.action_delete), danger = true, tag = "delete") {
+        if (t.mayDelete(me, data.admin)) ActionRow(JarIcons.Close, ctx.getString(R.string.action_delete), danger = true, tag = "delete") {
             dialog = if (seriesMine) "delete_series" else "delete"
         }
     }
