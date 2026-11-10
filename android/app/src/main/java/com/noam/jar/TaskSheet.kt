@@ -71,6 +71,10 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
     val forOther = !own && data.admin && t.isOpen && !t.isIdea && !t.isMessage
     val otherNames = t.owners().joinToString(", ") { TaskLists.name(data.names, it) }
     var more by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    if (confirmDelete) Confirm(ctx.getString(R.string.ui_delete_confirm, t.title), ctx.getString(R.string.action_delete), { confirmDelete = false }) {
+        confirmDelete = false; actions.act(t, "delete", null); onClose()
+    }
     val editable = t.status != "declined" && !t.isMessage
     val repeatable = data.canMakeRepeat(t)
     val edit = { onClose(); actions.edit(EditReq(t)) }
@@ -119,6 +123,9 @@ fun TaskSheet(t: Task, data: HomeData, onClose: () -> Unit) {
         if (t.isMessage) {
             MessageActions(t, onClose)
             if (t.isDone) SideButton(ctx.getString(R.string.action_reopen)) { act("reopen", null) }
+            // Not relevant any more (sent another way, or no need): throw the draft away.
+            if (t.mayDelete(data.me, data.admin))
+                SideButton(stringResource(R.string.message_delete), Modifier.testTag("message_delete"), danger = true) { confirmDelete = true }
             return@Column
         }
         if (jar.style == JarStyle.NIGHT) {
