@@ -3,6 +3,7 @@
 One line per version, newest first: `version | עברית | English`.
 The app shows the lines newer than the installed version on its "update available" bar,
 so the family knows why to update. Add a line here whenever you bump android/VERSION.
+1.14.0 | הודעת וואטסאפ שכבר לא רלוונטית אפשר למחוק ישר מהמסך שלה ('לא רלוונטי – למחוק'), גם אם היא בשבילך ולא אתה יצרת אותה | A WhatsApp message that isn't needed any more can be deleted right from its sheet ('Not needed – delete'), also by whoever it was for
 
 1.13.0 | ב'ההקלטות שלי' אפשר להאזין להקלטה ולתקן מה ש-Jar שמע בלי לשלוח אותה שוב (או לסמן 'זה נכון'), ולראות מה מודל נוסף שמע; הורים בודקים את ההקלטות של הילדים ברשימה נפרדת. כל תיקון מלמד את Jar | In My memos you can listen to a memo and fix what Jar heard without filing it again (or mark it correct), and see what a second model heard; parents check the kids' memos in their own list. Every fix teaches Jar
 1.12.0 | הורה יכול לסמן משימה כבוצעה עבור מי שעשה אותה ושכח לסמן ('מישהו אחר עשה את זה…'), והקרדיט והמטבעות הולכים אליו; ובסגנון לילה חזר כפתור 'עריכה' | A parent can tick a task for whoever did it and forgot ('Someone else did it…'): the credit and coins go to them; and the Night style's task sheet has an Edit button again
